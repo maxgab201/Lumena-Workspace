@@ -147,7 +147,13 @@ Deployment successful
 
 ### Added
 
-...
+- **Block 1.2**: Implemented global application layout (AppLayout, Sidebar, Topbar).
+- **Block 1.2**: Configured React Router with foundational pages (Landing, Dashboard, Workspace, Settings, Billing, Auth, Legal).
+- **Block 1.2**: Configured Tailwind CSS v4 design tokens (Colors, Typography, Spacing).
+- Scaffolded React, TypeScript, and Vite frontend architecture (Block 1.1).
+- Integrated Tailwind CSS v4 using `@tailwindcss/vite` plugin.
+- Added foundational dependencies (`react-router-dom`, `lucide-react`).
+- Initialized base project documentation (AGENTS.md, PRODUCT.md, ARCHITECTURE.md, etc.).
 
 ### Changed
 

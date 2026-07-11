@@ -1,0 +1,27 @@
+- generic [ref=f19e3]:
+  - complementary [ref=f19e4]:
+    - generic [ref=f19e5]:
+      - generic [ref=f19e6]: L
+      - generic [ref=f19e7]: Lumena
+    - navigation [ref=f19e8]:
+      - link "Dashboard" [ref=f19e9] [cursor=pointer]:
+        - /url: /dashboard
+      - link "Workspace" [ref=f19e16] [cursor=pointer]:
+        - /url: /workspace
+    - generic [ref=f19e20]:
+      - link "Billing" [ref=f19e21] [cursor=pointer]:
+        - /url: /billing
+      - link "Settings" [ref=f19e25] [cursor=pointer]:
+        - /url: /settings
+  - generic [ref=f19e30]:
+    - banner [ref=f19e31]:
+      - heading "Lumena Workspace" [level=2] [ref=f19e33]
+      - button [ref=f19e35]
+    - main [ref=f19e43]:
+      - generic [ref=f19e44]:
+        - generic [ref=f19e45]:
+          - heading "Dashboard" [level=1] [ref=f19e46]
+          - paragraph [ref=f19e47]: Overview of your workspaces and recent activity.
+        - generic [ref=f19e49]:
+          - heading "Recent Workspace" [level=3] [ref=f19e50]
+          - paragraph [ref=f19e51]: Machine Learning Notes

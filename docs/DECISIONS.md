@@ -161,6 +161,18 @@ No provider-specific logic outside the AI Gateway.
 
 ...
 
+## ADR-0004
+
+Repository Initialization and Frontend Stack
+
+Status
+
+Accepted
+
+Description
+
+The project will use React, TypeScript, Vite, and Tailwind CSS v4. The setup prefers Tailwind CSS v4 with the `@tailwindcss/vite` plugin to increase performance and reduce configuration boilerplate. The backend framework decision (between Hono, Fastify, NestJS, Express) is deferred pending further Deep Research, with a strong preliminary recommendation for Hono due to Vercel edge deployment requirements.
+
 (Add future accepted decisions here.)
 
 ---
