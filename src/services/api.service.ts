@@ -17,25 +17,51 @@ export const apiService = {
   },
 
   async createWorkspace(name: string): Promise<Workspace> {
-    const { data, error } = await supabase
-      .from('workspaces')
-      .insert({ name })
-      .select()
-      .single();
+    const { data, error } = await supabase.rpc('create_workspace', {
+      workspace_name: name
+    });
 
     if (error) {
       console.error('Error creating workspace:', error);
       throw error;
     }
 
-    // After creating a workspace, we must link it to the user.
-    // However, our policy on `workspaces` requires the user to be a member to view it.
-    // So creating it directly from the client might be tricky unless there is a trigger or RPC.
-    // Wait, the client can insert into `workspaces` because there is no policy that restricts insert (wait, I didn't add an INSERT policy for workspaces!)
-    // If I didn't add an INSERT policy, RLS will block inserts! Let's check my SQL.
-    // I did not create an INSERT policy for workspaces!
-    // I should create an RPC to handle workspace creation securely.
-    
+    // RPC returns the UUID of the new workspace. We need to fetch it.
+    const { data: newWorkspace, error: fetchError } = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('id', data)
+      .single();
+
+    if (fetchError) throw fetchError;
+    return newWorkspace as Workspace;
+  },
+
+  async renameWorkspace(id: string, name: string): Promise<Workspace> {
+    const { data, error } = await supabase
+      .from('workspaces')
+      .update({ name, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error renaming workspace:', error);
+      throw error;
+    }
+
     return data as Workspace;
+  },
+
+  async deleteWorkspace(id: string): Promise<void> {
+    const { error } = await supabase
+      .from('workspaces')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('Error deleting workspace:', error);
+      throw error;
+    }
   }
 };

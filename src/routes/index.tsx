@@ -11,7 +11,6 @@ import { AppLayout } from '../components/layout/AppLayout';
 const Landing = React.lazy(() => import('../pages/Landing').then(m => ({ default: m.Landing })));
 const Auth = React.lazy(() => import('../pages/Auth').then(m => ({ default: m.Auth })));
 const Dashboard = React.lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const Workspace = React.lazy(() => import('../pages/Workspace').then(m => ({ default: m.Workspace })));
 const Settings = React.lazy(() => import('../pages/Settings').then(m => ({ default: m.Settings })));
 const Billing = React.lazy(() => import('../pages/Billing').then(m => ({ default: m.Billing })));
 const Legal = React.lazy(() => import('../pages/Legal').then(m => ({ default: m.Legal })));
@@ -42,7 +41,6 @@ export const router = createBrowserRouter([
             element: <AppLayout />,
             children: [
               { path: ROUTES.DASHBOARD, element: withSuspense(Dashboard) },
-              { path: ROUTES.WORKSPACE, element: withSuspense(Workspace) },
               { path: ROUTES.SETTINGS, element: withSuspense(Settings) },
               { path: ROUTES.BILLING, element: withSuspense(Billing) },
             ],

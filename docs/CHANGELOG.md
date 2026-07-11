@@ -147,6 +147,12 @@ Deployment successful
 
 ### Added
 
+- **Block 3.1**: Implemented the Workspace Experience with a premium three-panel layout akin to modern productivity tools.
+- **Block 3.1**: Created a dynamic `Workspace Sidebar` handling workspace switching and navigation, complete with "Coming Soon" sections.
+- **Block 3.1**: Integrated full Workspace Management (Create, Rename, Delete) wired directly to Supabase via `api.service.ts` with optimistic UI updates in Zustand.
+- **Block 3.1**: Built a premium Empty State featuring an upload prompt and a drag-and-drop `UploadZone` layout placeholder.
+- **Block 3.1**: Added a Right Sidebar featuring an AI Assistant placeholder, mock activity feed, and contextual workspace search.
+- **Block 3.1**: Consolidated the main authenticated experience strictly under the `/dashboard` route as the comprehensive workspace viewer.
 - **Block 2.2**: Implemented User Profile and Workspace Ownership Foundation via Supabase migrations.
 - **Block 2.2**: Added SQL schema for `profiles`, `workspaces`, and `workspace_members` with comprehensive Row Level Security (RLS) policies.
 - **Block 2.2**: Implemented an automated PostgreSQL trigger to seamlessly provision a profile and default workspace when a new user signs up.

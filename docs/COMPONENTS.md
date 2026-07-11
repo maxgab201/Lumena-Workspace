@@ -103,19 +103,11 @@ Accordion
 
 # 5. Layout Components
 
-AppLayout
+AppLayout (Responsive container: flex h-screen overflow-hidden)
 
-Sidebar
+Sidebar (Workspace Sidebar with Workspace Switcher, Documents, and Coming Soon sections)
 
-Topbar
-
-Footer
-
-Container
-
-Resizable Panels
-
-Split View
+Topbar (Mobile toggles, global search, user profile)
 
 ...
 
@@ -137,15 +129,15 @@ Navigation Menu
 
 # 7. Workspace Components
 
-Workspace Card
+Dashboard (Two-panel structure: Center + Right Sidebar)
 
-Workspace Header
+EmptyState (Premium empty state with drag-and-drop upload zone)
 
-Workspace Sidebar
+WorkspaceAssistant (Right Sidebar mock assistant and context)
 
-Workspace Settings
+WorkspaceSettings
 
-Workspace Members
+WorkspaceMembers
 
 ...
 

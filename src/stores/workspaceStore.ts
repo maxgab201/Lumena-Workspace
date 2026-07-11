@@ -11,6 +11,9 @@ interface WorkspaceState {
   error: Error | null;
   setActiveWorkspace: (id: string) => void;
   fetchWorkspaces: () => Promise<void>;
+  createWorkspace: (name: string) => Promise<Workspace>;
+  renameWorkspace: (id: string, name: string) => Promise<Workspace>;
+  deleteWorkspace: (id: string) => Promise<void>;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set) => ({
@@ -33,4 +36,31 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       set({ error, isLoading: false });
     }
   },
+  createWorkspace: async (name: string) => {
+    const newWorkspace = await apiService.createWorkspace(name);
+    set((state) => ({
+      workspaces: [newWorkspace, ...state.workspaces],
+      activeWorkspaceId: newWorkspace.id
+    }));
+    return newWorkspace;
+  },
+  renameWorkspace: async (id: string, name: string) => {
+    const updated = await apiService.renameWorkspace(id, name);
+    set((state) => ({
+      workspaces: state.workspaces.map(w => w.id === id ? updated : w)
+    }));
+    return updated;
+  },
+  deleteWorkspace: async (id: string) => {
+    await apiService.deleteWorkspace(id);
+    set((state) => {
+      const filtered = state.workspaces.filter(w => w.id !== id);
+      return {
+        workspaces: filtered,
+        activeWorkspaceId: state.activeWorkspaceId === id 
+          ? (filtered.length > 0 ? filtered[0].id : null) 
+          : state.activeWorkspaceId
+      };
+    });
+  }
 }));
