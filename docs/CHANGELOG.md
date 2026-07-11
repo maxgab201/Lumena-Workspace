@@ -147,6 +147,10 @@ Deployment successful
 
 ### Added
 
+- **Block 1.4**: Overhauled global design tokens (Vercel/Linear-inspired dark theme, sophisticated backgrounds and subtle borders).
+- **Block 1.4**: Rebuilt Landing Page with dynamic animated mesh gradients and premium placeholder sections.
+- **Block 1.4**: Elevated application layouts (AppLayout, Sidebar, Topbar) with glassmorphism, refined proportions, and Framer Motion transitions.
+- **Block 1.4**: Upgraded Dashboard and Workspace with highly realistic, polished placeholders for PDF viewers, AI chat, and active metrics.
 - **Block 1.3**: Implemented premium Design System foundation (Semantic Colors, Typography, Spacing, Shadows, Border Radius).
 - **Block 1.3**: Built core accessible UI primitives (Button, Input, Card, Badge, Avatar, Modal, DropdownMenu, Tooltip, Select, Skeleton, Spinner, etc.).
 - **Block 1.3**: Introduced `framer-motion` for subtle page transitions and micro-interactions.

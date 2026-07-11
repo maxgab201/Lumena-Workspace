@@ -1,0 +1,57 @@
+- generic [ref=f32e3]:
+  - banner [ref=f32e4]:
+    - generic [ref=f32e5] [cursor=pointer]:
+      - generic [ref=f32e6]: L
+      - generic [ref=f32e7]: Lumena
+    - navigation [ref=f32e8]:
+      - link "Features" [ref=f32e9] [cursor=pointer]:
+        - /url: "#features"
+      - link "How it works" [ref=f32e10] [cursor=pointer]:
+        - /url: "#how-it-works"
+      - link "Pricing" [ref=f32e11] [cursor=pointer]:
+        - /url: "#pricing"
+    - generic [ref=f32e12]:
+      - link "Sign In" [ref=f32e13] [cursor=pointer]:
+        - /url: /auth
+      - link "Get Started" [ref=f32e14] [cursor=pointer]:
+        - /url: /dashboard
+  - main [ref=f32e17]:
+    - generic [ref=f32e19]:
+      - generic [ref=f32e20]: Introducing Lumena AI Knowledge Engine
+      - heading "Intelligence for your documents." [level=1] [ref=f32e24]
+      - paragraph [ref=f32e25]: Upload complex PDFs, books, and research. Extract insights, build mind maps, and chat with your materials in a unified, professional workspace.
+      - generic [ref=f32e26]:
+        - link "Start Building Knowledge" [ref=f32e27] [cursor=pointer]:
+          - /url: /dashboard
+        - link "Book a Demo" [ref=f32e28] [cursor=pointer]:
+          - /url: /auth
+    - generic [ref=f32e29]:
+      - generic [ref=f32e30]:
+        - heading "Powerful tools, simple interface" [level=2] [ref=f32e31]
+        - paragraph [ref=f32e32]: Everything you need to digest and analyze complex information.
+      - generic [ref=f32e33]:
+        - generic [ref=f32e34]:
+          - heading "Smart OCR" [level=3] [ref=f32e39]
+          - paragraph [ref=f32e40]: Instantly digitize scanned documents.
+        - generic [ref=f32e41]:
+          - heading "Knowledge Graphs" [level=3] [ref=f32e49]
+          - paragraph [ref=f32e50]: Visualize connections between concepts.
+        - generic [ref=f32e51]:
+          - heading "AI Assistant" [level=3] [ref=f32e65]
+          - paragraph [ref=f32e66]: Chat with your documents securely.
+    - generic [ref=f32e67]:
+      - heading "How it works" [level=2] [ref=f32e69]
+      - generic [ref=f32e71]:
+        - heading "Interactive Demo Area" [level=3] [ref=f32e74]
+        - paragraph [ref=f32e75]: Placeholder for the interactive product walkthrough.
+    - generic [ref=f32e76]:
+      - generic [ref=f32e77]:
+        - generic [ref=f32e78]: L
+        - generic [ref=f32e79]: Lumena Workspace
+      - generic [ref=f32e80]:
+        - link "Terms" [ref=f32e81] [cursor=pointer]:
+          - /url: /legal
+        - link "Privacy" [ref=f32e82] [cursor=pointer]:
+          - /url: /legal
+        - link "Twitter" [ref=f32e83] [cursor=pointer]:
+          - /url: "#"
