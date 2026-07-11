@@ -2,14 +2,19 @@ import { PageContainer } from '../components/ui/PageContainer';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { FileText, Clock, File, Search, Plus, ArrowUpRight } from 'lucide-react';
+import { useWorkspaceStore } from '../stores/workspaceStore';
+import { useUserStore } from '../stores/userStore';
 
 export const Dashboard = () => {
+  const { workspaces, documents } = useWorkspaceStore();
+  const { user } = useUserStore();
+
   return (
     <PageContainer>
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
         <div>
           <h1 className="text-3xl font-heading font-semibold tracking-tight text-foreground">Overview</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Welcome back to your workspace.</p>
+          <p className="text-muted-foreground mt-1 text-sm">Welcome back, {user?.name}.</p>
         </div>
         <Button className="shadow-lg shadow-accent/20">
           <Plus className="w-4 h-4 mr-2" />
@@ -19,8 +24,8 @@ export const Dashboard = () => {
 
       {/* Metric Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard title="Active Workspaces" value="3" subtitle="+1 from last month" icon={<FolderIcon className="w-4 h-4" />} />
-        <MetricCard title="Documents Analyzed" value="12" subtitle="42 pages processed" icon={<FileText className="w-4 h-4" />} />
+        <MetricCard title="Active Workspaces" value={workspaces.length.toString()} subtitle="+1 from last month" icon={<FolderIcon className="w-4 h-4" />} />
+        <MetricCard title="Documents Analyzed" value={documents.length.toString()} subtitle="Recently processed" icon={<FileText className="w-4 h-4" />} />
         <MetricCard title="Hours Saved" value="14.5" subtitle="Estimated based on reading speed" icon={<Clock className="w-4 h-4" />} />
       </div>
 
@@ -28,19 +33,19 @@ export const Dashboard = () => {
         {/* Recent Activity */}
         <div className="md:col-span-2 space-y-4">
            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-heading font-semibold tracking-tight">Recent Activity</h2>
+              <h2 className="text-lg font-heading font-semibold tracking-tight">Recent Documents</h2>
               <Button variant="ghost" size="sm" className="text-xs">View all</Button>
            </div>
            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-card/50 hover:bg-secondary/50 transition-colors cursor-pointer">
+              {documents.map((doc) => (
+                <div key={doc.id} className="group flex items-center justify-between p-4 rounded-xl border border-white/5 bg-card/50 hover:bg-secondary/50 transition-colors cursor-pointer">
                    <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-lg bg-accent/10 text-accent flex items-center justify-center">
                          <File className="w-5 h-5" />
                       </div>
                       <div>
-                         <p className="font-medium text-sm group-hover:text-accent transition-colors">Machine Learning Concepts (PDF)</p>
-                         <p className="text-xs text-muted-foreground mt-0.5">Workspace: Research • 2 hours ago</p>
+                         <p className="font-medium text-sm group-hover:text-accent transition-colors">{doc.name}</p>
+                         <p className="text-xs text-muted-foreground mt-0.5">Status: {doc.status}</p>
                       </div>
                    </div>
                    <ArrowUpRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

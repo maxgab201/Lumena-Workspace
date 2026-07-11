@@ -28,6 +28,15 @@ Last Updated: YYYY-MM-DD
 # 1. Purpose
 
 This document records every significant technical, architectural and business decision made throughout the project.
+### Added
+- Feature branching workflow and automated preview deployments implemented as core CI/CD pipeline (Block 1.1).
+
+## 4. State Management and Provider Architecture
+- **Date**: 2026-07-11
+- **Status**: Accepted
+- **Context**: The frontend needed a scalable state management solution and a solid provider tree without introducing heavy frameworks or unnecessary boilerplate. We evaluated Redux, Context API, and Zustand.
+- **Decision**: Adopted `zustand` for lightweight, unopinionated global state. Adopted `react-error-boundary` for declarative error handling, `sonner` for toast notifications, and prepared `@tanstack/react-query` for server state (though unused until actual API integration).
+- **Consequences**: This decouples the UI components from specific backend implementations using mock layers, and provides a scalable, fast, and highly maintainable structural foundation.
 
 Every important decision must be documented before implementation whenever possible.
 

@@ -1,7 +1,11 @@
 import { Button } from '../components/ui/Button';
 import { Search, List, MessageSquare, ChevronDown, PanelRightClose, Maximize2 } from 'lucide-react';
+import { useWorkspaceStore } from '../stores/workspaceStore';
 
 export const Workspace = () => {
+  const { workspaces, activeWorkspaceId } = useWorkspaceStore();
+  const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
+
   return (
     <div className="h-full flex flex-col space-y-3 overflow-hidden">
       
@@ -9,7 +13,7 @@ export const Workspace = () => {
       <header className="flex items-center justify-between shrink-0 bg-card border border-white/5 rounded-xl px-4 py-2 shadow-sm">
         <div className="flex items-center space-x-4">
            <div className="flex items-center space-x-2">
-              <span className="font-heading font-semibold tracking-tight text-sm">Machine Learning Concepts</span>
+              <span className="font-heading font-semibold tracking-tight text-sm">{activeWorkspace?.name || 'Workspace'}</span>
               <Button variant="ghost" size="icon" className="w-6 h-6"><ChevronDown className="w-3 h-3" /></Button>
            </div>
            <div className="h-4 w-px bg-border" />
