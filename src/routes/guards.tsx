@@ -1,9 +1,14 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useUserStore } from '../stores/userStore';
 import { ROUTES } from '../config/routes';
+import { LoadingPage } from '../components/error/LoadingPage';
 
 export const ProtectedRoute = () => {
-  const isAuthenticated = useUserStore((state) => state.isAuthenticated);
+  const { isAuthenticated, isLoading } = useUserStore();
+
+  if (isLoading) {
+    return <LoadingPage />;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to={ROUTES.AUTH} replace />;
@@ -13,7 +18,11 @@ export const ProtectedRoute = () => {
 };
 
 export const PublicRoute = () => {
-  const isAuthenticated = useUserStore((state) => state.isAuthenticated);
+  const { isAuthenticated, isLoading } = useUserStore();
+
+  if (isLoading) {
+    return <LoadingPage />;
+  }
 
   if (isAuthenticated) {
     return <Navigate to={ROUTES.DASHBOARD} replace />;

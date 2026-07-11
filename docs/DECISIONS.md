@@ -38,6 +38,13 @@ This document records every significant technical, architectural and business de
 - **Decision**: Adopted `zustand` for lightweight, unopinionated global state. Adopted `react-error-boundary` for declarative error handling, `sonner` for toast notifications, and prepared `@tanstack/react-query` for server state (though unused until actual API integration).
 - **Consequences**: This decouples the UI components from specific backend implementations using mock layers, and provides a scalable, fast, and highly maintainable structural foundation.
 
+## 5. Authentication Architecture
+- **Date**: 2026-07-11
+- **Status**: Accepted
+- **Context**: Needed a secure authentication provider with OAuth support (Google, GitHub) that integrates tightly with our backend database while enforcing Zero Trust principles.
+- **Decision**: Adopted `Supabase Auth` mapped to a Zustand store for client-side reactivity.
+- **Consequences**: Provides secure JWT session handling. Protected routes properly suspend using a `LoadingPage` while the session is actively restored from local storage and verified against the server.
+
 Every important decision must be documented before implementation whenever possible.
 
 No major architectural change should exist without a corresponding ADR.

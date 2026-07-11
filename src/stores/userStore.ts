@@ -1,19 +1,62 @@
 import { create } from 'zustand';
 import type { User, Credits } from '../types';
-import { mockUser, mockCredits } from '../lib/mocks/data.mock';
+import { authService } from '../services/auth.service';
 
 interface UserState {
   user: User | null;
   credits: Credits | null;
   isAuthenticated: boolean;
-  login: () => void;
-  logout: () => void;
+  isLoading: boolean;
+  initialize: () => void;
+  logout: () => Promise<void>;
 }
 
 export const useUserStore = create<UserState>((set) => ({
-  user: mockUser,
-  credits: mockCredits,
-  isAuthenticated: true, // Mock authenticated state for now
-  login: () => set({ user: mockUser, credits: mockCredits, isAuthenticated: true }),
-  logout: () => set({ user: null, credits: null, isAuthenticated: false }),
+  user: null,
+  credits: null, // Will be fetched later from DB
+  isAuthenticated: false,
+  isLoading: true,
+  initialize: () => {
+    // Initial fetch
+    authService.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        set({ 
+          user: { 
+            id: session.user.id, 
+            email: session.user.email!, 
+            name: session.user.user_metadata?.full_name || 'User',
+            avatar_url: session.user.user_metadata?.avatar_url,
+            created_at: session.user.created_at 
+          }, 
+          isAuthenticated: true, 
+          isLoading: false 
+        });
+      } else {
+        set({ user: null, isAuthenticated: false, isLoading: false });
+      }
+    });
+
+    // Listen for changes
+    authService.onAuthStateChange((session) => {
+      if (session?.user) {
+        set({ 
+          user: { 
+            id: session.user.id, 
+            email: session.user.email!, 
+            name: session.user.user_metadata?.full_name || 'User',
+            avatar_url: session.user.user_metadata?.avatar_url,
+            created_at: session.user.created_at 
+          }, 
+          isAuthenticated: true,
+          isLoading: false
+        });
+      } else {
+        set({ user: null, isAuthenticated: false, isLoading: false });
+      }
+    });
+  },
+  logout: async () => {
+    await authService.signOut();
+  },
 }));
+
