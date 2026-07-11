@@ -802,3 +802,17 @@ Collaborative Editing
 Enterprise Features
 
 Everything should integrate through the Workspace rather than creating isolated systems.
+
+### Document Virtualization Layer
+
+The PDF rendering engine uses a combination of \eact-pdf\ (PDF.js) for canvas and text rendering, and \@tanstack/react-virtual\ for document virtualization. This architecture guarantees smooth scrolling performance for documents exceeding 300 pages by only rendering the currently visible pages plus a small overscan buffer.
+
+The \PDFPage\ component employs a strict Z-index layered design to accommodate the base PDF canvas alongside future interactive overlays:
+- Layer 1: PDF Canvas (react-pdf)
+- Layer 2: Text Layer (react-pdf)
+- Layer 3: Annotation Layer (future)
+- Layer 4: Highlight Layer (future)
+- Layer 5: OCR Layer (future)
+- Layer 6: Selection Layer (future)
+- Layer 7: AI Overlay Layer (future)
+

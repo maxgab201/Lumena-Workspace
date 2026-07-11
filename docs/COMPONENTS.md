@@ -372,3 +372,10 @@ AI Agents
 # 30. Component Roadmap
 
 ...
+### Document Viewer Components
+
+- **\PDFViewer\**: The root container for viewing a PDF document, responsible for fetching the document URL, configuring the PDF.js worker, and managing the overall layout.
+- **\PDFToolbar\**: Fixed header providing document navigation (previous/next), zoom controls, and rotation capabilities.
+- **\PDFPageList\**: A highly performant virtualized list (powered by @tanstack/react-virtual) that handles dynamic page sizing and rendering based on the scroll position.
+- **\PDFPage\**: The individual page component. Contains a stacked architecture with a base \eact-pdf\ canvas and placeholder divs for upcoming feature layers (Annotations, OCR, AI Overlays).
+

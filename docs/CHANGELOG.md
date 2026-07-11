@@ -326,3 +326,15 @@ Future Team Members
 Special Thanks
 
 ...
+## [Unreleased] - Block 4.1
+
+### Added
+- Document Viewer UI with zoom, rotation, and pagination controls.
+- PDFPageList component using @tanstack/react-virtual for high-performance virtualization of large documents.
+- Layered PDFPage architecture ready for OCR, highlights, annotations, and AI overlays.
+
+### Changed
+- Upgraded state management to track document rendering status (Scale, Rotation, Current Page).
+- Updated PageModel to track status of AI, OCR, Highlights, and rendering per page.
+- Configured Vite PDF.js worker using standard URL loading.
+

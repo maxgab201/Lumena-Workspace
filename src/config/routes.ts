@@ -2,6 +2,7 @@ export const ROUTES = {
   HOME: '/',
   AUTH: '/auth',
   DASHBOARD: '/dashboard',
+  VIEWER: '/viewer/:documentId',
   SETTINGS: '/settings',
   BILLING: '/billing',
   LEGAL: '/legal',

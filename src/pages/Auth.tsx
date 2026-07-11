@@ -28,7 +28,8 @@ export const Auth = () => {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
       {/* Premium Background Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/15 rounded-full blur-[100px] -z-10 pointer-events-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/15 rounded-full blur-[100px] -z-10 pointer-events-none animate-blob" />
+      <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[100px] -z-10 pointer-events-none animate-blob" style={{ animationDelay: '3s' }} />
       
       <div className="w-full max-w-sm border border-white/5 bg-background/60 backdrop-blur-2xl rounded-2xl p-8 shadow-2xl text-center relative">
         <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-50 rounded-2xl pointer-events-none" />

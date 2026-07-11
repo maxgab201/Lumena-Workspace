@@ -1,0 +1,47 @@
+- generic [active] [ref=f81e1]:
+  - link "Skip to content":
+    - /url: "#geist-skip-nav"
+  - generic [ref=f81e3]:
+    - banner [ref=f81e4]:
+      - link "Vercel logo":
+        - /url: /home
+        - button "Vercel Logo":
+          - img "Vercel Logo"
+      - navigation [ref=f81e5]:
+        - navigation [ref=f81e6]:
+          - link [ref=f81e7] [cursor=pointer]:
+            - /url: /signup?next=%2Fsso-api%3Furl%3Dhttps%253A%252F%252Flumena-workspace-anxptaxvc-maxgab201s-projects.vercel.app%252Fdashboard%26nonce%3D96e575f6b710dcd5336544258992788c7686b087425f303bded60d8b486541cd
+            - paragraph [ref=f81e9]: Sign Up
+    - main [ref=f81e10]:
+      - generic [ref=f81e12]:
+        - heading "Log in to Vercel" [level=1] [ref=f81e15]
+        - generic [ref=f81e16]:
+          - generic [ref=f81e17]:
+            - textbox "Email Address" [ref=f81e19]
+            - button "Continue with Email" [ref=f81e21] [cursor=pointer]
+          - generic [ref=f81e24]:
+            - button "Continue with Google" [ref=f81e25] [cursor=pointer]:
+              - generic [ref=f81e30]:
+                - generic [ref=f81e31]: Continue with
+                - text: Google
+            - button "Continue with GitHub" [ref=f81e32] [cursor=pointer]:
+              - generic [ref=f81e36]:
+                - generic [ref=f81e37]: Continue with
+                - text: GitHub
+            - button "Continue with Apple" [ref=f81e38] [cursor=pointer]:
+              - generic [ref=f81e42]:
+                - generic [ref=f81e43]: Continue with
+                - text: Apple
+            - button "Continue with SAML SSO" [ref=f81e45] [cursor=pointer]
+            - button "Continue with Passkey" [ref=f81e50] [cursor=pointer]
+            - button "Show other options" [ref=f81e55] [cursor=pointer]
+        - paragraph [ref=f81e58]:
+          - text: Don't have an account?
+          - link "Sign Up" [ref=f81e59] [cursor=pointer]:
+            - /url: /signup?next=%2Fsso-api%3Furl%3Dhttps%253A%252F%252Flumena-workspace-anxptaxvc-maxgab201s-projects.vercel.app%252Fdashboard%26nonce%3D96e575f6b710dcd5336544258992788c7686b087425f303bded60d8b486541cd
+      - generic [ref=f81e62]:
+        - link "Terms" [ref=f81e63] [cursor=pointer]:
+          - /url: /legal/terms
+        - link "Privacy Policy" [ref=f81e64] [cursor=pointer]:
+          - /url: /legal/privacy-policy
+  - alert [ref=f81e65]

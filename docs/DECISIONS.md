@@ -301,3 +301,9 @@ ADR-0003
 ...
 
 Future ADRs continue sequential numbering.
+### Document Viewer Virtualization (Block 4.1)
+
+- **Decision**: Use @tanstack/react-virtual for PDF page virtualization instead of eact-window.
+- **Context**: The PDF viewer needs to support dynamic page heights, rotation, zoom, and future overlays (OCR, AI, Highlights). eact-window was found to be too rigid for dynamic measurement and lacked active maintenance.
+- **Impact**: @tanstack/react-virtual provides a headless architecture (useVirtualizer) that perfectly accommodates dynamic page sizing, overscan, and scroll offset handling, providing smooth performance for 300+ page documents.
+
