@@ -1,0 +1,34 @@
+- generic [ref=f43e2]:
+  - generic [ref=f43e3]:
+    - complementary [ref=f43e4]:
+      - generic [ref=f43e5]:
+        - generic [ref=f43e6]: L
+        - generic [ref=f43e7]: Lumena
+      - generic [ref=f43e8]:
+        - generic [ref=f43e9]:
+          - paragraph [ref=f43e10]: Workspace
+          - navigation [ref=f43e11]:
+            - link "Overview" [ref=f43e12] [cursor=pointer]:
+              - /url: /dashboard
+            - link "Documents" [ref=f43e20] [cursor=pointer]:
+              - /url: /workspace
+            - link "AI Assistant" [ref=f43e28] [cursor=pointer]:
+              - /url: /ai-chat
+        - generic [ref=f43e34]:
+          - paragraph [ref=f43e35]: Account
+          - navigation [ref=f43e36]:
+            - link "Billing" [ref=f43e37] [cursor=pointer]:
+              - /url: /billing
+            - link "Settings" [ref=f43e42] [cursor=pointer]:
+              - /url: /settings
+    - generic [ref=f43e48]:
+      - banner [ref=f43e49]:
+        - button "Search knowledge... K" [ref=f43e51]:
+          - generic [ref=f43e55]: Search knowledge...
+          - generic [ref=f43e56]: K
+        - generic [ref=f43e59]:
+          - button [ref=f43e60]
+          - button "U" [ref=f43e65]
+      - main [ref=f43e68]:
+        - paragraph [ref=f43e74]: Loading Workspace...
+  - region "Notifications alt+T"

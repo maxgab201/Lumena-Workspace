@@ -1,0 +1,75 @@
+- generic [ref=f33e3]:
+  - complementary [ref=f33e4]:
+    - generic [ref=f33e5]:
+      - generic [ref=f33e6]: L
+      - generic [ref=f33e7]: Lumena
+    - generic [ref=f33e8]:
+      - generic [ref=f33e9]:
+        - paragraph [ref=f33e10]: Workspace
+        - navigation [ref=f33e11]:
+          - link "Overview" [ref=f33e12] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Documents" [ref=f33e21] [cursor=pointer]:
+            - /url: /workspace
+          - link "AI Assistant" [ref=f33e28] [cursor=pointer]:
+            - /url: /ai-chat
+      - generic [ref=f33e34]:
+        - paragraph [ref=f33e35]: Account
+        - navigation [ref=f33e36]:
+          - link "Billing" [ref=f33e37] [cursor=pointer]:
+            - /url: /billing
+          - link "Settings" [ref=f33e42] [cursor=pointer]:
+            - /url: /settings
+  - generic [ref=f33e48]:
+    - banner [ref=f33e49]:
+      - button "Search knowledge... K" [ref=f33e51]:
+        - generic [ref=f33e55]: Search knowledge...
+        - generic [ref=f33e56]: K
+      - generic [ref=f33e59]:
+        - button [ref=f33e60]
+        - button "U" [ref=f33e65]
+    - main [ref=f33e68]:
+      - generic [ref=f33e70]:
+        - generic [ref=f33e71]:
+          - generic [ref=f33e72]:
+            - heading "Overview" [level=1] [ref=f33e73]
+            - paragraph [ref=f33e74]: Welcome back to your workspace.
+          - button "New Workspace" [ref=f33e75]
+        - generic [ref=f33e77]:
+          - generic [ref=f33e78]:
+            - heading "Active Workspaces" [level=3] [ref=f33e80]
+            - generic [ref=f33e84]:
+              - generic [ref=f33e85]: "3"
+              - paragraph [ref=f33e86]: +1 from last month
+          - generic [ref=f33e87]:
+            - heading "Documents Analyzed" [level=3] [ref=f33e89]
+            - generic [ref=f33e94]:
+              - generic [ref=f33e95]: "12"
+              - paragraph [ref=f33e96]: 42 pages processed
+          - generic [ref=f33e97]:
+            - heading "Hours Saved" [level=3] [ref=f33e99]
+            - generic [ref=f33e104]:
+              - generic [ref=f33e105]: "14.5"
+              - paragraph [ref=f33e106]: Estimated based on reading speed
+        - generic [ref=f33e107]:
+          - generic [ref=f33e108]:
+            - generic [ref=f33e109]:
+              - heading "Recent Activity" [level=2] [ref=f33e110]
+              - button "View all" [ref=f33e111]
+            - generic [ref=f33e112]:
+              - generic [ref=f33e119] [cursor=pointer]:
+                - paragraph [ref=f33e120]: Machine Learning Concepts (PDF)
+                - paragraph [ref=f33e121]: "Workspace: Research • 2 hours ago"
+              - generic [ref=f33e131] [cursor=pointer]:
+                - paragraph [ref=f33e132]: Machine Learning Concepts (PDF)
+                - paragraph [ref=f33e133]: "Workspace: Research • 2 hours ago"
+              - generic [ref=f33e143] [cursor=pointer]:
+                - paragraph [ref=f33e144]: Machine Learning Concepts (PDF)
+                - paragraph [ref=f33e145]: "Workspace: Research • 2 hours ago"
+          - generic [ref=f33e149]:
+            - heading "Quick Tools" [level=2] [ref=f33e150]
+            - generic [ref=f33e152]:
+              - textbox "Search across documents..." [ref=f33e157]
+              - generic [ref=f33e158]:
+                - button "Summarize" [ref=f33e159]
+                - button "Quiz Prep" [ref=f33e163]
