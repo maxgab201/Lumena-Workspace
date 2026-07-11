@@ -1,53 +1,134 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #08060d;
-  --color-primary-dark: #f3f4f6;
-  --color-accent: #aa3bff;
-  --color-accent-dark: #c084fc;
-  --color-bg-light: #ffffff;
-  --color-bg-dark: #16171d;
-  --color-border-light: #e5e4e7;
-  --color-border-dark: #2e303a;
+  /* Colors */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Outfit', 'Inter', system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Border Radius */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Animations */
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-fade-out: fade-out 0.3s ease-out;
   
-  --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: ui-monospace, Consolas, monospace;
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--radix-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--radix-accordion-content-height); }
+    to { height: 0; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
 }
 
-/* Base resets & semantic variables */
+/* Base Semantic Variables */
 @layer base {
+  /* Default to Dark Mode as specified */
   :root {
-    --text: #6b6375;
-    --text-h: #08060d;
-    --bg: #ffffff;
+    --background: #08060d;
+    --foreground: #f3f4f6;
+    
+    --card: #16171d;
+    --card-foreground: #f3f4f6;
+    
+    --popover: #16171d;
+    --popover-foreground: #f3f4f6;
+    
+    --primary: #f3f4f6;
+    --primary-foreground: #08060d;
+    
+    --secondary: #1f2128;
+    --secondary-foreground: #f3f4f6;
+    
+    --muted: #1f2128;
+    --muted-foreground: #9ca3af;
+    
+    --accent: #c084fc; /* Lumena Purple in Dark Mode */
+    --accent-foreground: #ffffff;
+    
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    
+    --border: #2e303a;
+    --input: #2e303a;
+    --ring: #c084fc;
+    
+    --radius: 0.5rem;
+  }
+
+  /* Light Theme Preparation (Currently dormant/opt-in) */
+  .light {
+    --background: #ffffff;
+    --foreground: #08060d;
+    
+    --card: #ffffff;
+    --card-foreground: #08060d;
+    
+    --popover: #ffffff;
+    --popover-foreground: #08060d;
+    
+    --primary: #08060d;
+    --primary-foreground: #f3f4f6;
+    
+    --secondary: #f3f4f6;
+    --secondary-foreground: #08060d;
+    
+    --muted: #f3f4f6;
+    --muted-foreground: #6b6375;
+    
+    --accent: #aa3bff; /* Lumena Purple in Light Mode */
+    --accent-foreground: #ffffff;
+    
+    --destructive: #ef4444;
+    --destructive-foreground: #ffffff;
+    
     --border: #e5e4e7;
-    --accent: #aa3bff;
+    --input: #e5e4e7;
+    --ring: #aa3bff;
   }
-  
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --text: #9ca3af;
-      --text-h: #f3f4f6;
-      --bg: #16171d;
-      --border: #2e303a;
-      --accent: #c084fc;
-    }
-  }
+}
 
+@layer base {
+  * {
+    @apply border-border;
+  }
   body {
-    background-color: var(--bg);
-    color: var(--text);
-    font-family: var(--font-sans);
-    margin: 0;
-    padding: 0;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
-
   h1, h2, h3, h4, h5, h6 {
-    color: var(--text-h);
-    font-family: var(--font-heading);
-    font-weight: 500;
+    @apply font-heading tracking-tight;
   }
 }

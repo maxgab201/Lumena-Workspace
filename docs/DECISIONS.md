@@ -173,6 +173,18 @@ Description
 
 The project will use React, TypeScript, Vite, and Tailwind CSS v4. The setup prefers Tailwind CSS v4 with the `@tailwindcss/vite` plugin to increase performance and reduce configuration boilerplate. The backend framework decision (between Hono, Fastify, NestJS, Express) is deferred pending further Deep Research, with a strong preliminary recommendation for Hono due to Vercel edge deployment requirements.
 
+## ADR-0005
+
+Design System Primitives & Animation Strategy
+
+Status
+
+Accepted
+
+Description
+
+The project utilizes Headless accessible components (Radix UI) for complex primitives like Modals, Tooltips, and Dropdown Menus to guarantee ARIA compliance and keyboard navigation. Simple primitives are styled natively. Animations and layout transitions are powered by `framer-motion` to ensure fluid and professional micro-interactions. The `cn()` utility (`clsx` + `tailwind-merge`) is standardized for predictable style composition.
+
 (Add future accepted decisions here.)
 
 ---

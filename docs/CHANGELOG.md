@@ -147,6 +147,11 @@ Deployment successful
 
 ### Added
 
+- **Block 1.3**: Implemented premium Design System foundation (Semantic Colors, Typography, Spacing, Shadows, Border Radius).
+- **Block 1.3**: Built core accessible UI primitives (Button, Input, Card, Badge, Avatar, Modal, DropdownMenu, Tooltip, Select, Skeleton, Spinner, etc.).
+- **Block 1.3**: Introduced `framer-motion` for subtle page transitions and micro-interactions.
+- **Block 1.3**: Upgraded Application Layout and Dashboard/Workspace templates with new primitives and improved spatial proportions.
+- **Block 1.3**: Rebuilt Landing Page Hero with modern typography, gradients, and entrance animations.
 - **Block 1.2**: Implemented global application layout (AppLayout, Sidebar, Topbar).
 - **Block 1.2**: Configured React Router with foundational pages (Landing, Dashboard, Workspace, Settings, Billing, Auth, Legal).
 - **Block 1.2**: Configured Tailwind CSS v4 design tokens (Colors, Typography, Spacing).
