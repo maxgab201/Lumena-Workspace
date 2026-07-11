@@ -147,6 +147,10 @@ Deployment successful
 
 ### Added
 
+- **Block 2.2**: Implemented User Profile and Workspace Ownership Foundation via Supabase migrations.
+- **Block 2.2**: Added SQL schema for `profiles`, `workspaces`, and `workspace_members` with comprehensive Row Level Security (RLS) policies.
+- **Block 2.2**: Implemented an automated PostgreSQL trigger to seamlessly provision a profile and default workspace when a new user signs up.
+- **Block 2.2**: Updated `userStore` and `workspaceStore` to dynamically fetch live workspace data via the new `api.service.ts` upon authentication.
 - **Block 2.1**: Implemented real Authentication Foundation using Supabase Auth, replacing mocked user states.
 - **Block 2.1**: Added Google and GitHub OAuth integrations with a premium authentication UI in `/auth`.
 - **Block 2.1**: Secured client-side routes with `zustand` session listeners and improved `LoadingPage` transitions during session restoration.

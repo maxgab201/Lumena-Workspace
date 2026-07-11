@@ -45,6 +45,13 @@ This document records every significant technical, architectural and business de
 - **Decision**: Adopted `Supabase Auth` mapped to a Zustand store for client-side reactivity.
 - **Consequences**: Provides secure JWT session handling. Protected routes properly suspend using a `LoadingPage` while the session is actively restored from local storage and verified against the server.
 
+## 6. User Profile and Workspace Ownership Schema
+- **Date**: 2026-07-11
+- **Status**: Accepted
+- **Context**: The application required a persistent layer for user profiles and multi-tenant workspaces. Manually handling the creation of these records in the frontend introduces race conditions and increases bundle size.
+- **Decision**: Implemented `profiles`, `workspaces`, and `workspace_members` tables managed via Supabase migrations with strict Row Level Security (RLS). A PostgreSQL trigger (`on insert` to `auth.users`) was deployed to automatically provision a profile and default "My Workspace" for every new user.
+- **Consequences**: This guarantees data integrity, offloads business logic to the database layer securely, and simplifies the frontend authentication flow immensely.
+
 Every important decision must be documented before implementation whenever possible.
 
 No major architectural change should exist without a corresponding ADR.

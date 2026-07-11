@@ -9,18 +9,15 @@ export const mockUser: User = {
 
 export const mockWorkspaces: Workspace[] = [
   {
-    id: 'ws_1',
-    name: 'Machine Learning Concepts',
-    description: 'Research papers and notes on ML',
-    user_id: 'usr_123',
-    created_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    id: 'wksp_1',
+    name: 'Personal Research',
+    created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
   {
-    id: 'ws_2',
-    name: 'Finance & Markets',
-    user_id: 'usr_123',
-    created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
+    id: 'wksp_2',
+    name: 'Team Project Alpha',
+    created_at: new Date(Date.now() - 86400000).toISOString(),
     updated_at: new Date(Date.now() - 86400000).toISOString(),
   }
 ];
