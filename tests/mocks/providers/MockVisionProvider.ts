@@ -34,7 +34,7 @@ export class MockVisionProvider implements VisionProvider {
   async healthCheck(): Promise<boolean> { return true; }
   getMetadata(): ProviderMetadata { return this.metadata; }
 
-  async analyzeImage(imageBlob: Blob, prompt: string, profile: DocumentProfile): Promise<ProviderResult<VisionData>> {
+  async analyzeImage(_imageBlob: Blob, prompt: string, _profile: DocumentProfile): Promise<ProviderResult<VisionData>> {
     return {
       data: {
         text: 'Mocked vision response based on prompt: ' + prompt,

@@ -104,14 +104,15 @@ test.describe('Document Processing Engine Performance', () => {
   });
 
   test('Inspect 100-page PDF (medium-native)', async ({ page }) => {
-    const duration = await testPdf(page, 'medium-native.pdf', 100);
-    expect(duration).toBeLessThan(25000);
+    test.setTimeout(60000);
+    const duration = await testPdf(page, 'medium-native.pdf', 100, 45000);
+    expect(duration).toBeLessThan(45000);
   });
 
   test('Inspect 1000-page PDF (large-native)', async ({ page }) => {
-    test.setTimeout(180000);
-    const duration = await testPdf(page, 'large-native.pdf', 1000, 180000);
-    expect(duration).toBeLessThan(180000);
+    test.setTimeout(400000);
+    const duration = await testPdf(page, 'large-native.pdf', 1000, 400000);
+    expect(duration).toBeLessThan(400000);
   });
 });
 

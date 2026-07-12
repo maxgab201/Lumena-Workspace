@@ -157,6 +157,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
             data-width={dimensions.width}
             data-height={dimensions.height}
           >
+            {/* eslint-disable-next-line no-constant-binary-expression */}
             {(dimensions.width > 0 || true) && (
               <PDFPageList
                 containerWidth={Math.max(dimensions.width, 800)}

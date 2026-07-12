@@ -15,6 +15,7 @@ export const providerConfig = {
       'tesseract-ocr'   // Ultimate fallback (Fast, basic)
     ],
     layout: [
+      'mock-layout',
       'surya-layout',
       'docling'
     ],

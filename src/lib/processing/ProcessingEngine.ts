@@ -5,6 +5,7 @@ import { usePageRegistryStore } from '../../stores/pageRegistryStore';
 import { ProviderFallback } from '../providers/ProviderFallback';
 import { providerConfig } from '../providers/provider.config';
 import type { OCRProvider, OCRData } from '../providers/interfaces';
+import type { LayoutProvider, LayoutData } from '../providers/interfaces/LayoutProvider';
 import type { DocumentProfile, ProviderResult } from '../providers/types';
 
 import { ExtractionStage } from './stages/ExtractionStage';
@@ -57,7 +58,27 @@ class ProcessingEngineImpl {
         const pageStream = ExtractionStage.streamPages(file, 2.0);
         
         for await (const extractedPage of pageStream) {
-          // Update store that this page is starting OCR
+          // A. Layout Stage for this page
+          updatePage(extractedPage.pageIndex, { layoutStatus: 'processing' });
+          try {
+            const layoutResult = await ProviderFallback.executeWithFallback<LayoutProvider, ProviderResult<LayoutData>>(
+              providerConfig.fallbacks.layout,
+              async (provider) => await provider.analyzeLayout(extractedPage.imageBlob, profile)
+            );
+            console.log(`[ProcessingEngine] Page ${extractedPage.pageIndex} Layout completed via ${layoutResult.providerId} in ${layoutResult.executionTime}ms`);
+            
+            EventBus.emit('PageLayoutCompleted' as any, { 
+              jobId, 
+              pageIndex: extractedPage.pageIndex, 
+              result: layoutResult 
+            });
+            updatePage(extractedPage.pageIndex, { layoutStatus: 'completed' });
+          } catch (layoutError: any) {
+            console.warn(`[ProcessingEngine] Page ${extractedPage.pageIndex} Layout failed:`, layoutError.message);
+            updatePage(extractedPage.pageIndex, { layoutStatus: 'error' });
+          }
+
+          // B. OCR Stage for this page
           updatePage(extractedPage.pageIndex, { ocrStatus: 'processing' });
           
           try {

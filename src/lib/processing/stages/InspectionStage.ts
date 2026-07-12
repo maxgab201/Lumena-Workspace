@@ -42,7 +42,7 @@ export class InspectionStage {
       let docMetadata = null;
       try {
         docMetadata = await pdf.getMetadata();
-      } catch(e) {
+      } catch(_e) {
         // sometimes getting metadata throws on encrypted/corrupt docs
       }
 

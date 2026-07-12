@@ -56,8 +56,6 @@ test.describe('PDF Viewer (Mocked API)', () => {
         });
       }
     });
-    
-    const base64Pdf = fs.readFileSync(path.resolve(process.cwd(), 'tests', 'fixtures', 'base64.txt'), 'utf8').trim();
     // Mock the storage signed URL
     await page.route('**/storage/v1/object/sign/**', async (route) => {
       await route.fulfill({

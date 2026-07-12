@@ -78,6 +78,8 @@ export interface PageData {
   printedPageNumber: string | null;
   /** Render status (is the canvas currently rendered in the DOM) */
   renderStatus: 'idle' | 'loading' | 'rendered' | 'error';
+  /** Layout processing status for this page */
+  layoutStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'error';
   /** OCR processing status for this page */
   ocrStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'error';
   /** AI analysis status for this page */

@@ -34,7 +34,7 @@ export class MockLayoutProvider implements LayoutProvider {
   async healthCheck(): Promise<boolean> { return true; }
   getMetadata(): ProviderMetadata { return this.metadata; }
 
-  async analyzeLayout(imageBlob: Blob, profile: DocumentProfile): Promise<ProviderResult<LayoutData>> {
+  async analyzeLayout(_imageBlob: Blob, _profile: DocumentProfile): Promise<ProviderResult<LayoutData>> {
     return {
       data: {
         elements: [

@@ -8,7 +8,7 @@ export interface LayoutData {
 
 export interface LayoutElement {
   id: string;
-  type: 'title' | 'text' | 'list' | 'table' | 'figure' | 'header' | 'footer' | 'equation';
+  type: 'title' | 'paragraph' | 'table' | 'image' | 'list' | 'header' | 'footer';
   bbox: [number, number, number, number]; // x0, y0, x1, y1
   confidence: number;
 }

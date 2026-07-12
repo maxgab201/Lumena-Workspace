@@ -42,7 +42,7 @@ export class MockOCRProvider implements OCRProvider {
     return this.metadata;
   }
 
-  async processPage(imageBlob: Blob, profile: DocumentProfile): Promise<ProviderResult<OCRData>> {
+  async processPage(_imageBlob: Blob, _profile: DocumentProfile): Promise<ProviderResult<OCRData>> {
     if (this.shouldFail) {
       throw new Error(`MockOCRProvider ${this.metadata.id} simulated failure.`);
     }

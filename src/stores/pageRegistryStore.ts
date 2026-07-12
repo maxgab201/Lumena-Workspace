@@ -33,6 +33,7 @@ export const usePageRegistryStore = create<PageRegistryState>((set, get) => ({
         pdfPageIndex: i,
         printedPageNumber: null,
         renderStatus: 'idle',
+        layoutStatus: 'idle',
         ocrStatus: 'idle',
         aiStatus: 'idle',
         highlightStatus: 'idle',
