@@ -6,6 +6,7 @@ import { ProviderFallback } from '../providers/ProviderFallback';
 import { providerConfig } from '../providers/provider.config';
 import type { OCRProvider, OCRData } from '../providers/interfaces';
 import type { LayoutProvider, LayoutData } from '../providers/interfaces/LayoutProvider';
+import type { VisionProvider, VisionData } from '../providers/interfaces/VisionProvider';
 import type { DocumentProfile, ProviderResult } from '../providers/types';
 
 import { ExtractionStage } from './stages/ExtractionStage';
@@ -102,6 +103,30 @@ class ProcessingEngineImpl {
           } catch (ocrError: any) {
             console.warn(`[ProcessingEngine] Page ${extractedPage.pageIndex} OCR failed/skipped:`, ocrError.message);
             updatePage(extractedPage.pageIndex, { ocrStatus: 'error' });
+          }
+          
+          // C. Vision Stage for this page
+          updatePage(extractedPage.pageIndex, { aiStatus: 'processing' });
+          
+          try {
+            const visionPrompt = "Analyze this document page and summarize its core semantic components.";
+            const visionResult = await ProviderFallback.executeWithFallback<VisionProvider, ProviderResult<VisionData>>(
+              providerConfig.fallbacks.vision,
+              async (provider) => await provider.analyzeImage(extractedPage.imageBlob, visionPrompt, profile)
+            );
+            
+            console.log(`[ProcessingEngine] Page ${extractedPage.pageIndex} Vision completed via ${visionResult.providerId} in ${visionResult.executionTime}ms`);
+            
+            EventBus.emit('PageVisionCompleted' as any, { 
+              jobId, 
+              pageIndex: extractedPage.pageIndex, 
+              result: visionResult 
+            });
+            
+            updatePage(extractedPage.pageIndex, { aiStatus: 'completed' });
+          } catch (visionError: any) {
+            console.warn(`[ProcessingEngine] Page ${extractedPage.pageIndex} Vision failed/skipped:`, visionError.message);
+            updatePage(extractedPage.pageIndex, { aiStatus: 'error' });
           }
           
           pagesProcessed++;

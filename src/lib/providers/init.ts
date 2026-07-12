@@ -1,6 +1,7 @@
 import { ProviderRegistry } from './ProviderRegistry';
 import { TesseractOCRProvider } from './tesseract/TesseractOCRProvider';
 import { MockLayoutProvider } from './layout/MockLayoutProvider';
+import { MockVisionProvider } from './vision/MockVisionProvider';
 import { providerConfig } from './provider.config';
 
 export function initializeProviders() {
@@ -11,6 +12,10 @@ export function initializeProviders() {
   // Register Layout Providers
   const mockLayout = new MockLayoutProvider();
   ProviderRegistry.register(mockLayout);
+
+  // Register Vision Providers
+  const mockVision = new MockVisionProvider();
+  ProviderRegistry.register(mockVision);
 
   // Apply overrides from config
   for (const [id, config] of Object.entries(providerConfig.overrides)) {
