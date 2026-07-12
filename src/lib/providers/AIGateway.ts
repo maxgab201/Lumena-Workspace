@@ -2,6 +2,7 @@ import { ProviderFallback } from './ProviderFallback';
 import type { AIData } from './interfaces/AIProvider';
 import type { ProviderResult } from './types';
 import { providerConfig } from './provider.config';
+import { useBillingStore } from '../../stores/billingStore';
 
 /**
  * AIGateway orchestrates calls to text generation models (LLMs).
@@ -17,6 +18,11 @@ export class AIGateway {
    * @returns A promise resolving to the generated AIData.
    */
   static async generate(prompt: string, context?: any): Promise<ProviderResult<AIData>> {
+    const hasCredits = useBillingStore.getState().consumeCredits(1, 'AI Generation');
+    if (!hasCredits) {
+      throw new Error('Insufficient credits. Please upgrade your plan or purchase more credits.');
+    }
+
     try {
       const providerIds = providerConfig.fallbacks.ai || [];
       const result = await ProviderFallback.executeWithFallback<any, ProviderResult<AIData>>(
@@ -47,6 +53,11 @@ export class AIGateway {
     context: any | undefined, 
     onChunk: (chunk: string) => void
   ): Promise<string> {
+    const hasCredits = useBillingStore.getState().consumeCredits(1, 'AI Stream Generation');
+    if (!hasCredits) {
+      throw new Error('Insufficient credits. Please upgrade your plan or purchase more credits.');
+    }
+
     try {
       const providerIds = providerConfig.fallbacks.ai || [];
       const result = await ProviderFallback.executeWithFallback<any, string>(

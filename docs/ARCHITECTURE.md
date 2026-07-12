@@ -870,3 +870,8 @@ The \ProviderFallback\ module guarantees high availability. It takes a configure
  
  T h e   C h a t   S y s t e m   i n t e g r a t e s   a   c o n v e r s a t i o n a l   s i d e b a r   i n t o   t h e   P D F   V i e w e r .   T h e   U I   i s   c o n n e c t e d   t o   t h e   \ A I G a t e w a y . g e n e r a t e S t r e a m \   f a c a d e ,   a l l o w i n g   t e x t   s t r e a m s   f r o m   L L M   p r o v i d e r s   ( c u r r e n t l y   M o c k A I P r o v i d e r )   t o   p r o g r e s s i v e l y   r e n d e r   i n   r e a l   t i m e .   T h e   s t a t e   i s   c e n t r a l l y   m a n a g e d   v i a   \ c h a t S t o r e \   t o   d e c o u p l e   m e s s a g e   h i s t o r y   f r o m   t h e   V i e w e r   c o m p o n e n t s .  
  
+ 
+ # #   B i l l i n g   S y s t e m   ( P h a s e   9 ) 
+ 
+ T h e   B i l l i n g   S y s t e m   h a n d l e s   S u b s c r i p t i o n   P l a n s   ( F r e e   v s   P r o )   a n d   C r e d i t   t r a c k i n g .   T h e   \  i l l i n g S t o r e \   m a n a g e s   t h e   s t a t e   a n d   t r a n s a c t i o n s .   T h e   \ A I G a t e w a y \   i n t e g r a t e s   w i t h   t h e   \  i l l i n g S t o r e \   t o   c o n s u m e   c r e d i t s   ( 1   c r e d i t   p e r   g e n e r a t i o n )   a n d   t h r o w s   e r r o r s   i f   t h e   u s e r   h a s   e x h a u s t e d   t h e i r   m o n t h l y   b a l a n c e .   U p g r a d e   o p e r a t i o n s   s i m u l a t e   n e t w o r k   l a t e n c y   a n d   u p d a t e   t h e   l o c a l   s t a t e   o p t i m i s t i c a l l y .  
+ 
