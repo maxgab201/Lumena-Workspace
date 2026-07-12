@@ -4,6 +4,8 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { PDFToolbar } from './PDFToolbar';
 import { PDFPageList } from './PDFPageList';
+import { HighlightEditor } from './HighlightEditor';
+import { ChatSidebar } from '../chat/ChatSidebar';
 import { useViewerStore } from '../../stores/viewerStore';
 import { Loader2 } from 'lucide-react';
 
@@ -135,38 +137,45 @@ export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
         pageCount={totalPages || undefined}
       />
 
-      <Document
-        file={fileUrl}
-        onLoadSuccess={onDocumentLoadSuccess}
-        onLoadError={onDocumentLoadError}
-        loading={null}
-        className="flex-1 flex flex-col min-h-0"
-      >
-        {isLoading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-4">
-              <Loader2 className="w-8 h-8 text-accent animate-spin" />
-              <p className="text-sm text-muted-foreground">Loading document…</p>
+      <div className="flex-1 flex min-h-0 relative">
+        <Document
+          file={fileUrl}
+          onLoadSuccess={onDocumentLoadSuccess}
+          onLoadError={onDocumentLoadError}
+          loading={null}
+          className="flex-1 flex flex-col min-h-0 bg-background relative"
+        >
+          <HighlightEditor />
+
+          {/* Main Document Content */}
+          {isLoading ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="w-8 h-8 text-accent animate-spin" />
+                <p className="text-sm text-muted-foreground">Loading document…</p>
+              </div>
             </div>
-          </div>
-        ) : (
-          <div
-            ref={containerRef}
-            className="flex-1 bg-muted/20 relative overflow-hidden"
-            data-testid="pdf-container"
-            data-width={dimensions.width}
-            data-height={dimensions.height}
-          >
-            {/* eslint-disable-next-line no-constant-binary-expression */}
-            {(dimensions.width > 0 || true) && (
-              <PDFPageList
-                containerWidth={Math.max(dimensions.width, 800)}
-                containerHeight={Math.max(dimensions.height, 600)}
-              />
-            )}
-          </div>
-        )}
-      </Document>
+          ) : (
+            <div
+              ref={containerRef}
+              className="flex-1 bg-muted/20 relative overflow-hidden"
+              data-testid="pdf-container"
+              data-width={dimensions.width}
+              data-height={dimensions.height}
+            >
+              {/* eslint-disable-next-line no-constant-binary-expression */}
+              {(dimensions.width > 0 || true) && (
+                <PDFPageList
+                  containerWidth={Math.max(dimensions.width, 800)}
+                  containerHeight={Math.max(dimensions.height, 600)}
+                />
+              )}
+            </div>
+          )}
+        </Document>
+
+        <ChatSidebar />
+      </div>
     </div>
   );
 };

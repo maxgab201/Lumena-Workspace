@@ -67,4 +67,23 @@ export class MockAIProvider implements AIProvider {
       providerId: this.getMetadata().id
     };
   }
+
+  async generateStream(prompt: string, _context: any | undefined, onChunk: (chunk: string) => void): Promise<string> {
+    let mockResponse = `This is a simulated AI streaming response to: "${prompt.substring(0, 50)}..."\n\n`;
+    
+    if (prompt.toLowerCase().includes('summary')) {
+      mockResponse = 'This document appears to be a mock document. It contains structured text, tables, and images.\n\nThe main topic is placeholder testing for the Lumena Workspace.';
+    } else if (prompt.toLowerCase().includes('flashcard')) {
+      mockResponse = 'Q: What is Lumena Workspace?\nA: An intelligent knowledge workspace.';
+    }
+
+    const words = mockResponse.split(' ');
+    
+    for (let i = 0; i < words.length; i++) {
+      await new Promise(resolve => setTimeout(resolve, 50)); // simulate typing delay
+      onChunk(words[i] + ' ');
+    }
+
+    return mockResponse;
+  }
 }

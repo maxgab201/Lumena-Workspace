@@ -860,3 +860,18 @@ The \ProviderFallback\ module guarantees high availability. It takes a configure
  
  T h e   A I G a t e w a y   a c t s   a s   t h e   c e n t r a l   r o u t e r   f o r   t e x t - g e n e r a t i o n   L L M s .   I n s t e a d   o f   h a r d c o d i n g   A P I   k e y s   a n d   m o d e l   n a m e s   a c r o s s   t h e   a p p l i c a t i o n ,   a l l   r e q u e s t s   g o   t h r o u g h   \ A I G a t e w a y . g e n e r a t e ( p r o m p t ,   c o n t e x t ) \ .   T h e   g a t e w a y   u s e s   t h e   e x i s t i n g   \ P r o v i d e r F a l l b a c k . e x e c u t e ( ' a i ' ) \   l o g i c   t o   a u t o m a t i c a l l y   s e l e c t   t h e   o p t i m a l   m o d e l   ( e . g .   O p e n A I ,   A n t h r o p i c ,   o r   M o c k )   b a s e d   o n   t h e   c u r r e n t   c o n f i g u r a t i o n   a n d   a v a i l a b i l i t y .  
  
+ 
+ # #   H i g h l i g h t s   S y s t e m   ( P h a s e   7 ) 
+ 
+ T h e   H i g h l i g h t   E n g i n e   e x t r a c t s   D O M   t e x t   s e l e c t i o n s   a n d   c o n v e r t s   t h e m   i n t o   n o r m a l i z e d   P D F   c o o r d i n a t e s   ( 0 . 0   t o   1 . 0 ) .   H i g h l i g h t s   a r e   p e r s i s t e d   p e r - d o c u m e n t   i n   t h e   \ h i g h l i g h t S t o r e \ .   T h e   \ H i g h l i g h t O v e r l a y \   r e n d e r s   a b s o l u t e   p o s i t i o n e d   C S S   r e c t a n g l e s   b a s e d   o n   t h e s e   n o r m a l i z e d   b o u n d s ,   e n s u r i n g   p e r f e c t   a l i g n m e n t   a c r o s s   a l l   z o o m   l e v e l s   w i t h o u t   e x p e n s i v e   c a n v a s   o p e r a t i o n s .   T h e   \ H i g h l i g h t E d i t o r \   f l o a t s   a b o v e   a c t i v e   s e l e c t i o n s   t o   a s s i g n   c a t e g o r i e s .  
+ 
+ 
+ # #   C h a t   S y s t e m   ( P h a s e   8 ) 
+ 
+ T h e   C h a t   S y s t e m   i n t e g r a t e s   a   c o n v e r s a t i o n a l   s i d e b a r   i n t o   t h e   P D F   V i e w e r .   T h e   U I   i s   c o n n e c t e d   t o   t h e   \ A I G a t e w a y . g e n e r a t e S t r e a m \   f a c a d e ,   a l l o w i n g   t e x t   s t r e a m s   f r o m   L L M   p r o v i d e r s   ( c u r r e n t l y   M o c k A I P r o v i d e r )   t o   p r o g r e s s i v e l y   r e n d e r   i n   r e a l   t i m e .   T h e   s t a t e   i s   c e n t r a l l y   m a n a g e d   v i a   \ c h a t S t o r e \   t o   d e c o u p l e   m e s s a g e   h i s t o r y   f r o m   t h e   V i e w e r   c o m p o n e n t s .  
+ 
+ 
+ # #   B i l l i n g   S y s t e m   ( P h a s e   9 ) 
+ 
+ T h e   B i l l i n g   S y s t e m   h a n d l e s   S u b s c r i p t i o n   P l a n s   ( F r e e   v s   P r o )   a n d   C r e d i t   t r a c k i n g .   T h e   \  i l l i n g S t o r e \   m a n a g e s   t h e   s t a t e   a n d   t r a n s a c t i o n s .   T h e   \ A I G a t e w a y \   i n t e g r a t e s   w i t h   t h e   \  i l l i n g S t o r e \   t o   c o n s u m e   c r e d i t s   ( 1   c r e d i t   p e r   g e n e r a t i o n )   a n d   t h r o w s   e r r o r s   i f   t h e   u s e r   h a s   e x h a u s t e d   t h e i r   m o n t h l y   b a l a n c e .   U p g r a d e   o p e r a t i o n s   s i m u l a t e   n e t w o r k   l a t e n c y   a n d   u p d a t e   t h e   l o c a l   s t a t e   o p t i m i s t i c a l l y .  
+ 
