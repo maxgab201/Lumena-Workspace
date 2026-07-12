@@ -126,3 +126,4 @@ export interface ViewerState {
 export * from './processing';
 
 export * from './highlights';
+export * from './chat';

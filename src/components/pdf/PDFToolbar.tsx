@@ -11,7 +11,9 @@ import {
   ChevronsLeftRight,
   FileText,
   Layers,
+  MessageSquare,
 } from 'lucide-react';
+import { useChatStore } from '../../stores/chatStore';
 
 interface PDFToolbarProps {
   filename?: string;
@@ -36,6 +38,8 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
     showOverlays,
     toggleOverlays,
   } = useViewerStore();
+
+  const { isChatOpen, toggleChat } = useChatStore();
 
   const [pageInput, setPageInput] = useState('');
 
@@ -184,6 +188,20 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
           title="Toggle developer overlays"
         >
           <Layers className="w-4 h-4" />
+        </Button>
+
+        <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
+
+        <Button
+          variant={isChatOpen ? "secondary" : "ghost"}
+          size="icon"
+          onClick={toggleChat}
+          aria-label="Toggle Chat"
+          className="h-8 w-8"
+          title="Toggle Chat"
+          data-testid="toggle-chat-btn"
+        >
+          <MessageSquare className="w-4 h-4" />
         </Button>
       </div>
     </div>
