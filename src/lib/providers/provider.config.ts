@@ -20,6 +20,7 @@ export const providerConfig = {
       'docling'
     ],
     vision: [
+      'mock-vision',
       'gpt-4o-vision',
       'claude-3-opus'
     ]
