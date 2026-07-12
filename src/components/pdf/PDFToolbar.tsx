@@ -10,6 +10,7 @@ import {
   Maximize,
   ChevronsLeftRight,
   FileText,
+  Layers,
 } from 'lucide-react';
 
 interface PDFToolbarProps {
@@ -32,6 +33,8 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
     setCurrentPage,
     setFitMode,
     setScale,
+    showOverlays,
+    toggleOverlays,
   } = useViewerStore();
 
   const [pageInput, setPageInput] = useState('');
@@ -168,6 +171,19 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
           className="h-8 w-8"
         >
           <RotateCw className="w-4 h-4" />
+        </Button>
+
+        <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
+
+        <Button
+          variant={showOverlays ? "secondary" : "ghost"}
+          size="icon"
+          onClick={toggleOverlays}
+          aria-label="Toggle developer overlays"
+          className="h-8 w-8"
+          title="Toggle developer overlays"
+        >
+          <Layers className="w-4 h-4" />
         </Button>
       </div>
     </div>

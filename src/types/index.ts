@@ -70,6 +70,11 @@ export interface Notification {
 
 // ─── PDF Viewer Types ───────────────────────────────────────────────
 
+import type { ProviderResult } from '../lib/providers/types';
+import type { LayoutData } from '../lib/providers/interfaces/LayoutProvider';
+import type { OCRData } from '../lib/providers/interfaces/OCRProvider';
+import type { VisionData } from '../lib/providers/interfaces/VisionProvider';
+
 /** Centralized Page Registry Data for a single PDF page */
 export interface PageData {
   /** Zero-based PDF page index */
@@ -80,10 +85,13 @@ export interface PageData {
   renderStatus: 'idle' | 'loading' | 'rendered' | 'error';
   /** Layout processing status for this page */
   layoutStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'error';
+  layoutData?: ProviderResult<LayoutData>;
   /** OCR processing status for this page */
   ocrStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'error';
+  ocrData?: ProviderResult<OCRData>;
   /** AI analysis status for this page */
   aiStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'error';
+  visionData?: ProviderResult<VisionData>;
   /** Highlight status for this page */
   highlightStatus: 'idle' | 'loading' | 'ready';
   /** Annotation status for this page */

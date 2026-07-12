@@ -73,7 +73,7 @@ class ProcessingEngineImpl {
               pageIndex: extractedPage.pageIndex, 
               result: layoutResult 
             });
-            updatePage(extractedPage.pageIndex, { layoutStatus: 'completed' });
+            updatePage(extractedPage.pageIndex, { layoutStatus: 'completed', layoutData: layoutResult });
           } catch (layoutError: any) {
             console.warn(`[ProcessingEngine] Page ${extractedPage.pageIndex} Layout failed:`, layoutError.message);
             updatePage(extractedPage.pageIndex, { layoutStatus: 'error' });
@@ -98,7 +98,7 @@ class ProcessingEngineImpl {
               result: ocrResult 
             });
             
-            updatePage(extractedPage.pageIndex, { ocrStatus: 'completed' });
+            updatePage(extractedPage.pageIndex, { ocrStatus: 'completed', ocrData: ocrResult });
             
           } catch (ocrError: any) {
             console.warn(`[ProcessingEngine] Page ${extractedPage.pageIndex} OCR failed/skipped:`, ocrError.message);
@@ -123,7 +123,7 @@ class ProcessingEngineImpl {
               result: visionResult 
             });
             
-            updatePage(extractedPage.pageIndex, { aiStatus: 'completed' });
+            updatePage(extractedPage.pageIndex, { aiStatus: 'completed', visionData: visionResult });
           } catch (visionError: any) {
             console.warn(`[ProcessingEngine] Page ${extractedPage.pageIndex} Vision failed/skipped:`, visionError.message);
             updatePage(extractedPage.pageIndex, { aiStatus: 'error' });
