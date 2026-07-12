@@ -10,6 +10,7 @@ interface ViewerStoreState {
   fitMode: ViewerFitMode;
   rotation: 0 | 90 | 180 | 270;
   isLoading: boolean;
+  showOverlays: boolean;
 
   // Actions
   setDocumentId: (id: string | null) => void;
@@ -24,6 +25,7 @@ interface ViewerStoreState {
   goToPrevPage: () => void;
   goToFirstPage: () => void;
   goToLastPage: () => void;
+  toggleOverlays: () => void;
   initializeDocument: (totalPages: number) => void;
   setLoading: (loading: boolean) => void;
   reset: () => void;
@@ -38,9 +40,10 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
   totalPages: 0,
   currentPage: 1,
   scale: 1.0,
-  fitMode: 'fit-width',
+  fitMode: 'fit-page',
   rotation: 0,
   isLoading: true,
+  showOverlays: true,
 
   setDocumentId: (id) => set({ documentId: id }),
   setTotalPages: (total) => set({ totalPages: total }),
@@ -80,10 +83,8 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
     if (currentPage > 1) set({ currentPage: currentPage - 1 });
   },
   goToFirstPage: () => set({ currentPage: 1 }),
-  goToLastPage: () => {
-    const { totalPages } = get();
-    set({ currentPage: totalPages });
-  },
+  goToLastPage: () => set((state) => ({ currentPage: state.totalPages })),
+  toggleOverlays: () => set((state) => ({ showOverlays: !state.showOverlays })),
 
   initializeDocument: (totalPages) => {
     // Initialize the centralized page registry

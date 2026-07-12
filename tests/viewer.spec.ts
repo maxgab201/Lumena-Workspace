@@ -134,9 +134,19 @@ test.describe('PDF Viewer (Mocked API)', () => {
     // so we test the container's data-rotation or style if possible, 
     // but for now let's just ensure no crashes.
     
-    // Scroll and navigate
-    const nextBtn = page.locator('button[aria-label="Next page"]');
-    await nextBtn.click();
+    // Test toolbar navigation
+    await page.locator('button[aria-label="Next page"]').click();
+    await expect(page.locator('text=/ 100')).toBeVisible();
+
+    // Verify developer overlays exist (Layer toggles)
+    await expect(page.locator('button[aria-label="Toggle developer overlays"]')).toBeVisible();
+    
+    // Verify the layer containers are in the DOM (even if empty initially)
+    await expect(page.locator('div[data-layer="annotation"]').first()).toBeAttached();
+    await expect(page.locator('div[data-layer="selection"]').first()).toBeAttached();
+    
+    // The Layout Overlay, OCR Overlay, and Vision Overlay are rendered but may return null 
+    // if there is no mock data, but we can check the button.
     
     // The current page input should show 2
     await expect(page.locator('input[aria-label="Current page"]')).toHaveValue('2');

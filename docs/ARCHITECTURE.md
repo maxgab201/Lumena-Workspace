@@ -849,3 +849,14 @@ The \ProviderRouter\ implements a dynamic selection engine. Given a \DocumentPro
 ## Fallback Mechanism
 The \ProviderFallback\ module guarantees high availability. It takes a configured sequence of providers (e.g., \surya -> paddleocr -> mistral-ocr\) and sequentially falls back upon failure.
 
+
+ 
+ # #   U I   O v e r l a y   A r c h i t e c t u r e 
+ 
+ T h e   P D F   V i e w e r   i m p l e m e n t s   a   C S S - p e r c e n t a g e   b a s e d   o v e r l a y   s y s t e m   f o r   L a y o u t ,   O C R ,   a n d   V i s i o n   v i s u a l i z a t i o n .   T h e   p i p e l i n e s   y i e l d   n o r m a l i z e d   b o u n d i n g   b o x e s   [ x 0 ,   y 0 ,   x 1 ,   y 1 ]   w h i c h   a r e   a p p l i e d   a s   C S S   p e r c e n t a g e s   ( l e f t :   x 0   *   1 0 0 % ,   w i d t h :   ( x 1   -   x 0 )   *   1 0 0 % )   w i t h i n    b s o l u t e   i n s e t - 0   c o n t a i n e r s .   T h i s   e n s u r e s   t h e   b o u n d i n g   b o x e s   s c a l e   n a t i v e l y   w i t h   t h e   P D F   z o o m   w i t h o u t   r e q u i r i n g   J a v a S c r i p t   r e c a l c u l a t i o n s   o n   r e s i z e .  
+ 
+ 
+ # #   A I   G a t e w a y   ( P h a s e   6 ) 
+ 
+ T h e   A I G a t e w a y   a c t s   a s   t h e   c e n t r a l   r o u t e r   f o r   t e x t - g e n e r a t i o n   L L M s .   I n s t e a d   o f   h a r d c o d i n g   A P I   k e y s   a n d   m o d e l   n a m e s   a c r o s s   t h e   a p p l i c a t i o n ,   a l l   r e q u e s t s   g o   t h r o u g h   \ A I G a t e w a y . g e n e r a t e ( p r o m p t ,   c o n t e x t ) \ .   T h e   g a t e w a y   u s e s   t h e   e x i s t i n g   \ P r o v i d e r F a l l b a c k . e x e c u t e ( ' a i ' ) \   l o g i c   t o   a u t o m a t i c a l l y   s e l e c t   t h e   o p t i m a l   m o d e l   ( e . g .   O p e n A I ,   A n t h r o p i c ,   o r   M o c k )   b a s e d   o n   t h e   c u r r e n t   c o n f i g u r a t i o n   a n d   a v a i l a b i l i t y .  
+ 

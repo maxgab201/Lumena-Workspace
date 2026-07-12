@@ -1,5 +1,8 @@
 import { Page } from 'react-pdf';
 import { useViewerStore } from '../../stores/viewerStore';
+import { LayoutOverlay } from './overlays/LayoutOverlay';
+import { OCROverlay } from './overlays/OCROverlay';
+import { VisionOverlay } from './overlays/VisionOverlay';
 
 interface PDFPageProps {
   pageIndex: number;
@@ -50,19 +53,11 @@ export const PDFPage = ({ pageIndex, width, style }: PDFPageProps) => {
           style={{ zIndex: 10 }}
         />
         
-        {/* Layer 4: Highlight Layer (future) */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          data-layer="highlight"
-          style={{ zIndex: 20 }}
-        />
+        {/* Layer 4: Layout Overlay */}
+        <LayoutOverlay pageIndex={pageIndex} />
 
-        {/* Layer 5: OCR Layer (future) */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          data-layer="ocr"
-          style={{ zIndex: 30 }}
-        />
+        {/* Layer 5: OCR Overlay */}
+        <OCROverlay pageIndex={pageIndex} />
 
         {/* Layer 6: Selection Layer (future) */}
         <div
@@ -71,12 +66,8 @@ export const PDFPage = ({ pageIndex, width, style }: PDFPageProps) => {
           style={{ zIndex: 40 }}
         />
 
-        {/* Layer 7: AI Overlay Layer (future) */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          data-layer="ai-overlay"
-          style={{ zIndex: 50 }}
-        />
+        {/* Layer 7: AI Overlay Layer */}
+        <VisionOverlay pageIndex={pageIndex} />
       </div>
     </div>
   );
