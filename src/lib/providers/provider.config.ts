@@ -23,6 +23,9 @@ export const providerConfig = {
       'mock-vision',
       'gpt-4o-vision',
       'claude-3-opus'
+    ],
+    ai: [
+      'mock-ai'
     ]
   },
   
