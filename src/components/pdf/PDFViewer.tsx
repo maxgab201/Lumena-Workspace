@@ -4,6 +4,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import { PDFToolbar } from './PDFToolbar';
 import { PDFPageList } from './PDFPageList';
+import { HighlightEditor } from './HighlightEditor';
 import { useViewerStore } from '../../stores/viewerStore';
 import { Loader2 } from 'lucide-react';
 
@@ -140,8 +141,11 @@ export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
         onLoadSuccess={onDocumentLoadSuccess}
         onLoadError={onDocumentLoadError}
         loading={null}
-        className="flex-1 flex flex-col min-h-0"
+        className="flex-1 flex flex-col min-h-0 bg-background relative"
       >
+        <HighlightEditor />
+
+        {/* Main Document Content */}
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-4">

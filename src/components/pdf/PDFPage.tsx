@@ -3,6 +3,7 @@ import { useViewerStore } from '../../stores/viewerStore';
 import { LayoutOverlay } from './overlays/LayoutOverlay';
 import { OCROverlay } from './overlays/OCROverlay';
 import { VisionOverlay } from './overlays/VisionOverlay';
+import { HighlightOverlay } from './overlays/HighlightOverlay';
 
 interface PDFPageProps {
   pageIndex: number;
@@ -59,12 +60,8 @@ export const PDFPage = ({ pageIndex, width, style }: PDFPageProps) => {
         {/* Layer 5: OCR Overlay */}
         <OCROverlay pageIndex={pageIndex} />
 
-        {/* Layer 6: Selection Layer (future) */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          data-layer="selection"
-          style={{ zIndex: 40 }}
-        />
+        {/* Layer 6: Highlight Layer */}
+        <HighlightOverlay pageIndex={pageIndex} />
 
         {/* Layer 7: AI Overlay Layer */}
         <VisionOverlay pageIndex={pageIndex} />
