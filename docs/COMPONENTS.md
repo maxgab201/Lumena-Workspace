@@ -379,3 +379,19 @@ AI Agents
 - **\PDFPageList\**: A highly performant virtualized list (powered by @tanstack/react-virtual) that handles dynamic page sizing and rendering based on the scroll position.
 - **\PDFPage\**: The individual page component. Contains a stacked architecture with a base \eact-pdf\ canvas and placeholder divs for upcoming feature layers (Annotations, OCR, AI Overlays).
 
+
+
+## Provider Framework
+
+The Provider Framework manages document processing capabilities through a pluggable architecture.
+
+### \src/lib/providers/\
+Contains the core interfaces, metadata schemas, and routing logic for the framework.
+
+- **\	ypes.ts\**: Defines the \ProviderMetadata\, \DocumentProfile\, and \ProviderResult\ schemas.
+- **\interfaces/\**: Houses the \BaseProvider\ interface along with specialized capability interfaces (\OCRProvider\, \VisionProvider\, etc.).
+- **\ProviderRegistry.ts\**: A static registry that stores all enabled and available processing providers. Allows registering and querying providers by capability.
+- **\ProviderRouter.ts\**: The intelligent routing engine. It evaluates available providers against a \DocumentProfile\ (incorporating quality, offline capability, cost, and latency) and dynamically selects the optimal provider for the task.
+- **\ProviderFallback.ts\**: A resilience wrapper that orchestrates sequential fallbacks across multiple providers should the primary provider fail.
+- **\provider.config.ts\**: Static configuration file defining active fallback sequences and manual capability overrides.
+

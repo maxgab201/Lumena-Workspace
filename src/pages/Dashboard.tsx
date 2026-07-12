@@ -1,5 +1,6 @@
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { UploadCloud, MessageSquare, Clock, Search, File, Loader2, FileText, Calendar, MoreVertical, Pencil, Trash } from 'lucide-react';
+import { ProcessingCenter } from '../components/processing/ProcessingCenter';
 import { Button } from '../components/ui/Button';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -234,6 +235,8 @@ export const Dashboard = () => {
             />
           </div>
         </div>
+
+        <ProcessingCenter />
 
         {/* AI Assistant Placeholder */}
         <div className="flex-1 flex flex-col bg-card/40 backdrop-blur-md border border-white/5 rounded-2xl shadow-sm overflow-hidden">

@@ -100,6 +100,10 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       documents: [newDoc, ...state.documents]
     }));
     
+    import('../lib/processing/EventBus').then(({ EventBus }) => {
+      EventBus.emit('DocumentUploaded', { documentId: newDoc.id, workspaceId: activeWorkspaceId, file });
+    });
+    
     return newDoc;
   },
   renameDocument: async (id: string, newName: string) => {

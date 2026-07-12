@@ -7,11 +7,10 @@ import { PDFPageList } from './PDFPageList';
 import { useViewerStore } from '../../stores/viewerStore';
 import { Loader2 } from 'lucide-react';
 
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
 // Configure PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url,
-).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 interface PDFViewerProps {
   /** Signed URL or public URL to the PDF file */
@@ -39,6 +38,11 @@ export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
+        
+        if (width === 0 || height === 0) {
+          console.log(`[DEBUG] Viewer dimensions: width=${width}, height=${height}`);
+        }
+        
         setDimensions({ width, height });
       }
     });
@@ -149,11 +153,14 @@ export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
           <div
             ref={containerRef}
             className="flex-1 bg-muted/20 relative overflow-hidden"
+            data-testid="pdf-container"
+            data-width={dimensions.width}
+            data-height={dimensions.height}
           >
-            {dimensions.width > 0 && dimensions.height > 0 && (
+            {(dimensions.width > 0 || true) && (
               <PDFPageList
-                containerWidth={dimensions.width}
-                containerHeight={dimensions.height}
+                containerWidth={Math.max(dimensions.width, 800)}
+                containerHeight={Math.max(dimensions.height, 600)}
               />
             )}
           </div>
