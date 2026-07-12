@@ -6,12 +6,13 @@ import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { AIGateway } from '../../lib/providers/AIGateway';
 
+import { useUiStore } from '../../stores/uiStore';
+
 export const ChatSidebar = () => {
+  const { setActiveRightPanel } = useUiStore();
   const { 
-    isChatOpen, 
     messages, 
     isGenerating, 
-    setChatOpen, 
     addMessage, 
     appendStreamChunk, 
     setIsGenerating 
@@ -25,8 +26,6 @@ export const ChatSidebar = () => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-
-  if (!isChatOpen) return null;
 
   const handleSend = async (text: string) => {
     const userMessageId = crypto.randomUUID();
@@ -60,11 +59,10 @@ export const ChatSidebar = () => {
   };
 
   return (
-    <div className="w-80 border-l border-border bg-background flex flex-col h-full shrink-0" data-testid="chat-sidebar">
-      {/* Header */}
-      <div className="h-12 border-b border-border flex items-center justify-between px-4 shrink-0 bg-muted/10">
-        <h3 className="font-semibold text-sm">Chat</h3>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setChatOpen(false)} data-testid="chat-close">
+    <div className="flex flex-col h-full bg-background/60 backdrop-blur-3xl border-l border-white/10 w-80 shadow-2xl" data-testid="chat-sidebar">
+      <div className="flex items-center justify-between p-4 border-b border-white/10 shrink-0">
+        <h2 className="font-heading font-semibold tracking-tight">Lumena AI</h2>
+        <Button variant="ghost" size="sm" className="w-8 h-8 p-0" onClick={() => setActiveRightPanel('none')} data-testid="chat-close">
           <X className="h-4 w-4" />
         </Button>
       </div>

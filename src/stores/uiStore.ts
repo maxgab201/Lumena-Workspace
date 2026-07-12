@@ -5,6 +5,8 @@ interface UiState {
   toggleSidebar: () => void;
   theme: 'dark' | 'light' | 'system';
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
+  activeRightPanel: 'chat' | 'knowledge' | 'none';
+  setActiveRightPanel: (panel: 'chat' | 'knowledge' | 'none') => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -12,4 +14,6 @@ export const useUiStore = create<UiState>((set) => ({
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   theme: 'dark',
   setTheme: (theme) => set({ theme }),
+  activeRightPanel: 'none',
+  setActiveRightPanel: (panel) => set({ activeRightPanel: panel }),
 }));

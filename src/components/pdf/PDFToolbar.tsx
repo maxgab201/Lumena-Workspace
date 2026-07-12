@@ -12,8 +12,9 @@ import {
   FileText,
   Layers,
   MessageSquare,
+  Brain,
 } from 'lucide-react';
-import { useChatStore } from '../../stores/chatStore';
+import { useUiStore } from '../../stores/uiStore';
 
 interface PDFToolbarProps {
   filename?: string;
@@ -39,7 +40,7 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
     toggleOverlays,
   } = useViewerStore();
 
-  const { isChatOpen, toggleChat } = useChatStore();
+  const { activeRightPanel, setActiveRightPanel } = useUiStore();
 
   const [pageInput, setPageInput] = useState('');
 
@@ -193,15 +194,27 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
         <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
 
         <Button
-          variant={isChatOpen ? "secondary" : "ghost"}
+          variant={activeRightPanel === 'chat' ? "secondary" : "ghost"}
           size="icon"
-          onClick={toggleChat}
+          onClick={() => setActiveRightPanel(activeRightPanel === 'chat' ? 'none' : 'chat')}
           aria-label="Toggle Chat"
           className="h-8 w-8"
           title="Toggle Chat"
           data-testid="toggle-chat-btn"
         >
           <MessageSquare className="w-4 h-4" />
+        </Button>
+
+        <Button
+          variant={activeRightPanel === 'knowledge' ? "secondary" : "ghost"}
+          size="icon"
+          onClick={() => setActiveRightPanel(activeRightPanel === 'knowledge' ? 'none' : 'knowledge')}
+          aria-label="Knowledge Tools"
+          className="h-8 w-8"
+          title="Knowledge Tools"
+          data-testid="toggle-knowledge-btn"
+        >
+          <Brain className="w-4 h-4" />
         </Button>
       </div>
     </div>

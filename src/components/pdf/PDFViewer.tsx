@@ -6,7 +6,11 @@ import { PDFToolbar } from './PDFToolbar';
 import { PDFPageList } from './PDFPageList';
 import { HighlightEditor } from './HighlightEditor';
 import { ChatSidebar } from '../chat/ChatSidebar';
+import { KnowledgeSidebar } from '../knowledge/KnowledgeSidebar';
+import { StudyModeOverlay } from '../knowledge/StudyModeOverlay';
 import { useViewerStore } from '../../stores/viewerStore';
+import { useUiStore } from '../../stores/uiStore';
+import { useKnowledgeStore } from '../../stores/knowledgeStore';
 import { Loader2 } from 'lucide-react';
 
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -29,6 +33,8 @@ interface PDFViewerProps {
  */
 export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
   const { initializeDocument, setLoading, totalPages, isLoading, zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale } = useViewerStore();
+  const { activeRightPanel, setActiveRightPanel } = useUiStore();
+  const { isStudyModeActive } = useKnowledgeStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
@@ -174,8 +180,16 @@ export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
           )}
         </Document>
 
-        <ChatSidebar />
+        {activeRightPanel === 'chat' && <ChatSidebar />}
+        {activeRightPanel === 'knowledge' && (
+          <KnowledgeSidebar 
+            documentId={fileUrl} // Using fileUrl as documentId for now
+            onClose={() => setActiveRightPanel('none')} 
+          />
+        )}
       </div>
+
+      {isStudyModeActive && <StudyModeOverlay documentId={fileUrl} />}
     </div>
   );
 };
