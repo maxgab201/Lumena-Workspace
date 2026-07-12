@@ -21,7 +21,6 @@ export class InspectionStage {
       
       const pageCount = pdf.numPages;
       let hasNativeText = false;
-      let isEncrypted = false;
       
       // We will sample a few pages (e.g. first, middle, last) to guess if it's purely scanned
       // A more robust implementation would check all pages, but for now we sample for speed.

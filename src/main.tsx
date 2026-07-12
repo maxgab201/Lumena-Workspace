@@ -4,6 +4,11 @@ import './index.css'
 import App from './App.tsx'
 import './lib/processing/ProcessingEngine';
 
+import { initializeProviders } from './lib/providers';
+
+// Initialize Provider Framework
+initializeProviders();
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

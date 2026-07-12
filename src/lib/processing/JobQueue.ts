@@ -87,7 +87,7 @@ class JobQueueImpl {
   async retry(jobId: string): Promise<void> {
     const job = this.activeJobs.get(jobId);
     if (job && job.status === 'failed') {
-      await this.updateStatus(jobId, 'retrying', 0, null);
+      await this.updateStatus(jobId, 'retrying', 0, undefined);
       // Wait briefly then queue
       setTimeout(() => this.updateStatus(jobId, 'queued', 0), 100);
     }

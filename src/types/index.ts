@@ -110,7 +110,7 @@ export interface ViewerState {
   scale: number;
   fitMode: ViewerFitMode;
   rotation: 0 | 90 | 180 | 270;
-  pages: PageModel[];
+  pages: PageData[];
 }
 
 export * from './processing';

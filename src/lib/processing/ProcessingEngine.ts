@@ -2,10 +2,9 @@ import { JobQueue } from './JobQueue';
 import { EventBus } from './EventBus';
 import { InspectionStage } from './stages/InspectionStage';
 import { usePageRegistryStore } from '../../stores/pageRegistryStore';
-import { ProviderRouter } from '../providers/ProviderRouter';
 import { ProviderFallback } from '../providers/ProviderFallback';
 import { providerConfig } from '../providers/provider.config';
-import type { TextExtractor, OCRProvider, LayoutProvider, OCRData, LayoutData } from '../providers/interfaces';
+import type { OCRProvider, OCRData } from '../providers/interfaces';
 import type { DocumentProfile, ProviderResult } from '../providers/types';
 
 class ProcessingEngineImpl {
@@ -38,17 +37,16 @@ class ProcessingEngineImpl {
       // Update Job status
       await JobQueue.updateStatus(jobId, 'extracting', 20);
 
-      // Provider Framework Integration Example (To be implemented with actual providers in future blocks):
-      
-      // const profile: DocumentProfile = {
-      //   isDigital: !metadata.isScanned,
-      //   hasImages: true,
-      //   hasTables: true,
-      //   hasMath: false,
-      //   hasHandwriting: false,
-      //   hasMultiColumn: true,
-      //   pageCount: metadata.pageCount
-      // };
+      const profile: DocumentProfile = {
+        isDigital: !metadata.isScanned,
+        hasImages: true,
+        hasTables: true,
+        hasMath: false,
+        hasHandwriting: false,
+        hasMultiColumn: true,
+        pageCount: metadata.pageCount,
+        primaryLanguage: 'en', // Assume English for now, can be detected later
+      };
 
       // 1. Extraction Stage
       // const textExtractor = ProviderRouter.getBestProvider<TextExtractor>('extraction', profile);
@@ -57,11 +55,18 @@ class ProcessingEngineImpl {
       // }
 
       // 2. OCR Stage (using Fallback)
-      // await JobQueue.updateStatus(jobId, 'ocr', 50);
-      // await ProviderFallback.executeWithFallback<OCRProvider, ProviderResult<OCRData>>(
-      //   providerConfig.fallbacks.ocr,
-      //   async (provider) => await provider.processPage(file, profile)
-      // );
+      await JobQueue.updateStatus(jobId, 'ocr', 50);
+      
+      try {
+        const ocrResult = await ProviderFallback.executeWithFallback<OCRProvider, ProviderResult<OCRData>>(
+          providerConfig.fallbacks.ocr,
+          async (provider) => await provider.processPage(file, profile)
+        );
+        console.log(`[ProcessingEngine] OCR completed via ${ocrResult.providerId} in ${ocrResult.executionTime}ms`);
+      } catch (ocrError: any) {
+        console.warn(`[ProcessingEngine] OCR stage failed/skipped:`, ocrError.message);
+        // We continue pipeline execution even if OCR fails for now (e.g. PDF without image conversion pipeline)
+      }
 
       // 3. Layout Stage
       // await JobQueue.updateStatus(jobId, 'layout', 80);

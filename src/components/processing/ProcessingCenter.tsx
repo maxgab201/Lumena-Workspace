@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Play, Pause, XCircle, RotateCcw, Loader2 } from 'lucide-react';
+import { Play, Pause, XCircle, RotateCcw } from 'lucide-react';
 import type { ProcessingJob } from '../../types/processing';
 import { JobQueue } from '../../lib/processing/JobQueue';
 import { EventBus } from '../../lib/processing/EventBus';
