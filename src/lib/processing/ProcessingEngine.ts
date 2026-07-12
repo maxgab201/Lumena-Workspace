@@ -7,6 +7,8 @@ import { providerConfig } from '../providers/provider.config';
 import type { OCRProvider, OCRData } from '../providers/interfaces';
 import type { DocumentProfile, ProviderResult } from '../providers/types';
 
+import { ExtractionStage } from './stages/ExtractionStage';
+
 class ProcessingEngineImpl {
   constructor() {
     this.setupListeners();
@@ -31,7 +33,7 @@ class ProcessingEngineImpl {
       EventBus.emit('InspectionCompleted', { jobId, metadata });
       
       // Integrate with Page Registry (Create initial pages)
-      const { initializeRegistry } = usePageRegistryStore.getState();
+      const { initializeRegistry, updatePage } = usePageRegistryStore.getState();
       initializeRegistry(metadata.pageCount);
       
       // Update Job status
@@ -48,24 +50,51 @@ class ProcessingEngineImpl {
         primaryLanguage: 'en', // Assume English for now, can be detected later
       };
 
-      // 1. Extraction Stage
-      // const textExtractor = ProviderRouter.getBestProvider<TextExtractor>('extraction', profile);
-      // if (textExtractor) {
-      //   await textExtractor.extractText(file, profile);
-      // }
-
-      // 2. OCR Stage (using Fallback)
-      await JobQueue.updateStatus(jobId, 'ocr', 50);
+      // 2. Extraction & OCR Stage (Streaming)
+      let pagesProcessed = 0;
       
       try {
-        const ocrResult = await ProviderFallback.executeWithFallback<OCRProvider, ProviderResult<OCRData>>(
-          providerConfig.fallbacks.ocr,
-          async (provider) => await provider.processPage(file, profile)
-        );
-        console.log(`[ProcessingEngine] OCR completed via ${ocrResult.providerId} in ${ocrResult.executionTime}ms`);
-      } catch (ocrError: any) {
-        console.warn(`[ProcessingEngine] OCR stage failed/skipped:`, ocrError.message);
-        // We continue pipeline execution even if OCR fails for now (e.g. PDF without image conversion pipeline)
+        const pageStream = ExtractionStage.streamPages(file, 2.0);
+        
+        for await (const extractedPage of pageStream) {
+          // Update store that this page is starting OCR
+          updatePage(extractedPage.pageIndex, { ocrStatus: 'processing' });
+          
+          try {
+            // Process OCR on this specific page image
+            const ocrResult = await ProviderFallback.executeWithFallback<OCRProvider, ProviderResult<OCRData>>(
+              providerConfig.fallbacks.ocr,
+              async (provider) => await provider.processPage(extractedPage.imageBlob, profile)
+            );
+            
+            console.log(`[ProcessingEngine] Page ${extractedPage.pageIndex} OCR completed via ${ocrResult.providerId} in ${ocrResult.executionTime}ms`);
+            
+            // In the future: Dispatch EventBus event with the OCR result so the UI can layer it immediately
+            EventBus.emit('PageOcrCompleted' as any, { 
+              jobId, 
+              pageIndex: extractedPage.pageIndex, 
+              result: ocrResult 
+            });
+            
+            updatePage(extractedPage.pageIndex, { ocrStatus: 'completed' });
+            
+          } catch (ocrError: any) {
+            console.warn(`[ProcessingEngine] Page ${extractedPage.pageIndex} OCR failed/skipped:`, ocrError.message);
+            updatePage(extractedPage.pageIndex, { ocrStatus: 'error' });
+          }
+          
+          pagesProcessed++;
+          
+          // Calculate progressive progress (e.g. 20% to 80% range)
+          const baseProgress = 20;
+          const rangeProgress = 60;
+          const currentProgress = baseProgress + Math.floor((pagesProcessed / metadata.pageCount) * rangeProgress);
+          
+          await JobQueue.updateStatus(jobId, 'ocr', currentProgress);
+        }
+      } catch (extractionError: any) {
+        console.error(`[ProcessingEngine] Extraction Stage failed:`, extractionError.message);
+        throw extractionError;
       }
 
       // 3. Layout Stage
