@@ -4,6 +4,10 @@
   /* Colors */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -34,6 +38,7 @@
   --animate-accordion-up: accordion-up 0.2s ease-out;
   --animate-fade-in: fade-in 0.3s ease-out;
   --animate-fade-out: fade-out 0.3s ease-out;
+  --animate-blob: blob 7s infinite;
   
   @keyframes accordion-down {
     from { height: 0; }
@@ -50,6 +55,30 @@
   @keyframes fade-out {
     from { opacity: 1; }
     to { opacity: 0; }
+  }
+  @keyframes blob {
+    0% { transform: translate(0px, 0px) scale(1); }
+    33% { transform: translate(30px, -50px) scale(1.1); }
+    66% { transform: translate(-20px, 20px) scale(0.9); }
+    100% { transform: translate(0px, 0px) scale(1); }
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-background/40 backdrop-blur-xl border border-white/5 shadow-xl;
+  }
+  .glass-card {
+    @apply bg-card/40 backdrop-blur-md border border-white/5 shadow-sm transition-all duration-300;
+  }
+  .glass-card:hover {
+    @apply border-white/10 bg-card/50 shadow-md;
+  }
+  .glass-dropdown {
+    @apply bg-popover/60 backdrop-blur-xl border border-white/10 shadow-2xl;
+  }
+  .glass-input {
+    @apply bg-background/30 backdrop-blur-sm border border-white/10 shadow-inner focus:border-accent focus:ring-1 focus:ring-accent transition-all duration-200;
   }
 }
 

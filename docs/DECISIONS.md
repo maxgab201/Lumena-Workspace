@@ -301,3 +301,40 @@ ADR-0003
 ...
 
 Future ADRs continue sequential numbering.
+### Document Viewer Virtualization (Block 4.1)
+
+- **Decision**: Use @tanstack/react-virtual for PDF page virtualization instead of eact-window.
+- **Context**: The PDF viewer needs to support dynamic page heights, rotation, zoom, and future overlays (OCR, AI, Highlights). eact-window was found to be too rigid for dynamic measurement and lacked active maintenance.
+- **Impact**: @tanstack/react-virtual provides a headless architecture (useVirtualizer) that perfectly accommodates dynamic page sizing, overscan, and scroll offset handling, providing smooth performance for 300+ page documents.
+
+
+
+## ADR-0006
+
+Provider-Agnostic Processing Engine
+
+Status
+
+Accepted
+
+Date
+
+2024-07-11
+
+Description
+
+Lumena requires document processing capabilities (OCR, Layout Analysis, Vision, Text Extraction) to analyze a wide variety of documents (digital, scanned, images, handwritten). The AI and OCR ecosystem is evolving rapidly, with new models and providers emerging frequently (e.g., Surya, DocTR, GPT-4 Vision). Hardcoding the application to a specific provider introduces high risk, prevents offline-only use cases when desired, and limits scalability.
+
+Decision
+
+We will implement a generic **Provider Framework**. The core \ProcessingEngine\ will communicate exclusively with abstract interfaces (\OCRProvider\, \VisionProvider\, etc.) rather than concrete implementations.
+
+Reasoning
+
+- **Flexibility:** We can seamlessly swap, add, or deprecate providers without touching the core business logic.
+- **Routing & Fallbacks:** We can dynamically route documents to specific providers based on their profiles (e.g., routing offline-only documents to local CPU providers like PaddleOCR, or complex documents to high-quality vision models like GPT-4).
+
+Consequences
+
+- Abstracting the providers increases the initial architectural complexity but drastically reduces long-term technical debt.
+

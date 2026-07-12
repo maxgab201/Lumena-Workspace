@@ -27,10 +27,11 @@ export const mockDocuments: Document[] = [
     id: 'doc_1',
     workspace_id: 'ws_1',
     name: 'Attention Is All You Need.pdf',
-    file_url: '#',
+    file_path: 'ws_1/doc_1.pdf',
+    size_bytes: 1048576,
     status: 'ready',
-    page_count: 15,
     created_at: new Date(Date.now() - 86400000).toISOString(),
+    updated_at: new Date(Date.now() - 86400000).toISOString(),
   }
 ];
 

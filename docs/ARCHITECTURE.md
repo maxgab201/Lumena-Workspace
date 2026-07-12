@@ -802,3 +802,50 @@ Collaborative Editing
 Enterprise Features
 
 Everything should integrate through the Workspace rather than creating isolated systems.
+
+### Document Virtualization Layer
+
+The PDF rendering engine uses a combination of \eact-pdf\ (PDF.js) for canvas and text rendering, and \@tanstack/react-virtual\ for document virtualization. This architecture guarantees smooth scrolling performance for documents exceeding 300 pages by only rendering the currently visible pages plus a small overscan buffer.
+
+The \PDFPage\ component employs a strict Z-index layered design to accommodate the base PDF canvas alongside future interactive overlays:
+- Layer 1: PDF Canvas (react-pdf)
+- Layer 2: Text Layer (react-pdf)
+- Layer 3: Annotation Layer (future)
+- Layer 4: Highlight Layer (future)
+- Layer 5: OCR Layer (future)
+- Layer 6: Selection Layer (future)
+- Layer 7: AI Overlay Layer (future)
+
+
+
+---
+
+# 24. Provider Framework
+
+The Provider Framework abstracts away the concrete implementation of OCR, Layout, Vision, and AI processing from the core business logic.
+
+## Goal
+Lumena must never depend on a single processing engine. Adding a new OCR, Layout, Vision, or AI provider requires only creating a new provider class and registering it.
+
+## Abstraction Layers
+The framework defines generic interfaces for each capability:
+- \OCRProvider\
+- \LayoutProvider\
+- \VisionProvider\
+- \TextExtractor\
+- \DocumentInspector\
+- \AIProvider\
+
+Every provider must implement a common lifecycle: \initialize()\, \dispose()\, \healthCheck()\, and \getMetadata()\.
+
+## Provider Metadata & Results
+Each provider exposes rich metadata, including hardware requirements, language support, average latency, estimated cost, quality/confidence scores, and priority. This metadata drives the Routing Engine.
+Outputs are wrapped in a standardized \ProviderResult\ wrapper containing the data, confidence, execution time, and provider ID.
+
+## Registry and Routing
+The \ProviderRegistry\ acts as a central repository for all active providers. It supports runtime registration, enablement, and capability lookups.
+The \ProviderRouter\ implements a dynamic selection engine. Given a \DocumentProfile\ (e.g. has images, has tables, requires offline processing), the router evaluates and scores all compatible providers, selecting the optimal one. No provider is hardcoded in the pipeline.
+
+## Fallback Mechanism
+The \ProviderFallback\ module guarantees high availability. It takes a configured sequence of providers (e.g., \surya -> paddleocr -> mistral-ocr\) and sequentially falls back upon failure.
+

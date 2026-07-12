@@ -10,8 +10,8 @@ export const Landing = () => {
       {/* Animated Decorative Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute -top-1/2 -left-1/2 w-[150%] h-[150%] bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-accent/10 via-background to-background opacity-60" />
-        <div className="absolute top-0 right-1/4 w-96 h-96 bg-accent/20 rounded-full blur-[120px] mix-blend-screen" />
-        <div className="absolute bottom-1/4 left-1/4 w-[500px] h-[500px] bg-accent/10 rounded-full blur-[150px] mix-blend-screen" />
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-accent/20 rounded-full blur-[120px] mix-blend-screen animate-blob" />
+        <div className="absolute bottom-1/4 left-1/4 w-[500px] h-[500px] bg-accent/10 rounded-full blur-[150px] mix-blend-screen animate-blob" style={{ animationDelay: '2s' }} />
       </div>
       
       {/* Premium Topbar */}
@@ -91,7 +91,7 @@ export const Landing = () => {
               <motion.div 
                 key={i} 
                 whileHover={{ y: -5 }}
-                className="p-8 rounded-2xl border border-white/10 bg-secondary/30 backdrop-blur-sm shadow-xl flex flex-col items-center text-center space-y-4 transition-all hover:border-accent/50"
+                className="p-8 rounded-2xl glass-card flex flex-col items-center text-center space-y-4"
               >
                 <div className="w-12 h-12 rounded-xl bg-accent/20 text-accent flex items-center justify-center">
                   {f.icon}

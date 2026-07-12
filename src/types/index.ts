@@ -27,10 +27,11 @@ export interface Document {
   id: string;
   workspace_id: string;
   name: string;
-  file_url: string;
-  status: 'processing' | 'ready' | 'error';
-  page_count: number;
+  file_path: string;
+  size_bytes: number;
+  status: 'uploading' | 'processing' | 'ready' | 'error';
   created_at: string;
+  updated_at: string;
 }
 
 export interface Highlight {
@@ -66,3 +67,53 @@ export interface Notification {
   type: 'info' | 'success' | 'warning' | 'error';
   created_at: string;
 }
+
+// ─── PDF Viewer Types ───────────────────────────────────────────────
+
+/** Centralized Page Registry Data for a single PDF page */
+export interface PageData {
+  /** Zero-based PDF page index */
+  pdfPageIndex: number;
+  /** Visual/printed page number detected via OCR (null until OCR runs) */
+  printedPageNumber: string | null;
+  /** Render status (is the canvas currently rendered in the DOM) */
+  renderStatus: 'idle' | 'loading' | 'rendered' | 'error';
+  /** Layout processing status for this page */
+  layoutStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'error';
+  /** OCR processing status for this page */
+  ocrStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'error';
+  /** AI analysis status for this page */
+  aiStatus: 'idle' | 'pending' | 'processing' | 'completed' | 'error';
+  /** Highlight status for this page */
+  highlightStatus: 'idle' | 'loading' | 'ready';
+  /** Annotation status for this page */
+  annotationStatus: 'idle' | 'loading' | 'ready';
+  /** Page rotation override (if different from global) */
+  rotation: number;
+  /** Page scale override (if different from global) */
+  scale: number;
+  /** Cached measurements for virtualization */
+  measuredHeight: number | null;
+  measuredWidth: number | null;
+  /** Viewport dimensions / scale */
+  viewport: { width: number; height: number; scale: number; rotation: number } | null;
+  /** Caching state in memory */
+  cacheState: 'uncached' | 'cached' | 'evicted';
+}
+
+/** PDF viewer zoom/fit modes */
+export type ViewerFitMode = 'fit-width' | 'fit-page' | 'custom';
+
+/** PDF viewer state */
+export interface ViewerState {
+  documentId: string | null;
+  totalPages: number;
+  currentPage: number;
+  scale: number;
+  fitMode: ViewerFitMode;
+  rotation: 0 | 90 | 180 | 270;
+  pages: PageData[];
+}
+
+export * from './processing';
+

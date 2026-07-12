@@ -160,6 +160,10 @@ Deployment successful
 - **Block 2.1**: Implemented real Authentication Foundation using Supabase Auth, replacing mocked user states.
 - **Block 2.1**: Added Google and GitHub OAuth integrations with a premium authentication UI in `/auth`.
 - **Block 2.1**: Secured client-side routes with `zustand` session listeners and improved `LoadingPage` transitions during session restoration.
+- **Provider Framework**: Implemented abstract interfaces for OCR, Layout, Vision, Text Extraction, Document Inspection, and AI.
+- **Provider Registry**: Added a central registry for dynamically managing active processing providers.
+- **Provider Router**: Implemented a dynamic routing engine to select the best provider based on a document's profile, latency, cost, and offline capabilities.
+- **Provider Fallback**: Added resilience mechanism to automatically cascade to fallback providers if the primary provider fails.
 - **Block 1.5**: Implemented robust frontend architecture including Zustand for state management, centralized routing with lazy loading, global error boundaries, and application providers (QueryProvider, ThemeProvider, ToastProvider).
 - **Block 1.5**: Created shared type definitions, centralized configuration modules, and a mock data layer to decouple UI from backend dependencies.
 - **Block 1.4**: Overhauled global design tokens (Vercel/Linear-inspired dark theme, sophisticated backgrounds and subtle borders).
@@ -326,3 +330,15 @@ Future Team Members
 Special Thanks
 
 ...
+## [Unreleased] - Block 4.1
+
+### Added
+- Document Viewer UI with zoom, rotation, and pagination controls.
+- PDFPageList component using @tanstack/react-virtual for high-performance virtualization of large documents.
+- Layered PDFPage architecture ready for OCR, highlights, annotations, and AI overlays.
+
+### Changed
+- Upgraded state management to track document rendering status (Scale, Rotation, Current Page).
+- Updated PageModel to track status of AI, OCR, Highlights, and rendering per page.
+- Configured Vite PDF.js worker using standard URL loading.
+

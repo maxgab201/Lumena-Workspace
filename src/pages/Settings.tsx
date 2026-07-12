@@ -18,13 +18,13 @@ export const Settings = () => {
           <CardContent className="space-y-4">
             <div className="grid gap-1">
               <label className="text-sm font-medium">Name</label>
-              <div className="h-10 w-full md:w-1/2 rounded-md border border-input bg-background/50 px-3 py-2 text-sm text-muted-foreground flex items-center">
+              <div className="h-10 w-full md:w-1/2 rounded-lg border border-white/10 bg-background/30 backdrop-blur-sm px-3 py-2 text-sm text-muted-foreground flex items-center">
                 User
               </div>
             </div>
             <div className="grid gap-1">
               <label className="text-sm font-medium">Email</label>
-              <div className="h-10 w-full md:w-1/2 rounded-md border border-input bg-background/50 px-3 py-2 text-sm text-muted-foreground flex items-center">
+              <div className="h-10 w-full md:w-1/2 rounded-lg border border-white/10 bg-background/30 backdrop-blur-sm px-3 py-2 text-sm text-muted-foreground flex items-center">
                 user@example.com
               </div>
             </div>
