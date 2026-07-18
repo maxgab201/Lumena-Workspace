@@ -3,9 +3,10 @@ import { Clock } from 'lucide-react';
 
 interface TimelineViewProps {
   documentId: string;
+  workspaceId: string;
 }
 
-export const TimelineView = ({ documentId: _documentId }: TimelineViewProps) => {
+export const TimelineView = ({ documentId: _documentId, workspaceId: _workspaceId }: TimelineViewProps) => {
   return (
     <div className="flex flex-col h-full items-center justify-center p-6 text-center space-y-4">
       <div className="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center">
