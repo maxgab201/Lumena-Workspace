@@ -1,68 +1,104 @@
 import { create } from 'zustand';
+import { SettingsRepository } from '../repositories/settings.repository';
+import { supabase } from '../lib/supabase';
 
-interface UiState {
-  // Sidebar
+interface UiStore {
+  theme: 'light' | 'dark' | 'system';
+  viewMode: 'grid' | 'list';
+  sortBy: 'date' | 'name' | 'size';
+  sortOrder: 'asc' | 'desc';
   sidebarCollapsed: boolean;
-  toggleSidebar: () => void;
   mobileSidebarOpen: boolean;
-  setMobileSidebarOpen: (open: boolean) => void;
-
-  // Theme
-  theme: 'dark' | 'light' | 'system';
-  setTheme: (theme: 'dark' | 'light' | 'system') => void;
-
-  // Right panel (viewer)
-  activeRightPanel: 'chat' | 'knowledge' | 'none';
-  setActiveRightPanel: (panel: 'chat' | 'knowledge' | 'none') => void;
-
-  // Command palette
   commandPaletteOpen: boolean;
+  activeRightPanel: 'chat' | 'activity' | 'knowledge' | 'none' | null;
+  setTheme: (theme: 'light' | 'dark' | 'system') => Promise<void>;
+  setViewMode: (mode: 'grid' | 'list') => Promise<void>;
+  setSortBy: (sort: 'date' | 'name' | 'size') => void;
+  toggleSortOrder: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebar: () => void;
+  setMobileSidebarOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
-
-  // Dashboard preferences
-  dashboardViewMode: 'grid' | 'list';
-  setDashboardViewMode: (mode: 'grid' | 'list') => void;
-  dashboardSortBy: 'name' | 'date' | 'size';
-  setDashboardSortBy: (sort: 'name' | 'date' | 'size') => void;
-  dashboardSortOrder: 'asc' | 'desc';
-  setDashboardSortOrder: (order: 'asc' | 'desc') => void;
+  setActiveRightPanel: (panel: 'chat' | 'activity' | 'knowledge' | 'none' | null) => void;
+  loadSettings: () => Promise<void>;
 }
 
-export const useUiStore = create<UiState>((set) => ({
-  // Sidebar
+export const useUiStore = create<UiStore>((set, get) => ({
+  theme: 'system',
+  viewMode: 'grid',
+  sortBy: 'date',
+  sortOrder: 'desc',
   sidebarCollapsed: false,
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   mobileSidebarOpen: false,
-  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
+  commandPaletteOpen: false,
+  activeRightPanel: null,
 
-  // Theme
-  theme: 'dark',
-  setTheme: (theme) => {
+  setTheme: async (theme) => {
     set({ theme });
-    // Apply theme class to document
-    const root = document.documentElement;
-    root.classList.remove('light');
-    if (theme === 'light') {
-      root.classList.add('light');
-    } else if (theme === 'system') {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      if (!prefersDark) root.classList.add('light');
+    localStorage.setItem('theme', theme);
+
+    // Apply theme changes to body/documentElement
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+    if (theme === 'system') {
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.classList.add(systemTheme);
+    } else {
+      root.classList.add(theme);
+    }
+
+    // Persist to user settings table if authenticated
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      try {
+        await SettingsRepository.updateSettings({ theme });
+      } catch (err) {
+        console.error('Failed to sync theme to DB:', err);
+      }
     }
   },
 
-  // Right panel
-  activeRightPanel: 'none',
+  setViewMode: async (viewMode) => {
+    set({ viewMode });
+    localStorage.setItem('viewMode', viewMode);
+  },
+
+  setSortBy: (sortBy) => {
+    set({ sortBy });
+  },
+
+  toggleSortOrder: () => {
+    set((state) => ({ sortOrder: state.sortOrder === 'asc' ? 'desc' : 'asc' }));
+  },
+
+  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   setActiveRightPanel: (panel) => set({ activeRightPanel: panel }),
 
-  // Command palette
-  commandPaletteOpen: false,
-  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+  loadSettings: async () => {
+    // 1. Sync viewMode from localStorage
+    const cachedViewMode = localStorage.getItem('viewMode') as 'grid' | 'list';
+    if (cachedViewMode) {
+      set({ viewMode: cachedViewMode });
+    }
 
-  // Dashboard preferences
-  dashboardViewMode: 'grid',
-  setDashboardViewMode: (mode) => set({ dashboardViewMode: mode }),
-  dashboardSortBy: 'date',
-  setDashboardSortBy: (sort) => set({ dashboardSortBy: sort }),
-  dashboardSortOrder: 'desc',
-  setDashboardSortOrder: (order) => set({ dashboardSortOrder: order }),
+    // 2. Sync theme preference (DB takes priority over localStorage)
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      try {
+        const settings = await SettingsRepository.getSettings();
+        if (settings?.theme) {
+          await get().setTheme(settings.theme as 'light' | 'dark' | 'system');
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to load theme from DB:', err);
+      }
+    }
+
+    const cachedTheme = localStorage.getItem('theme') as 'light' | 'dark' | 'system' || 'system';
+    await get().setTheme(cachedTheme);
+  },
 }));

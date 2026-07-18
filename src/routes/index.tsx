@@ -10,6 +10,7 @@ import { AppLayout } from '../components/layout/AppLayout';
 // Lazy loading pages
 const Landing = React.lazy(() => import('../pages/Landing').then(m => ({ default: m.Landing })));
 const Auth = React.lazy(() => import('../pages/Auth').then(m => ({ default: m.Auth })));
+const ResetPassword = React.lazy(() => import('../pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
 const Dashboard = React.lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Viewer = React.lazy(() => import('../pages/Viewer').then(m => ({ default: m.Viewer })));
 const Settings = React.lazy(() => import('../pages/Settings').then(m => ({ default: m.Settings })));
@@ -32,6 +33,7 @@ export const router = createBrowserRouter([
         children: [
           { path: ROUTES.HOME, element: withSuspense(Landing) },
           { path: ROUTES.AUTH, element: withSuspense(Auth) },
+          { path: '/reset-password', element: withSuspense(ResetPassword) },
         ],
       },
       // Protected routes inside AppLayout

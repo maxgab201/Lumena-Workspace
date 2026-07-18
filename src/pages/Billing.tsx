@@ -3,14 +3,16 @@ import { PageContainer } from '../components/ui/PageContainer';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useBillingStore } from '../stores/billingStore';
-import { PLANS } from '../types/billing';
+import { PLANS, type PlanType } from '../types/billing';
 import { CheckIcon, Zap, Activity, PieChart, FileText, MessageSquare, ImageIcon } from 'lucide-react';
 import { UpgradeModal } from '../components/billing/UpgradeModal';
 import { cn } from '../lib/utils';
 import { motion } from 'framer-motion';
 
 export const Billing = () => {
-  const { currentPlan, creditsRemaining, transactions } = useBillingStore();
+  const { subscription, transactions } = useBillingStore();
+  const currentPlan = (subscription?.plan || 'free') as PlanType;
+  const creditsRemaining = subscription?.credits_remaining || 0;
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
@@ -220,7 +222,7 @@ export const Billing = () => {
                   {transactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-secondary/40 transition-colors">
                       <td className="px-6 py-4 text-muted-foreground font-mono text-xs">
-                        {new Date(tx.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                        {new Date(tx.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                       </td>
                       <td className="px-6 py-4 font-medium text-foreground">
                         {tx.description}

@@ -10,7 +10,7 @@ interface UpgradeModalProps {
 }
 
 export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
-  const { upgradePlan, currentPlan } = useBillingStore();
+  const { upgradeToPro, subscription } = useBillingStore();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -18,7 +18,7 @@ export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
     setIsProcessing(true);
     // Simulate network request to payment gateway
     await new Promise(resolve => setTimeout(resolve, 1500));
-    upgradePlan('pro');
+    await upgradeToPro();
     setIsProcessing(false);
     setIsSuccess(true);
     
@@ -29,7 +29,7 @@ export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
     }, 2000);
   };
 
-  if (currentPlan === 'pro' && !isSuccess) {
+  if (subscription?.plan === 'pro' && !isSuccess) {
     return (
       <Modal open={isOpen} onOpenChange={onClose}>
         <ModalContent className="sm:max-w-md backdrop-blur-2xl bg-background/80 border-white/10">

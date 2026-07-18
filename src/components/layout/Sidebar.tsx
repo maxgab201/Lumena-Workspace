@@ -12,10 +12,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/Tooltip';
 
 export const Sidebar = () => {
   const location = useLocation();
-  const { workspaces, activeWorkspaceId, setActiveWorkspace, createWorkspace, renameWorkspace, deleteWorkspace } = useWorkspaceStore();
+  const { workspaces, activeWorkspace, setActiveWorkspace, createWorkspace, renameWorkspace, deleteWorkspace } = useWorkspaceStore();
   const { sidebarCollapsed, toggleSidebar } = useUiStore();
   
-  const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
@@ -80,9 +79,9 @@ export const Sidebar = () => {
                   Workspaces
                 </div>
                 {workspaces.map(w => (
-                  <DropdownMenuItem key={w.id} className="cursor-pointer flex items-center justify-between" onSelect={() => setActiveWorkspace(w.id)}>
+                  <DropdownMenuItem key={w.id} className="cursor-pointer flex items-center justify-between" onSelect={() => setActiveWorkspace(w)}>
                     <span className="truncate">{w.name}</span>
-                    {w.id === activeWorkspaceId && <div className="w-1.5 h-1.5 rounded-full bg-accent" />}
+                    {w.id === activeWorkspace?.id && <div className="w-1.5 h-1.5 rounded-full bg-accent" />}
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator className="bg-white/5" />

@@ -22,12 +22,13 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const Settings = () => {
-  const { user } = useUserStore();
+  const { user, profile } = useUserStore();
   const { theme, setTheme } = useUiStore();
   const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'shortcuts' | 'about'>('profile');
   
   // Profile state mockups (in real app they might connect to a store/action)
-  const [name, setName] = useState(user?.name || 'User');
+  const userName = profile?.name || user?.email?.split('@')[0] || 'User';
+  const [name, setName] = useState(userName);
   const [email, setEmail] = useState(user?.email || 'user@example.com');
   const [isSaved, setIsSaved] = useState(false);
 
@@ -96,9 +97,9 @@ export const Settings = () => {
                     {/* Avatar edit section */}
                     <div className="flex items-center space-x-6 pb-4 border-b border-white/5">
                       <div className="relative group">
-                        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 text-white font-bold flex items-center justify-center text-2xl shadow-lg ring-2 ring-white/10 group-hover:ring-accent transition-all duration-300">
-                          {user?.avatar_url ? (
-                            <img src={user.avatar_url} alt={name} className="w-full h-full rounded-full object-cover" />
+                        <div className="w-20 h-20 rounded-full bg-gradient-to-br from-accent/80 to-accent/40 text-white font-bold flex items-center justify-center text-2xl shadow-lg ring-2 ring-white/10 group-hover:ring-accent transition-all duration-300 overflow-hidden">
+                          {profile?.avatar_url ? (
+                            <img src={profile.avatar_url} alt={name} className="w-full h-full object-cover" />
                           ) : (
                             name.charAt(0).toUpperCase()
                           )}

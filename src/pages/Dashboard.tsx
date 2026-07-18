@@ -1,7 +1,7 @@
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { useUiStore } from '../stores/uiStore';
 import { useUserStore } from '../stores/userStore';
-import { UploadCloud, MessageSquare, Clock, Search, FileText, Calendar, MoreVertical, Pencil, Trash, LayoutGrid, List, ArrowDownAZ, ArrowUpAZ, ArrowDown01, ArrowUp01, HardDrive, Loader2, Play } from 'lucide-react';
+import { UploadCloud, MessageSquare, Clock, Search, FileText, Calendar, MoreVertical, Pencil, Trash, LayoutGrid, List, ArrowDown, ArrowUp, HardDrive, Loader2, Play } from 'lucide-react';
 import { ProcessingCenter } from '../components/processing/ProcessingCenter';
 import { Button } from '../components/ui/Button';
 import { useState, useMemo } from 'react';
@@ -21,15 +21,13 @@ import {
 } from '../components/ui/DropdownMenu';
 
 export const Dashboard = () => {
-  const { workspaces, activeWorkspaceId, documents, uploadDocument, deleteDocument, renameDocument } = useWorkspaceStore();
-  const { dashboardViewMode, setDashboardViewMode, dashboardSortBy, setDashboardSortBy, dashboardSortOrder, setDashboardSortOrder } = useUiStore();
+  const { activeWorkspace, documents, uploadDocument, deleteDocument, renameDocument } = useWorkspaceStore();
+  const { viewMode, setViewMode, sortBy, setSortBy, sortOrder, toggleSortOrder } = useUiStore();
   const { user } = useUserStore();
   const navigate = useNavigate();
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-
-  const activeWorkspace = workspaces.find(w => w.id === activeWorkspaceId) || workspaces[0];
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -78,10 +76,6 @@ export const Dashboard = () => {
     }
   };
 
-  const toggleSortOrder = () => {
-    setDashboardSortOrder(dashboardSortOrder === 'asc' ? 'desc' : 'asc');
-  };
-
   // Filter and sort documents
   const processedDocuments = useMemo(() => {
     let result = [...documents];
@@ -94,7 +88,7 @@ export const Dashboard = () => {
     // Sort
     result.sort((a, b) => {
       let comparison = 0;
-      switch (dashboardSortBy) {
+      switch (sortBy) {
         case 'name':
           comparison = a.name.localeCompare(b.name);
           break;
@@ -105,11 +99,11 @@ export const Dashboard = () => {
           comparison = a.size_bytes - b.size_bytes;
           break;
       }
-      return dashboardSortOrder === 'asc' ? comparison : -comparison;
+      return sortOrder === 'asc' ? comparison : -comparison;
     });
 
     return result;
-  }, [documents, searchQuery, dashboardSortBy, dashboardSortOrder]);
+  }, [documents, searchQuery, sortBy, sortOrder]);
 
   // The Empty State and Upload Zone
   const renderUploadZone = () => (
@@ -176,11 +170,11 @@ export const Dashboard = () => {
         <header className="px-8 pt-8 pb-4 shrink-0 relative z-10">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-heading font-bold tracking-tight">
-                Welcome back, {user?.name?.split(' ')[0] || 'Researcher'}
+              <h1 className="text-3xl font-heading font-bold tracking-tight text-foreground">
+                Welcome back, {user?.email?.split('@')[0] || 'Researcher'}
               </h1>
               <p className="text-muted-foreground mt-1">
-                You have {documents.length} documents in <strong className="text-foreground">{activeWorkspace.name}</strong>
+                You have {documents.length} documents in <strong className="text-foreground">{activeWorkspace?.name}</strong>
               </p>
             </div>
 
@@ -188,18 +182,18 @@ export const Dashboard = () => {
               <div className="flex items-center space-x-2 bg-secondary/30 p-1.5 rounded-lg border border-white/5">
                 <div className="flex items-center">
                   <Button 
-                    variant={dashboardViewMode === 'grid' ? 'secondary' : 'ghost'} 
+                    variant={viewMode === 'grid' ? 'secondary' : 'ghost'} 
                     size="icon" 
-                    className={cn("h-8 w-8 rounded-md", dashboardViewMode === 'grid' ? "bg-background shadow-sm" : "")}
-                    onClick={() => setDashboardViewMode('grid')}
+                    className={cn("h-8 w-8 rounded-md", viewMode === 'grid' ? "bg-background shadow-sm" : "")}
+                    onClick={() => setViewMode('grid')}
                   >
                     <LayoutGrid className="w-4 h-4" />
                   </Button>
                   <Button 
-                    variant={dashboardViewMode === 'list' ? 'secondary' : 'ghost'} 
+                    variant={viewMode === 'list' ? 'secondary' : 'ghost'} 
                     size="icon" 
-                    className={cn("h-8 w-8 rounded-md", dashboardViewMode === 'list' ? "bg-background shadow-sm" : "")}
-                    onClick={() => setDashboardViewMode('list')}
+                    className={cn("h-8 w-8 rounded-md", viewMode === 'list' ? "bg-background shadow-sm" : "")}
+                    onClick={() => setViewMode('list')}
                   >
                     <List className="w-4 h-4" />
                   </Button>
@@ -208,25 +202,25 @@ export const Dashboard = () => {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="sm" className="h-8 text-xs font-medium px-2 hover:bg-background">
-                      Sort by {dashboardSortBy.charAt(0).toUpperCase() + dashboardSortBy.slice(1)}
+                      Sort by {sortBy.charAt(0).toUpperCase() + sortBy.slice(1)}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuLabel>Sort by</DropdownMenuLabel>
-                    <DropdownMenuRadioGroup value={dashboardSortBy} onValueChange={(v) => setDashboardSortBy(v as any)}>
+                    <DropdownMenuRadioGroup value={sortBy} onValueChange={(v) => setSortBy(v as any)}>
                       <DropdownMenuRadioItem value="date">Date Added</DropdownMenuRadioItem>
                       <DropdownMenuRadioItem value="name">Name</DropdownMenuRadioItem>
                       <DropdownMenuRadioItem value="size">File Size</DropdownMenuRadioItem>
                     </DropdownMenuRadioGroup>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={toggleSortOrder}>
+                      <div className="flex items-center w-full">
+                        <span>{sortOrder === 'asc' ? 'Ascending' : 'Descending'}</span>
+                        {sortOrder === 'asc' ? <ArrowUp size={14} className="ml-auto" /> : <ArrowDown size={14} className="ml-auto" />}
+                      </div>
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-md hover:bg-background" onClick={toggleSortOrder}>
-                  {dashboardSortBy === 'name' ? (
-                    dashboardSortOrder === 'asc' ? <ArrowDownAZ className="w-4 h-4" /> : <ArrowUpAZ className="w-4 h-4" />
-                  ) : (
-                    dashboardSortOrder === 'asc' ? <ArrowUp01 className="w-4 h-4" /> : <ArrowDown01 className="w-4 h-4" />
-                  )}
-                </Button>
               </div>
             )}
           </div>
@@ -264,7 +258,7 @@ export const Dashboard = () => {
                   layout
                   className={cn(
                     "grid gap-4",
-                    dashboardViewMode === 'grid' 
+                    viewMode === 'grid' 
                       ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
                       : "grid-cols-1"
                   )}
@@ -280,20 +274,20 @@ export const Dashboard = () => {
                         key={doc.id} 
                         className={cn(
                           "glass-card border border-white/5 rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-accent/30 transition-all duration-300 group cursor-pointer relative overflow-hidden flex",
-                          dashboardViewMode === 'grid' ? "flex-col h-[220px]" : "flex-row items-center h-20 p-2 pr-4"
+                          viewMode === 'grid' ? "flex-col h-[220px]" : "flex-row items-center h-20 p-2 pr-4"
                         )} 
                         onClick={() => navigate(`/viewer/${doc.id}`)}
                       >
                         {/* Thumbnail Preview Area */}
                         <div className={cn(
                           "shrink-0 relative overflow-hidden bg-gradient-to-br from-secondary to-background flex items-center justify-center",
-                          dashboardViewMode === 'grid' ? "h-28 w-full border-b border-white/5" : "h-16 w-16 rounded-xl border border-white/5 ml-1 mr-4"
+                          viewMode === 'grid' ? "h-28 w-full border-b border-white/5" : "h-16 w-16 rounded-xl border border-white/5 ml-1 mr-4"
                         )}>
                            <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-accent/50 to-transparent" />
-                           <FileText className={cn("text-muted-foreground/30", dashboardViewMode === 'grid' ? "w-10 h-10" : "w-6 h-6")} />
+                           <FileText className={cn("text-muted-foreground/30", viewMode === 'grid' ? "w-10 h-10" : "w-6 h-6")} />
                            
                            {/* Hover overlay for grid */}
-                           {dashboardViewMode === 'grid' && (
+                           {viewMode === 'grid' && (
                              <div className="absolute inset-0 bg-background/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all">
                                  <Play size={16} className="ml-1" fill="currentColor" />
@@ -303,14 +297,14 @@ export const Dashboard = () => {
                         </div>
 
                         {/* Content Area */}
-                        <div className={cn("flex-1 min-w-0 flex flex-col justify-center", dashboardViewMode === 'grid' ? "p-4" : "")}>
+                        <div className={cn("flex-1 min-w-0 flex flex-col justify-center", viewMode === 'grid' ? "p-4" : "")}>
                           <div className="flex items-start justify-between">
                             <p className="font-semibold text-sm line-clamp-1 group-hover:text-accent transition-colors truncate" title={doc.name}>
                               {doc.name}
                             </p>
                             
                             {/* Dropdown Menu */}
-                            <div className={cn(dashboardViewMode === 'grid' ? "" : "ml-4 shrink-0")}>
+                            <div className={cn(viewMode === 'grid' ? "" : "ml-4 shrink-0")}>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button 
@@ -344,7 +338,7 @@ export const Dashboard = () => {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       if (window.confirm('Are you sure you want to delete this document?')) {
-                                        deleteDocument(doc.id, doc.file_path).catch(() => toast.error('Failed to delete document'));
+                                        deleteDocument(doc.id).catch(() => toast.error('Failed to delete document'));
                                       }
                                     }}
                                   >
