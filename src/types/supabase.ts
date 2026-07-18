@@ -868,6 +868,112 @@ export type Database = {
         }
         Relationships: []
       }
+      provider_models: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean | null
+          max_input_tokens: number | null
+          max_output_tokens: number | null
+          name: string
+          provider_id: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          max_input_tokens?: number | null
+          max_output_tokens?: number | null
+          name: string
+          provider_id: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          max_input_tokens?: number | null
+          max_output_tokens?: number | null
+          name?: string
+          provider_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_models_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      provider_pricing: {
+        Row: {
+          billing_interval_start: string
+          created_at: string
+          credit_conversion_rate: number
+          id: string
+          input_price_per_1k: number
+          is_active: boolean | null
+          model_id: string
+          output_price_per_1k: number
+        }
+        Insert: {
+          billing_interval_start?: string
+          created_at?: string
+          credit_conversion_rate?: number
+          id?: string
+          input_price_per_1k: number
+          is_active?: boolean | null
+          model_id: string
+          output_price_per_1k: number
+        }
+        Update: {
+          billing_interval_start?: string
+          created_at?: string
+          credit_conversion_rate?: number
+          id?: string
+          input_price_per_1k?: number
+          is_active?: boolean | null
+          model_id?: string
+          output_price_per_1k?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_pricing_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "provider_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      providers: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           cancel_at_period_end: boolean
@@ -1001,6 +1107,73 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      usage_jobs: {
+        Row: {
+          action_type: string
+          completed_at: string | null
+          document_id: string | null
+          error_details: string | null
+          id: string
+          input_tokens: number | null
+          model_id: string | null
+          output_tokens: number | null
+          started_at: string
+          status: string
+          total_cost_credits: number | null
+          workspace_id: string
+        }
+        Insert: {
+          action_type: string
+          completed_at?: string | null
+          document_id?: string | null
+          error_details?: string | null
+          id?: string
+          input_tokens?: number | null
+          model_id?: string | null
+          output_tokens?: number | null
+          started_at?: string
+          status?: string
+          total_cost_credits?: number | null
+          workspace_id: string
+        }
+        Update: {
+          action_type?: string
+          completed_at?: string | null
+          document_id?: string | null
+          error_details?: string | null
+          id?: string
+          input_tokens?: number | null
+          model_id?: string | null
+          output_tokens?: number | null
+          started_at?: string
+          status?: string
+          total_cost_credits?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_jobs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_jobs_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "provider_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_jobs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
         ]
