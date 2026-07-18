@@ -9,12 +9,14 @@ interface ChatStoreState {
   // Messages keyed by session_id
   messages: Record<string, ChatMessage[]>;
   activeSessionId: string | null;
+  selectedModel: string;
   isGenerating: boolean;
   isLoadingSession: boolean;
 
   // Actions
   loadSession: (documentId: string, workspaceId: string) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
+  setSelectedModel: (modelCode: string) => void;
   appendStreamChunk: (messageId: string, chunk: string) => void;
   clearSession: () => Promise<void>;
   setIsGenerating: (isGenerating: boolean) => void;
@@ -28,6 +30,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   sessions: {},
   messages: {},
   activeSessionId: null,
+  selectedModel: 'gemini-1.5-flash',
   isGenerating: false,
   isLoadingSession: false,
 
@@ -50,7 +53,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   },
 
   sendMessage: async (text) => {
-    const { activeSessionId } = get();
+    const { activeSessionId, selectedModel } = get();
     if (!activeSessionId) {
       console.error('[ChatStore] No active session');
       return;
@@ -79,7 +82,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 
       // 4. Stream AI response
       let accumulated = '';
-      await AIGateway.generateStream(text, undefined, (chunk) => {
+      await AIGateway.generateStream(text, undefined, selectedModel, (chunk) => {
         accumulated += chunk;
         get().appendStreamChunk(assistantMsg.id, chunk);
       });
@@ -126,10 +129,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 
   setIsGenerating: (isGenerating) => set({ isGenerating }),
 
+  setSelectedModel: (modelCode) => set({ selectedModel: modelCode }),
+
   reset: () => set({
     sessions: {},
     messages: {},
     activeSessionId: null,
+    selectedModel: 'gemini-1.5-flash',
     isGenerating: false,
     isLoadingSession: false,
   }),
