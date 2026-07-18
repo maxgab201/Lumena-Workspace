@@ -4,7 +4,7 @@ import { PDFViewer } from '../components/pdf/PDFViewer';
 import { useViewerStore } from '../stores/viewerStore';
 import { apiService } from '../services/api.service';
 import { toast } from 'sonner';
-import { Loader2, ArrowLeft, FileText, Calendar, HardDrive, Activity } from 'lucide-react';
+import { Loader2, ArrowLeft, FileText, Calendar, HardDrive, Activity, AlertCircle } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import type { Document } from '../types';
 
@@ -72,14 +72,20 @@ export const Viewer = () => {
   // Error state
   if (error) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="glass-card rounded-2xl p-8 max-w-md text-center space-y-4">
-          <FileText className="w-12 h-12 text-destructive mx-auto" />
-          <h2 className="text-xl font-heading font-semibold">Document not found</h2>
-          <p className="text-sm text-muted-foreground">{error}</p>
-          <Button variant="outline" onClick={() => navigate('/dashboard')}>
+      <div className="flex-1 flex flex-col items-center justify-center p-6 bg-background relative overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-red-500/5 rounded-full blur-[100px] pointer-events-none" />
+        
+        <div className="glass-card border border-white/5 shadow-2xl rounded-3xl p-10 max-w-md w-full text-center relative z-10">
+          <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+             <AlertCircle className="w-10 h-10 text-red-400" />
+          </div>
+          <h2 className="text-2xl font-heading font-bold mb-3">Document Not Found</h2>
+          <p className="text-sm text-muted-foreground mb-8 leading-relaxed max-w-[280px] mx-auto">
+            {error}. The file might have been deleted or you don't have access to it.
+          </p>
+          <Button variant="secondary" className="w-full bg-background hover:bg-background/80" onClick={() => navigate('/dashboard')}>
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
+            Return to Dashboard
           </Button>
         </div>
       </div>
@@ -89,10 +95,18 @@ export const Viewer = () => {
   // Loading state
   if (isLoadingMeta || !fileUrl) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-accent animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading document…</p>
+      <div className="flex-1 flex flex-col items-center justify-center relative bg-background overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-accent/5 rounded-full blur-[100px] pointer-events-none animate-blob" />
+        <div className="relative z-10 flex flex-col items-center">
+          <div className="w-20 h-20 bg-gradient-to-br from-accent/20 to-accent/5 rounded-3xl flex items-center justify-center mb-6 shadow-inner shadow-white/5 border border-white/5 relative group">
+             <div className="absolute inset-0 bg-accent/20 rounded-3xl blur-xl animate-pulse opacity-50" />
+             <FileText className="w-10 h-10 text-accent relative z-10 animate-pulse" strokeWidth={1.5} />
+          </div>
+          <div className="flex items-center gap-3">
+             <Loader2 className="w-5 h-5 text-accent animate-spin" />
+             <h2 className="text-lg font-heading font-medium tracking-tight">Initializing viewer...</h2>
+          </div>
+          <p className="text-sm text-muted-foreground mt-2 opacity-70">Preparing document metadata and layout</p>
         </div>
       </div>
     );
@@ -107,23 +121,23 @@ export const Viewer = () => {
           size="icon"
           onClick={() => navigate('/dashboard')}
           aria-label="Back to dashboard"
-          className="h-8 w-8 shrink-0"
+          className="h-8 w-8 shrink-0 hover:bg-white/5 rounded-lg"
         >
           <ArrowLeft className="w-4 h-4" />
         </Button>
 
-        <div className="flex items-center gap-4 overflow-hidden text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5 shrink-0">
-            <Calendar className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-4 overflow-hidden text-xs text-muted-foreground font-medium">
+          <span className="flex items-center gap-1.5 shrink-0 bg-secondary/50 px-2 py-1 rounded-md border border-white/5">
+            <Calendar className="w-3.5 h-3.5 text-accent" />
             {formatDate(document?.created_at)}
           </span>
-          <span className="flex items-center gap-1.5 shrink-0">
-            <HardDrive className="w-3.5 h-3.5" />
+          <span className="flex items-center gap-1.5 shrink-0 bg-secondary/50 px-2 py-1 rounded-md border border-white/5">
+            <HardDrive className="w-3.5 h-3.5 text-accent" />
             {formatFileSize(document?.size_bytes)}
           </span>
-          <span className="flex items-center gap-1.5 shrink-0">
-            <Activity className="w-3.5 h-3.5" />
-            <span className={`capitalize ${document?.status === 'ready' ? 'text-green-400' : document?.status === 'error' ? 'text-red-400' : 'text-yellow-400'}`}>
+          <span className="flex items-center gap-1.5 shrink-0 bg-secondary/50 px-2 py-1 rounded-md border border-white/5">
+            <Activity className="w-3.5 h-3.5 text-accent" />
+            <span className={`capitalize tracking-wide font-semibold ${document?.status === 'ready' ? 'text-emerald-400' : document?.status === 'error' ? 'text-rose-400' : 'text-amber-400'}`}>
               {document?.status || '—'}
             </span>
           </span>
@@ -131,7 +145,7 @@ export const Viewer = () => {
       </div>
 
       {/* Main Viewer Area */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden relative">
         {/* PDF Content (main area) */}
         <div className="flex-1 flex flex-col min-w-0">
           <PDFViewer
@@ -140,12 +154,6 @@ export const Viewer = () => {
             fileSize={document?.size_bytes}
           />
         </div>
-
-        {/* Future Right Sidebar (OCR, AI, Notes) — Empty placeholder */}
-        <div
-          className="hidden lg:block w-0 border-l border-white/5 bg-background/20 backdrop-blur-sm transition-all duration-300"
-          data-region="viewer-sidebar"
-        />
       </div>
     </div>
   );
