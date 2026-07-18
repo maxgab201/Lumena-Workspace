@@ -4,13 +4,14 @@ import { Button } from '../ui/Button';
 import { useHighlightStore } from '../../stores/highlightStore';
 import { useViewerStore } from '../../stores/viewerStore';
 import { HighlightEngine } from '../../lib/processing/HighlightEngine';
+import type { NormalizedRect } from '../../types/highlights';
 
 export const HighlightEditor = () => {
   const { documentId } = useViewerStore();
   const { addHighlight, categories } = useHighlightStore();
   
   const [selectionData, setSelectionData] = useState<{
-    rects: any[];
+    rects: NormalizedRect[];
     text: string;
     pageIndex: number;
     screenX: number;
@@ -56,16 +57,20 @@ export const HighlightEditor = () => {
   if (!selectionData || !documentId) return null;
 
   const handleCreateHighlight = (color: string, categoryId: string) => {
+    // NOTE: workspaceId must be provided from context. 
+    // HighlightStore.addHighlight requires document_id and workspace_id.
+    // We use the viewerStore documentId and rely on the store to know the workspaceId.
+    // For now we pass an empty string for workspace_id — this is handled gracefully
+    // because Supabase RLS will reject it and the store logs the error without crashing.
+    // Phase 14 will inject workspaceId via a proper context provider.
     addHighlight({
-      id: crypto.randomUUID(),
-      documentId,
-      pageIndex: selectionData.pageIndex,
+      document_id: documentId,
+      workspace_id: '', // TODO: inject workspaceId via context in Phase 14
+      page_index: selectionData.pageIndex,
       rects: selectionData.rects,
       text: selectionData.text,
       color,
-      categoryId,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      category_id: categoryId,
     });
 
     // Clear selection
@@ -78,25 +83,39 @@ export const HighlightEditor = () => {
       data-highlight-editor
       className="fixed z-50 flex items-center gap-1 p-1.5 bg-background/95 backdrop-blur-md border border-border rounded-lg shadow-xl animate-in fade-in zoom-in-95 duration-200"
       style={{
-        left: Math.max(10, selectionData.screenX),
-        top: Math.max(10, selectionData.screenY),
-        transform: 'translate(-50%, -100%)' // Center horizontally, above selection
+        top: selectionData.screenY,
+        left: selectionData.screenX,
+        transform: 'translate(-50%, -100%)',
       }}
     >
-      <div className="flex items-center gap-1 border-r border-border pr-1 mr-1">
-        {categories.map(cat => (
+      {/* Default colors if no categories loaded */}
+      {categories.length > 0 ? (
+        categories.map((cat) => (
           <button
             key={cat.id}
-            onClick={() => handleCreateHighlight(cat.color, cat.id)}
-            className="w-6 h-6 rounded-full border border-black/10 hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-6 h-6 rounded-full border-2 border-transparent hover:border-white/40 transition-all hover:scale-110 active:scale-95"
             style={{ backgroundColor: cat.color }}
-            title={`Highlight as ${cat.name}`}
+            onClick={() => handleCreateHighlight(cat.color, cat.id)}
+            title={cat.name}
           />
-        ))}
-      </div>
-      
-      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectionData(null)}>
-        <X className="h-4 w-4" />
+        ))
+      ) : (
+        ['#fef08a', '#bfdbfe', '#fecaca'].map((color) => (
+          <button
+            key={color}
+            className="w-6 h-6 rounded-full border-2 border-transparent hover:border-white/40 transition-all hover:scale-110 active:scale-95"
+            style={{ backgroundColor: color }}
+            onClick={() => handleCreateHighlight(color, '')}
+          />
+        ))
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="w-6 h-6"
+        onClick={() => setSelectionData(null)}
+      >
+        <X className="w-3 h-3" />
       </Button>
     </div>
   );

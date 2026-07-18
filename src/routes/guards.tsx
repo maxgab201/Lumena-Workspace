@@ -1,30 +1,33 @@
-import { Navigate, Outlet } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useUserStore } from '../stores/userStore';
 import { ROUTES } from '../config/routes';
 import { LoadingPage } from '../components/error/LoadingPage';
 
 export const ProtectedRoute = () => {
-  const { isAuthenticated, isLoading } = useUserStore();
+  const user = useUserStore((state) => state.user);
+  const loading = useUserStore((state) => state.loading);
+  const location = useLocation();
 
-  if (isLoading) {
+  if (loading) {
     return <LoadingPage />;
   }
 
-  if (!isAuthenticated) {
-    return <Navigate to={ROUTES.AUTH} replace />;
+  if (!user) {
+    return <Navigate to={ROUTES.AUTH} state={{ from: location }} replace />;
   }
 
   return <Outlet />;
 };
 
 export const PublicRoute = () => {
-  const { isAuthenticated, isLoading } = useUserStore();
+  const user = useUserStore((state) => state.user);
+  const loading = useUserStore((state) => state.loading);
 
-  if (isLoading) {
+  if (loading) {
     return <LoadingPage />;
   }
 
-  if (isAuthenticated) {
+  if (user) {
     return <Navigate to={ROUTES.DASHBOARD} replace />;
   }
 

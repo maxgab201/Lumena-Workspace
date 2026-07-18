@@ -6,7 +6,11 @@ import { PDFToolbar } from './PDFToolbar';
 import { PDFPageList } from './PDFPageList';
 import { HighlightEditor } from './HighlightEditor';
 import { ChatSidebar } from '../chat/ChatSidebar';
+import { KnowledgeSidebar } from '../knowledge/KnowledgeSidebar';
+import { StudyModeOverlay } from '../knowledge/StudyModeOverlay';
 import { useViewerStore } from '../../stores/viewerStore';
+import { useUiStore } from '../../stores/uiStore';
+import { useKnowledgeStore } from '../../stores/knowledgeStore';
 import { Loader2 } from 'lucide-react';
 
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -21,14 +25,20 @@ interface PDFViewerProps {
   filename?: string;
   /** File size in bytes for display */
   fileSize?: number;
+  /** Document ID for knowledge features */
+  documentId?: string;
+  /** Workspace ID for knowledge features */
+  workspaceId?: string;
 }
 
 /**
  * The main PDF Viewer orchestrator.
  * Loads a PDF, initializes the page model, and renders the virtualized page list.
  */
-export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
+export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId }: PDFViewerProps) => {
   const { initializeDocument, setLoading, totalPages, isLoading, zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale } = useViewerStore();
+  const { activeRightPanel, setActiveRightPanel } = useUiStore();
+  const { isStudyModeActive } = useKnowledgeStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
@@ -174,8 +184,17 @@ export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
           )}
         </Document>
 
-        <ChatSidebar />
+        {activeRightPanel === 'chat' && <ChatSidebar />}
+        {activeRightPanel === 'knowledge' && (
+          <KnowledgeSidebar 
+            documentId={documentId ?? fileUrl}
+            workspaceId={workspaceId ?? ''}
+            onClose={() => setActiveRightPanel('none')} 
+          />
+        )}
       </div>
+
+      {isStudyModeActive && <StudyModeOverlay documentId={fileUrl} />}
     </div>
   );
 };

@@ -1,4 +1,4 @@
--- Create job status enum
+﻿-- Create job status enum
 CREATE TYPE job_status AS ENUM (
   'queued', 
   'inspecting', 
@@ -59,7 +59,7 @@ CREATE POLICY "Users can view jobs in their workspaces"
   ON public.processing_jobs FOR SELECT
   USING (
     workspace_id IN (
-      SELECT workspace_id FROM public.workspace_members WHERE user_id = auth.uid()
+      SELECT get_user_workspace_ids()
     )
   );
 
@@ -67,7 +67,7 @@ CREATE POLICY "Users can insert jobs into their workspaces"
   ON public.processing_jobs FOR INSERT
   WITH CHECK (
     workspace_id IN (
-      SELECT workspace_id FROM public.workspace_members WHERE user_id = auth.uid()
+      SELECT get_user_workspace_ids()
     )
   );
 
@@ -75,7 +75,7 @@ CREATE POLICY "Users can update jobs in their workspaces"
   ON public.processing_jobs FOR UPDATE
   USING (
     workspace_id IN (
-      SELECT workspace_id FROM public.workspace_members WHERE user_id = auth.uid()
+      SELECT get_user_workspace_ids()
     )
   );
 
@@ -83,7 +83,7 @@ CREATE POLICY "Users can delete jobs in their workspaces"
   ON public.processing_jobs FOR DELETE
   USING (
     workspace_id IN (
-      SELECT workspace_id FROM public.workspace_members WHERE user_id = auth.uid()
+      SELECT get_user_workspace_ids()
     )
   );
 
@@ -93,7 +93,7 @@ CREATE POLICY "Users can view events in their workspaces"
   USING (
     job_id IN (
       SELECT id FROM public.processing_jobs WHERE workspace_id IN (
-        SELECT workspace_id FROM public.workspace_members WHERE user_id = auth.uid()
+        SELECT get_user_workspace_ids()
       )
     )
   );
@@ -103,7 +103,7 @@ CREATE POLICY "Users can insert events into their workspaces"
   WITH CHECK (
     job_id IN (
       SELECT id FROM public.processing_jobs WHERE workspace_id IN (
-        SELECT workspace_id FROM public.workspace_members WHERE user_id = auth.uid()
+        SELECT get_user_workspace_ids()
       )
     )
   );
@@ -114,7 +114,7 @@ CREATE POLICY "Users can view logs in their workspaces"
   USING (
     job_id IN (
       SELECT id FROM public.processing_jobs WHERE workspace_id IN (
-        SELECT workspace_id FROM public.workspace_members WHERE user_id = auth.uid()
+        SELECT get_user_workspace_ids()
       )
     )
   );
@@ -124,7 +124,8 @@ CREATE POLICY "Users can insert logs into their workspaces"
   WITH CHECK (
     job_id IN (
       SELECT id FROM public.processing_jobs WHERE workspace_id IN (
-        SELECT workspace_id FROM public.workspace_members WHERE user_id = auth.uid()
+        SELECT get_user_workspace_ids()
       )
     )
   );
+

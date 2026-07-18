@@ -1,6 +1,7 @@
 import { test } from '@playwright/test';
 
 test('Capture Before Screenshots', async ({ page }) => {
+  test.setTimeout(120000);
   // Capture Auth
   await page.goto('http://localhost:5173/auth');
   await page.waitForLoadState('networkidle');

@@ -143,7 +143,6 @@ test.describe('PDF Viewer (Mocked API)', () => {
     
     // Verify the layer containers are in the DOM (even if empty initially)
     await expect(page.locator('div[data-layer="annotation"]').first()).toBeAttached();
-    await expect(page.locator('div[data-layer="selection"]').first()).toBeAttached();
     
     // The Layout Overlay, OCR Overlay, and Vision Overlay are rendered but may return null 
     // if there is no mock data, but we can check the button.

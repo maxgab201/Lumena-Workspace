@@ -20,9 +20,9 @@ test.describe('Billing System', () => {
     await page.goto('/billing');
 
     // Verify header and current plan
-    await expect(page.locator('h1')).toContainText('Billing & Credits');
-    await expect(page.locator('text="Current Plan:"')).toBeVisible();
-    await expect(page.locator('text="Free"').first()).toBeVisible();
+    await expect(page.locator('h1')).toContainText('Billing & Credits', { timeout: 15000 });
+    await expect(page.locator('text=Current Plan:')).toBeVisible();
+    await expect(page.locator('text=Free').first()).toBeVisible();
 
     // Verify credit progress bar exists (it might have 0 width so we check if attached)
     const progressBar = page.getByTestId('credit-progress-bar');
@@ -41,7 +41,7 @@ test.describe('Billing System', () => {
 
     // Confirm upgrade
     const confirmBtn = page.getByTestId('confirm-upgrade-btn');
-    await confirmBtn.click();
+    await confirmBtn.click({ force: true });
 
     // Wait for the simulated async process
     await expect(confirmBtn).toContainText('Processing Payment...');

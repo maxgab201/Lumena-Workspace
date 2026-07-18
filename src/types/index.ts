@@ -128,3 +128,4 @@ export * from './processing';
 export * from './highlights';
 export * from './chat';
 export * from './billing';
+export * from './knowledge';

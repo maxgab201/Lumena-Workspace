@@ -1,57 +1,57 @@
 import { create } from 'zustand';
-import type { User, Credits } from '../types';
-import { authService } from '../services/auth.service';
-import { useWorkspaceStore } from './workspaceStore';
+import { AuthRepository } from '../repositories/auth.repository';
+import { supabase } from '../lib/supabase';
+import type { User } from '@supabase/supabase-js';
 
-interface UserState {
+interface UserStore {
   user: User | null;
-  credits: Credits | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
+  profile: { name?: string | null; avatar_url?: string | null } | null;
+  loading: boolean;
+  error: string | null;
   initialize: () => void;
-  logout: () => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
-export const useUserStore = create<UserState>((set) => ({
+export const useUserStore = create<UserStore>((set) => ({
   user: null,
-  credits: null, // Will be fetched later from DB
-  isAuthenticated: false,
-  isLoading: true,
+  profile: null,
+  loading: true,
+  error: null,
+
   initialize: () => {
-    const handleAuthChange = (session: any) => {
+    // Get initial session user
+    AuthRepository.getUser()
+      .then(async (user) => {
+        let profile = null;
+        if (user) {
+          const { data } = await supabase.from('profiles').select('name, avatar_url').eq('id', user.id).single();
+          profile = data;
+        }
+        set({ user, profile, loading: false });
+      })
+      .catch((err) => {
+        set({ user: null, profile: null, error: err.message, loading: false });
+      });
+
+    // Subscribe to auth state changes
+    supabase.auth.onAuthStateChange(async (_event, session) => {
+      let profile = null;
       if (session?.user) {
-        set({ 
-          user: { 
-            id: session.user.id, 
-            email: session.user.email!, 
-            name: session.user.user_metadata?.full_name || 'User',
-            avatar_url: session.user.user_metadata?.avatar_url,
-            created_at: session.user.created_at 
-          }, 
-          isAuthenticated: true, 
-          isLoading: false 
-        });
-        // Trigger fetch of workspaces
-        useWorkspaceStore.getState().fetchWorkspaces();
-      } else {
-        set({ user: null, isAuthenticated: false, isLoading: false });
-        useWorkspaceStore.getState().workspaces = [];
-        useWorkspaceStore.getState().activeWorkspaceId = null;
+        const { data } = await supabase.from('profiles').select('name, avatar_url').eq('id', session.user.id).single();
+        profile = data;
       }
-    };
-
-    // Initial fetch
-    authService.getSession().then(({ data: { session } }) => {
-      handleAuthChange(session);
-    });
-
-    // Listen for changes
-    authService.onAuthStateChange((session) => {
-      handleAuthChange(session);
+      set({ user: session?.user ?? null, profile, loading: false });
     });
   },
-  logout: async () => {
-    await authService.signOut();
+
+  signOut: async () => {
+    set({ loading: true, error: null });
+    try {
+      await AuthRepository.signOut();
+      set({ user: null, profile: null, loading: false });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+      throw err;
+    }
   },
 }));
-

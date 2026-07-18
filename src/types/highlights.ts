@@ -11,26 +11,29 @@ export interface NormalizedRect {
 
 export interface HighlightCategory {
   id: string;
+  workspace_id: string;
   name: string;
-  color: string; // e.g. '#ffff00'
+  color: string; // hex e.g. '#ffff00'
+  created_at: string;
 }
 
 export interface Highlight {
   id: string;
-  documentId: string;
-  pageIndex: number;
-  
+  document_id: string;
+  workspace_id: string;
+  page_index: number;
+
   // A single highlight can span multiple lines, hence multiple rects.
   rects: NormalizedRect[];
-  
+
   // The actual text that was highlighted
   text: string;
-  
+
   // Customization
   color: string;
-  categoryId?: string;
-  note?: string;
-  
-  createdAt: number;
-  updatedAt: number;
+  category_id?: string | null;
+  note?: string | null;
+
+  created_at: string;
+  updated_at: string;
 }

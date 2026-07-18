@@ -1,77 +1,85 @@
 import { create } from 'zustand';
-import type { PlanType, Transaction } from '../types/billing';
-import { PLANS } from '../types/billing';
+import { BillingRepository } from '../repositories/billing.repository';
 
-interface BillingStoreState {
-  currentPlan: PlanType;
-  creditsRemaining: number;
-  transactions: Transaction[];
-  
-  // Actions
-  consumeCredits: (amount: number, description: string) => boolean;
-  purchaseCredits: (amount: number, description: string) => void;
-  upgradePlan: (plan: PlanType) => void;
+interface Subscription {
+  id: string;
+  user_id: string;
+  plan: string;
+  credits_remaining: number;
+  current_period_start: string | null;
+  current_period_end: string | null;
 }
 
-export const useBillingStore = create<BillingStoreState>((set, get) => ({
-  currentPlan: 'free',
-  creditsRemaining: PLANS.free.monthlyCredits,
-  transactions: [{
-    id: crypto.randomUUID(),
-    type: 'grant',
-    amount: PLANS.free.monthlyCredits,
-    description: 'Initial Free Tier Grant',
-    createdAt: Date.now()
-  }],
+interface Transaction {
+  id: string;
+  created_at: string;
+  description: string | null;
+  amount: number;
+  type: string;
+}
 
-  consumeCredits: (amount, description) => {
-    const { creditsRemaining, transactions } = get();
-    if (creditsRemaining < amount) {
-      return false; // Not enough credits
+interface BillingStore {
+  subscription: Subscription | null;
+  transactions: Transaction[];
+  creditsRemaining: number;
+  creditsTotal: number;
+  loading: boolean;
+  error: string | null;
+  fetchBillingData: () => Promise<void>;
+  consumeCredits: (amount: number, description: string) => Promise<void>;
+  upgradeToPro: () => Promise<void>;
+}
+
+export const useBillingStore = create<BillingStore>((set, get) => ({
+  subscription: null,
+  transactions: [],
+  creditsRemaining: 0,
+  creditsTotal: 1000,
+  loading: false,
+  error: null,
+
+  fetchBillingData: async () => {
+    set({ loading: true, error: null });
+    try {
+      const [sub, txs] = await Promise.all([
+        BillingRepository.getSubscription(),
+        BillingRepository.getTransactions(),
+      ]);
+
+      // Free tier gets 50, pro gets more
+      const creditsTotal = sub?.plan === 'free' ? 50 : 1000;
+      const creditsRemaining = sub?.credits_remaining ?? 0;
+
+      set({
+        subscription: sub,
+        transactions: txs || [],
+        creditsRemaining,
+        creditsTotal,
+        loading: false,
+      });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
     }
-    
-    set({
-      creditsRemaining: creditsRemaining - amount,
-      transactions: [
-        {
-          id: crypto.randomUUID(),
-          type: 'usage',
-          amount: -amount,
-          description,
-          createdAt: Date.now()
-        },
-        ...transactions
-      ]
-    });
-    return true;
   },
 
-  purchaseCredits: (amount, description) => set((state) => ({
-    creditsRemaining: state.creditsRemaining + amount,
-    transactions: [
-      {
-        id: crypto.randomUUID(),
-        type: 'purchase',
-        amount,
-        description,
-        createdAt: Date.now()
-      },
-      ...state.transactions
-    ]
-  })),
+  consumeCredits: async (amount: number, description: string) => {
+    try {
+      await BillingRepository.consumeCredits(amount, description);
+      await get().fetchBillingData();
+    } catch (err: any) {
+      set({ error: err.message });
+      throw err;
+    }
+  },
 
-  upgradePlan: (plan) => set((state) => ({
-    currentPlan: plan,
-    creditsRemaining: state.creditsRemaining + PLANS[plan].monthlyCredits,
-    transactions: [
-      {
-        id: crypto.randomUUID(),
-        type: 'grant',
-        amount: PLANS[plan].monthlyCredits,
-        description: `Upgrade to ${PLANS[plan].name} Plan`,
-        createdAt: Date.now()
-      },
-      ...state.transactions
-    ]
-  }))
+  upgradeToPro: async () => {
+    set({ loading: true, error: null });
+    try {
+      // Placeholder logic for Stripe checkout
+      await get().fetchBillingData();
+      set({ loading: false });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+    }
+  },
 }));

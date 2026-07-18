@@ -1,121 +1,202 @@
 import { create } from 'zustand';
-import type { Workspace, Document } from '../types';
-import { apiService } from '../services/api.service';
+import { WorkspaceRepository } from '../repositories/workspace.repository';
+import { DocumentRepository } from '../repositories/document.repository';
 
-interface WorkspaceState {
-  workspaces: Workspace[];
-  documents: Document[];
-  activeWorkspaceId: string | null;
-  isLoading: boolean;
-  error: Error | null;
-  setActiveWorkspace: (id: string) => void;
-  fetchWorkspaces: () => Promise<void>;
-  createWorkspace: (name: string) => Promise<Workspace>;
-  renameWorkspace: (id: string, name: string) => Promise<Workspace>;
-  deleteWorkspace: (id: string) => Promise<void>;
-  fetchDocuments: (workspaceId: string) => Promise<void>;
-  uploadDocument: (file: File) => Promise<Document>;
-  renameDocument: (id: string, newName: string) => Promise<void>;
-  deleteDocument: (id: string, filePath: string) => Promise<void>;
+interface Workspace {
+  id: string;
+  name: string;
+  created_at: string;
 }
 
-export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
+interface Document {
+  id: string;
+  workspace_id: string;
+  name: string;
+  size_bytes: number;
+  status?: string;
+  file_path: string;
+  mime_type?: string | null;
+  page_count?: number | null;
+  created_at: string;
+}
+
+interface WorkspaceStore {
+  workspaces: Workspace[];
+  activeWorkspace: Workspace | null;
+  documents: Document[];
+  loading: boolean;
+  uploadProgress: number;
+  error: string | null;
+  fetchWorkspaces: () => Promise<void>;
+  createWorkspace: (name: string) => Promise<void>;
+  renameWorkspace: (id: string, name: string) => Promise<void>;
+  deleteWorkspace: (id: string) => Promise<void>;
+  setActiveWorkspace: (workspace: Workspace | null) => void;
+  fetchDocuments: (workspaceId: string) => Promise<void>;
+  uploadDocument: (file: File) => Promise<void>;
+  renameDocument: (id: string, name: string) => Promise<void>;
+  deleteDocument: (documentId: string) => Promise<void>;
+}
+
+export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspaces: [],
+  activeWorkspace: null,
   documents: [],
-  activeWorkspaceId: null,
-  isLoading: false,
+  loading: false,
+  uploadProgress: 0,
   error: null,
-  setActiveWorkspace: (id) => {
-    set({ activeWorkspaceId: id });
-    get().fetchDocuments(id);
-  },
+
   fetchWorkspaces: async () => {
-    set({ isLoading: true, error: null });
+    set({ loading: true, error: null });
     try {
-      const workspaces = await apiService.getWorkspaces();
-      const firstId = workspaces.length > 0 ? workspaces[0].id : null;
-      set({ 
-        workspaces, 
-        activeWorkspaceId: firstId,
-        isLoading: false 
-      });
-      if (firstId) {
-        get().fetchDocuments(firstId);
+      const data = await WorkspaceRepository.listWorkspaces();
+      const workspaces: Workspace[] = data.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        created_at: item.created_at,
+      }));
+      set({ workspaces, loading: false });
+
+      // Auto-select first workspace if none active
+      if (workspaces.length > 0 && !get().activeWorkspace) {
+        get().setActiveWorkspace(workspaces[0]);
       }
-    } catch (error: any) {
-      set({ error, isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
     }
   },
-  createWorkspace: async (name: string) => {
-    const newWorkspace = await apiService.createWorkspace(name);
-    set((state) => ({
-      workspaces: [newWorkspace, ...state.workspaces],
-      activeWorkspaceId: newWorkspace.id
-    }));
-    get().fetchDocuments(newWorkspace.id);
-    return newWorkspace;
+
+  createWorkspace: async (name) => {
+    set({ loading: true, error: null });
+    try {
+      const newWorkspace = await WorkspaceRepository.createWorkspace(name);
+      set((state) => ({
+        workspaces: [...state.workspaces, newWorkspace],
+        loading: false,
+      }));
+      get().setActiveWorkspace(newWorkspace);
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+      throw err;
+    }
   },
-  renameWorkspace: async (id: string, name: string) => {
-    const updated = await apiService.renameWorkspace(id, name);
-    set((state) => ({
-      workspaces: state.workspaces.map(w => w.id === id ? updated : w)
-    }));
-    return updated;
+
+  renameWorkspace: async (id, name) => {
+    set({ loading: true, error: null });
+    try {
+      const updated = await WorkspaceRepository.updateWorkspace(id, name);
+      set((state) => ({
+        workspaces: state.workspaces.map((w) => (w.id === id ? updated : w)),
+        activeWorkspace: state.activeWorkspace?.id === id ? updated : state.activeWorkspace,
+        loading: false,
+      }));
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+      throw err;
+    }
   },
-  deleteWorkspace: async (id: string) => {
-    await apiService.deleteWorkspace(id);
-    set((state) => {
-      const filtered = state.workspaces.filter(w => w.id !== id);
-      const newActiveId = state.activeWorkspaceId === id 
-          ? (filtered.length > 0 ? filtered[0].id : null) 
-          : state.activeWorkspaceId;
-      return {
-        workspaces: filtered,
-        activeWorkspaceId: newActiveId
-      };
-    });
-    
-    const { activeWorkspaceId } = get();
-    if (activeWorkspaceId) {
-      get().fetchDocuments(activeWorkspaceId);
+
+  deleteWorkspace: async (id) => {
+    set({ loading: true, error: null });
+    try {
+      await WorkspaceRepository.deleteWorkspace(id);
+      set((state) => {
+        const remaining = state.workspaces.filter((w) => w.id !== id);
+        return {
+          workspaces: remaining,
+          activeWorkspace: state.activeWorkspace?.id === id ? remaining[0] || null : state.activeWorkspace,
+          loading: false,
+        };
+      });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+      throw err;
+    }
+  },
+
+  setActiveWorkspace: (workspace) => {
+    set({ activeWorkspace: workspace });
+    if (workspace) {
+      get().fetchDocuments(workspace.id);
     } else {
       set({ documents: [] });
     }
   },
-  fetchDocuments: async (workspaceId: string) => {
+
+  fetchDocuments: async (workspaceId) => {
+    set({ loading: true, error: null });
     try {
-      const documents = await apiService.getDocuments(workspaceId);
-      set({ documents });
-    } catch (error) {
-      console.error('Failed to fetch documents', error);
+      const documents = await DocumentRepository.listDocuments(workspaceId);
+      set({ documents, loading: false });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
     }
   },
-  uploadDocument: async (file: File) => {
-    const { activeWorkspaceId } = get();
-    if (!activeWorkspaceId) throw new Error('No active workspace');
-    
-    const newDoc = await apiService.uploadDocument(file, activeWorkspaceId);
-    
-    set((state) => ({
-      documents: [newDoc, ...state.documents]
-    }));
-    
-    import('../lib/processing/EventBus').then(({ EventBus }) => {
-      EventBus.emit('DocumentUploaded', { documentId: newDoc.id, workspaceId: activeWorkspaceId, file });
-    });
-    
-    return newDoc;
+
+  uploadDocument: async (file) => {
+    const { activeWorkspace } = get();
+    if (!activeWorkspace) throw new Error('No active workspace');
+    set({ loading: true, error: null, uploadProgress: 0 });
+    try {
+      const fileExt = file.name.split('.').pop() ?? 'pdf';
+      const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
+      const filePath = `${activeWorkspace.id}/${fileName}`;
+
+      // Upload file to workspace_documents storage bucket with progress tracking
+      await DocumentRepository.uploadFile(filePath, file, (progress) => {
+        set({ uploadProgress: progress });
+      });
+
+      // Create document record in database
+      const newDoc = await DocumentRepository.createDocumentRecord({
+        workspace_id: activeWorkspace.id,
+        name: file.name,
+        size_bytes: file.size,
+        file_path: filePath,
+        mime_type: file.type || 'application/pdf',
+      });
+
+      set((state) => ({
+        documents: [newDoc, ...state.documents],
+        loading: false,
+        uploadProgress: 0,
+      }));
+    } catch (err: any) {
+      set({ error: err.message, loading: false, uploadProgress: 0 });
+      throw err;
+    }
   },
-  renameDocument: async (id: string, newName: string) => {
-    const updated = await apiService.renameDocument(id, newName);
-    set((state) => ({
-      documents: state.documents.map(d => d.id === id ? updated : d)
-    }));
+
+  renameDocument: async (id, name) => {
+    // Uses repository — no direct Supabase access from stores
+    set({ loading: true, error: null });
+    try {
+      await DocumentRepository.renameDocument(id, name);
+      set((state) => ({
+        documents: state.documents.map((d) => (d.id === id ? { ...d, name } : d)),
+        loading: false,
+      }));
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+      throw err;
+    }
   },
-  deleteDocument: async (id: string, filePath: string) => {
-    await apiService.deleteDocument(id, filePath);
-    set((state) => ({
-      documents: state.documents.filter(d => d.id !== id)
-    }));
-  }
+
+  deleteDocument: async (documentId) => {
+    set({ loading: true, error: null });
+    try {
+      const doc = get().documents.find((d) => d.id === documentId);
+      if (!doc) throw new Error('Document not found');
+
+      // Repository handles bucket selection internally
+      await DocumentRepository.deleteDocument(doc.id, doc.file_path);
+
+      set((state) => ({
+        documents: state.documents.filter((d) => d.id !== documentId),
+        loading: false,
+      }));
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+    }
+  },
 }));
