@@ -25,13 +25,17 @@ interface PDFViewerProps {
   filename?: string;
   /** File size in bytes for display */
   fileSize?: number;
+  /** Document ID for knowledge features */
+  documentId?: string;
+  /** Workspace ID for knowledge features */
+  workspaceId?: string;
 }
 
 /**
  * The main PDF Viewer orchestrator.
  * Loads a PDF, initializes the page model, and renders the virtualized page list.
  */
-export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
+export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId }: PDFViewerProps) => {
   const { initializeDocument, setLoading, totalPages, isLoading, zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale } = useViewerStore();
   const { activeRightPanel, setActiveRightPanel } = useUiStore();
   const { isStudyModeActive } = useKnowledgeStore();
@@ -183,7 +187,8 @@ export const PDFViewer = ({ fileUrl, filename, fileSize }: PDFViewerProps) => {
         {activeRightPanel === 'chat' && <ChatSidebar />}
         {activeRightPanel === 'knowledge' && (
           <KnowledgeSidebar 
-            documentId={fileUrl} // Using fileUrl as documentId for now
+            documentId={documentId ?? fileUrl}
+            workspaceId={workspaceId ?? ''}
             onClose={() => setActiveRightPanel('none')} 
           />
         )}

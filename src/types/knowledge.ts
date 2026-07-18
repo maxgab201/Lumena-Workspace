@@ -1,39 +1,53 @@
+// Types use snake_case timestamps to match the DB schema directly.
+// The stores are responsible for mapping to local JS conventions
+// where necessary.
+
 export interface Flashcard {
   id: string;
-  documentId: string;
+  document_id: string;
+  workspace_id: string;
   front: string;
   back: string;
-  pageNumber?: number;
-  createdAt: number;
+  page_number?: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface GlossaryTerm {
   id: string;
-  documentId: string;
+  document_id: string;
+  workspace_id: string;
   term: string;
   definition: string;
-  pageNumber?: number;
-  createdAt: number;
+  page_number?: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface MindMapNode {
   id: string;
-  documentId: string;
+  document_id: string;
+  workspace_id: string;
   label: string;
-  parentId?: string; // If undefined, it's a root node
+  parent_id?: string | null;
+  position_x: number;
+  position_y: number;
+  created_at: string;
 }
 
 export interface TimelineEvent {
   id: string;
-  documentId: string;
-  dateStr: string;
+  document_id: string;
+  workspace_id: string;
+  date_str: string;
   description: string;
-  pageNumber?: number;
+  page_number?: number | null;
+  created_at: string;
 }
 
 export interface KnowledgeState {
-  flashcards: Record<string, Flashcard[]>; // keyed by documentId
-  glossary: Record<string, GlossaryTerm[]>; // keyed by documentId
-  mindMapNodes: Record<string, MindMapNode[]>; // keyed by documentId
-  timelineEvents: Record<string, TimelineEvent[]>; // keyed by documentId
+  flashcards: Record<string, Flashcard[]>;      // keyed by document_id
+  glossary: Record<string, GlossaryTerm[]>;     // keyed by document_id
+  mindMapNodes: Record<string, MindMapNode[]>;  // keyed by document_id
+  timelineEvents: Record<string, TimelineEvent[]>; // keyed by document_id
 }

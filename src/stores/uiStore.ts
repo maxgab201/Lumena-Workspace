@@ -13,14 +13,27 @@ interface UiStore {
   activeRightPanel: 'chat' | 'activity' | 'knowledge' | 'none' | null;
   setTheme: (theme: 'light' | 'dark' | 'system') => Promise<void>;
   setViewMode: (mode: 'grid' | 'list') => Promise<void>;
-  setSortBy: (sort: 'date' | 'name' | 'size') => void;
-  toggleSortOrder: () => void;
+  setSortBy: (sort: 'date' | 'name' | 'size') => Promise<void>;
+  toggleSortOrder: () => Promise<void>;
   setSidebarCollapsed: (collapsed: boolean) => void;
   toggleSidebar: () => void;
   setMobileSidebarOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   setActiveRightPanel: (panel: 'chat' | 'activity' | 'knowledge' | 'none' | null) => void;
   loadSettings: () => Promise<void>;
+}
+
+async function persistSettingsIfAuthenticated(
+  updates: Record<string, unknown>,
+): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.user) return;
+  try {
+    await SettingsRepository.updateSettings(updates as any);
+  } catch (err) {
+    // Non-fatal: local state already updated. Log and continue.
+    console.error('[UiStore] Failed to sync settings to DB:', err);
+  }
 }
 
 export const useUiStore = create<UiStore>((set, get) => ({
@@ -35,40 +48,36 @@ export const useUiStore = create<UiStore>((set, get) => ({
 
   setTheme: async (theme) => {
     set({ theme });
-    localStorage.setItem('theme', theme);
 
-    // Apply theme changes to body/documentElement
+    // Apply theme to DOM
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
     if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light';
       root.classList.add(systemTheme);
     } else {
       root.classList.add(theme);
     }
 
-    // Persist to user settings table if authenticated
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user) {
-      try {
-        await SettingsRepository.updateSettings({ theme });
-      } catch (err) {
-        console.error('Failed to sync theme to DB:', err);
-      }
-    }
+    await persistSettingsIfAuthenticated({ theme });
   },
 
   setViewMode: async (viewMode) => {
     set({ viewMode });
-    localStorage.setItem('viewMode', viewMode);
+    await persistSettingsIfAuthenticated({ view_mode: viewMode });
   },
 
-  setSortBy: (sortBy) => {
+  setSortBy: async (sortBy) => {
     set({ sortBy });
+    await persistSettingsIfAuthenticated({ sort_by: sortBy });
   },
 
-  toggleSortOrder: () => {
-    set((state) => ({ sortOrder: state.sortOrder === 'asc' ? 'desc' : 'asc' }));
+  toggleSortOrder: async () => {
+    const newOrder = get().sortOrder === 'asc' ? 'desc' : 'asc';
+    set({ sortOrder: newOrder });
+    await persistSettingsIfAuthenticated({ sort_order: newOrder });
   },
 
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -78,27 +87,38 @@ export const useUiStore = create<UiStore>((set, get) => ({
   setActiveRightPanel: (panel) => set({ activeRightPanel: panel }),
 
   loadSettings: async () => {
-    // 1. Sync viewMode from localStorage
-    const cachedViewMode = localStorage.getItem('viewMode') as 'grid' | 'list';
-    if (cachedViewMode) {
-      set({ viewMode: cachedViewMode });
-    }
-
-    // 2. Sync theme preference (DB takes priority over localStorage)
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user) {
       try {
         const settings = await SettingsRepository.getSettings();
-        if (settings?.theme) {
-          await get().setTheme(settings.theme as 'light' | 'dark' | 'system');
+        if (settings) {
+          const theme = (settings.theme as 'light' | 'dark' | 'system') ?? 'system';
+          const viewMode = (settings.view_mode as 'grid' | 'list') ?? 'grid';
+          const sortBy = (settings.sort_by as 'date' | 'name' | 'size') ?? 'date';
+          const sortOrder = (settings.sort_order as 'asc' | 'desc') ?? 'desc';
+
+          // Apply theme to DOM
+          const root = window.document.documentElement;
+          root.classList.remove('light', 'dark');
+          if (theme === 'system') {
+            const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+            root.classList.add(systemTheme);
+          } else {
+            root.classList.add(theme);
+          }
+
+          set({ theme, viewMode, sortBy, sortOrder });
           return;
         }
       } catch (err) {
-        console.error('Failed to load theme from DB:', err);
+        console.error('[UiStore] Failed to load settings from DB:', err);
       }
     }
 
-    const cachedTheme = localStorage.getItem('theme') as 'light' | 'dark' | 'system' || 'system';
+    // Fallback: localStorage
+    const cachedTheme = (localStorage.getItem('theme') as 'light' | 'dark' | 'system') ?? 'system';
     await get().setTheme(cachedTheme);
   },
 }));

@@ -9,12 +9,13 @@ import { cn } from '../../lib/utils';
 
 interface KnowledgeSidebarProps {
   documentId: string;
+  workspaceId: string;
   onClose: () => void;
 }
 
 type TabId = 'flashcards' | 'glossary' | 'mindmap' | 'timeline';
 
-export const KnowledgeSidebar = ({ documentId, onClose }: KnowledgeSidebarProps) => {
+export const KnowledgeSidebar = ({ documentId, workspaceId, onClose }: KnowledgeSidebarProps) => {
   const [activeTab, setActiveTab] = useState<TabId>('flashcards');
 
   const tabs = [
@@ -57,8 +58,8 @@ export const KnowledgeSidebar = ({ documentId, onClose }: KnowledgeSidebarProps)
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'flashcards' && <FlashcardsView documentId={documentId} />}
-        {activeTab === 'glossary' && <GlossaryView documentId={documentId} />}
+        {activeTab === 'flashcards' && <FlashcardsView documentId={documentId} workspaceId={workspaceId} />}
+        {activeTab === 'glossary' && <GlossaryView documentId={documentId} workspaceId={workspaceId} />}
         {activeTab === 'mindmap' && <MindMapView documentId={documentId} />}
         {activeTab === 'timeline' && <TimelineView documentId={documentId} />}
       </div>

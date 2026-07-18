@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -14,12 +14,101 @@ export type Database = {
   }
   public: {
     Tables: {
+      chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          message_references: Json | null
+          role: Database["public"]["Enums"]["chat_role"]
+          session_id: string
+        }
+        Insert: {
+          content?: string
+          created_at?: string
+          id?: string
+          message_references?: Json | null
+          role: Database["public"]["Enums"]["chat_role"]
+          session_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          message_references?: Json | null
+          role?: Database["public"]["Enums"]["chat_role"]
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      chat_sessions: {
+        Row: {
+          created_at: string
+          document_id: string
+          id: string
+          title: string | null
+          updated_at: string
+          user_id: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          id?: string
+          title?: string | null
+          updated_at?: string
+          user_id: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          id?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_sessions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_sessions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           created_at: string
           file_path: string
           id: string
+          mime_type: string | null
           name: string
+          page_count: number | null
           size_bytes: number
           status: Database["public"]["Enums"]["document_status"]
           updated_at: string
@@ -29,7 +118,9 @@ export type Database = {
           created_at?: string
           file_path: string
           id?: string
+          mime_type?: string | null
           name: string
+          page_count?: number | null
           size_bytes: number
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
@@ -39,7 +130,9 @@ export type Database = {
           created_at?: string
           file_path?: string
           id?: string
+          mime_type?: string | null
           name?: string
+          page_count?: number | null
           size_bytes?: number
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
@@ -48,6 +141,253 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "documents_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      flashcards: {
+        Row: {
+          back: string
+          created_at: string
+          document_id: string
+          front: string
+          id: string
+          page_number: number | null
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          back: string
+          created_at?: string
+          document_id: string
+          front: string
+          id?: string
+          page_number?: number | null
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          back?: string
+          created_at?: string
+          document_id?: string
+          front?: string
+          id?: string
+          page_number?: number | null
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flashcards_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flashcards_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      glossary_terms: {
+        Row: {
+          created_at: string
+          definition: string
+          document_id: string
+          id: string
+          page_number: number | null
+          term: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          definition: string
+          document_id: string
+          id?: string
+          page_number?: number | null
+          term: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          definition?: string
+          document_id?: string
+          id?: string
+          page_number?: number | null
+          term?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "glossary_terms_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "glossary_terms_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      highlight_categories: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          workspace_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          workspace_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "highlight_categories_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      highlights: {
+        Row: {
+          category_id: string | null
+          color: string
+          created_at: string
+          document_id: string
+          id: string
+          note: string | null
+          page_index: number
+          rects: Json
+          text: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          category_id?: string | null
+          color?: string
+          created_at?: string
+          document_id: string
+          id?: string
+          note?: string | null
+          page_index: number
+          rects?: Json
+          text?: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          category_id?: string | null
+          color?: string
+          created_at?: string
+          document_id?: string
+          id?: string
+          note?: string | null
+          page_index?: number
+          rects?: Json
+          text?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "highlights_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "highlight_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "highlights_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "highlights_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mind_map_nodes: {
+        Row: {
+          created_at: string
+          document_id: string
+          id: string
+          label: string
+          parent_id: string | null
+          position_x: number
+          position_y: number
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          id?: string
+          label: string
+          parent_id?: string | null
+          position_x?: number
+          position_y?: number
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          id?: string
+          label?: string
+          parent_id?: string | null
+          position_x?: number
+          position_y?: number
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mind_map_nodes_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mind_map_nodes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "mind_map_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mind_map_nodes_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -244,6 +584,51 @@ export type Database = {
           },
         ]
       }
+      timeline_events: {
+        Row: {
+          created_at: string
+          date_str: string
+          description: string
+          document_id: string
+          id: string
+          page_number: number | null
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          date_str: string
+          description: string
+          document_id: string
+          id?: string
+          page_number?: number | null
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          date_str?: string
+          description?: string
+          document_id?: string
+          id?: string
+          page_number?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "timeline_events_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "timeline_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           amount: number
@@ -287,8 +672,11 @@ export type Database = {
           dashboard_view_mode: string
           id: string
           sidebar_collapsed: boolean
+          sort_by: string
+          sort_order: string
           theme: string
           updated_at: string
+          view_mode: string
         }
         Insert: {
           created_at?: string
@@ -297,8 +685,11 @@ export type Database = {
           dashboard_view_mode?: string
           id: string
           sidebar_collapsed?: boolean
+          sort_by?: string
+          sort_order?: string
           theme?: string
           updated_at?: string
+          view_mode?: string
         }
         Update: {
           created_at?: string
@@ -307,8 +698,11 @@ export type Database = {
           dashboard_view_mode?: string
           id?: string
           sidebar_collapsed?: boolean
+          sort_by?: string
+          sort_order?: string
           theme?: string
           updated_at?: string
+          view_mode?: string
         }
         Relationships: []
       }
@@ -385,6 +779,7 @@ export type Database = {
       get_user_workspace_ids: { Args: never; Returns: string[] }
     }
     Enums: {
+      chat_role: "user" | "assistant" | "system"
       document_status: "uploading" | "processing" | "ready" | "error"
       job_status:
         | "queued"
@@ -527,6 +922,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      chat_role: ["user", "assistant", "system"],
       document_status: ["uploading", "processing", "ready", "error"],
       job_status: [
         "queued",
@@ -546,3 +942,4 @@ export const Constants = {
     },
   },
 } as const
+

@@ -9,16 +9,20 @@ export interface ChatReference {
 
 export interface ChatMessage {
   id: string;
+  session_id: string;
   role: Role;
   content: string;
   references?: ChatReference[];
-  createdAt: number;
+  created_at: string;
 }
 
 export interface ChatSession {
   id: string;
-  documentId: string;
-  messages: ChatMessage[];
-  createdAt: number;
-  updatedAt: number;
+  document_id: string;
+  workspace_id: string;
+  user_id: string;
+  title?: string | null;
+  created_at: string;
+  updated_at: string;
+  messages?: ChatMessage[];
 }

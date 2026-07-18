@@ -6,9 +6,10 @@ import { Textarea } from '../ui/Textarea';
 
 interface FlashcardsViewProps {
   documentId: string;
+  workspaceId: string;
 }
 
-export const FlashcardsView = ({ documentId }: FlashcardsViewProps) => {
+export const FlashcardsView = ({ documentId, workspaceId }: FlashcardsViewProps) => {
   const { flashcards, addFlashcard, setStudyMode } = useKnowledgeStore();
   const [isAdding, setIsAdding] = useState(false);
   const [front, setFront] = useState('');
@@ -18,7 +19,7 @@ export const FlashcardsView = ({ documentId }: FlashcardsViewProps) => {
 
   const handleSave = () => {
     if (!front.trim() || !back.trim()) return;
-    addFlashcard(documentId, { front: front.trim(), back: back.trim() });
+    addFlashcard(documentId, workspaceId, { front: front.trim(), back: back.trim() });
     setFront('');
     setBack('');
     setIsAdding(false);

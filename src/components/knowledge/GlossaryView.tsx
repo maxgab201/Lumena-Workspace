@@ -7,9 +7,10 @@ import { Textarea } from '../ui/Textarea';
 
 interface GlossaryViewProps {
   documentId: string;
+  workspaceId: string;
 }
 
-export const GlossaryView = ({ documentId }: GlossaryViewProps) => {
+export const GlossaryView = ({ documentId, workspaceId }: GlossaryViewProps) => {
   const { glossary, addGlossaryTerm } = useKnowledgeStore();
   const [isAdding, setIsAdding] = useState(false);
   const [term, setTerm] = useState('');
@@ -19,7 +20,7 @@ export const GlossaryView = ({ documentId }: GlossaryViewProps) => {
 
   const handleSave = () => {
     if (!term.trim() || !definition.trim()) return;
-    addGlossaryTerm(documentId, { term: term.trim(), definition: definition.trim() });
+    addGlossaryTerm(documentId, workspaceId, { term: term.trim(), definition: definition.trim() });
     setTerm('');
     setDefinition('');
     setIsAdding(false);

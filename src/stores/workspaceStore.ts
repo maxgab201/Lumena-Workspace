@@ -15,6 +15,8 @@ interface Document {
   size_bytes: number;
   status?: string;
   file_path: string;
+  mime_type?: string | null;
+  page_count?: number | null;
   created_at: string;
 }
 
@@ -23,6 +25,7 @@ interface WorkspaceStore {
   activeWorkspace: Workspace | null;
   documents: Document[];
   loading: boolean;
+  uploadProgress: number;
   error: string | null;
   fetchWorkspaces: () => Promise<void>;
   createWorkspace: (name: string) => Promise<void>;
@@ -40,6 +43,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   activeWorkspace: null,
   documents: [],
   loading: false,
+  uploadProgress: 0,
   error: null,
 
   fetchWorkspaces: async () => {
@@ -52,7 +56,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         created_at: item.created_at,
       }));
       set({ workspaces, loading: false });
-      
+
       // Auto-select first workspace if none active
       if (workspaces.length > 0 && !get().activeWorkspace) {
         get().setActiveWorkspace(workspaces[0]);
@@ -62,7 +66,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  createWorkspace: async (name: string) => {
+  createWorkspace: async (name) => {
     set({ loading: true, error: null });
     try {
       const newWorkspace = await WorkspaceRepository.createWorkspace(name);
@@ -77,7 +81,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  renameWorkspace: async (id: string, name: string) => {
+  renameWorkspace: async (id, name) => {
     set({ loading: true, error: null });
     try {
       const updated = await WorkspaceRepository.updateWorkspace(id, name);
@@ -92,7 +96,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  deleteWorkspace: async (id: string) => {
+  deleteWorkspace: async (id) => {
     set({ loading: true, error: null });
     try {
       await WorkspaceRepository.deleteWorkspace(id);
@@ -110,7 +114,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  setActiveWorkspace: (workspace: Workspace | null) => {
+  setActiveWorkspace: (workspace) => {
     set({ activeWorkspace: workspace });
     if (workspace) {
       get().fetchDocuments(workspace.id);
@@ -119,7 +123,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  fetchDocuments: async (workspaceId: string) => {
+  fetchDocuments: async (workspaceId) => {
     set({ loading: true, error: null });
     try {
       const documents = await DocumentRepository.listDocuments(workspaceId);
@@ -129,18 +133,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  uploadDocument: async (file: File) => {
+  uploadDocument: async (file) => {
     const { activeWorkspace } = get();
     if (!activeWorkspace) throw new Error('No active workspace');
-    set({ loading: true, error: null });
+    set({ loading: true, error: null, uploadProgress: 0 });
     try {
-      const bucketName = 'documents';
-      const fileExt = file.name.split('.').pop();
+      const fileExt = file.name.split('.').pop() ?? 'pdf';
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
       const filePath = `${activeWorkspace.id}/${fileName}`;
 
-      // Upload file to storage
-      await DocumentRepository.uploadFile(bucketName, filePath, file);
+      // Upload file to workspace_documents storage bucket with progress tracking
+      await DocumentRepository.uploadFile(filePath, file, (progress) => {
+        set({ uploadProgress: progress });
+      });
 
       // Create document record in database
       const newDoc = await DocumentRepository.createDocumentRecord({
@@ -148,26 +153,25 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         name: file.name,
         size_bytes: file.size,
         file_path: filePath,
+        mime_type: file.type || 'application/pdf',
       });
 
       set((state) => ({
         documents: [newDoc, ...state.documents],
         loading: false,
+        uploadProgress: 0,
       }));
     } catch (err: any) {
-      set({ error: err.message, loading: false });
+      set({ error: err.message, loading: false, uploadProgress: 0 });
       throw err;
     }
   },
 
-  renameDocument: async (id: string, name: string) => {
-    // Note: We need a renameDocument in DocumentRepository, but for now we just throw or implement locally
-    // Or better, update supabase to rename the document. Let's just mock it to avoid TS error, or use supabase directly
-    const { supabase } = await import('../lib/supabase');
+  renameDocument: async (id, name) => {
+    // Uses repository — no direct Supabase access from stores
     set({ loading: true, error: null });
     try {
-      const { error } = await supabase.from('documents').update({ name }).eq('id', id).select().single();
-      if (error) throw error;
+      await DocumentRepository.renameDocument(id, name);
       set((state) => ({
         documents: state.documents.map((d) => (d.id === id ? { ...d, name } : d)),
         loading: false,
@@ -178,14 +182,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
-  deleteDocument: async (documentId: string) => {
+  deleteDocument: async (documentId) => {
     set({ loading: true, error: null });
     try {
       const doc = get().documents.find((d) => d.id === documentId);
       if (!doc) throw new Error('Document not found');
 
-      const bucketName = 'documents';
-      await DocumentRepository.deleteDocument(doc.id, bucketName, doc.file_path);
+      // Repository handles bucket selection internally
+      await DocumentRepository.deleteDocument(doc.id, doc.file_path);
 
       set((state) => ({
         documents: state.documents.filter((d) => d.id !== documentId),
