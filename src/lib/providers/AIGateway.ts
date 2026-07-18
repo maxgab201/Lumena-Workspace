@@ -18,8 +18,8 @@ export class AIGateway {
    * @returns A promise resolving to the generated AIData.
    */
   static async generate(prompt: string, context?: any): Promise<ProviderResult<AIData>> {
-    const hasCredits = useBillingStore.getState().consumeCredits(1, 'AI Generation');
-    if (!hasCredits) {
+    const account = useBillingStore.getState().account;
+    if (!account || account.available <= 0) {
       throw new Error('Insufficient credits. Please upgrade your plan or purchase more credits.');
     }
 
@@ -53,8 +53,8 @@ export class AIGateway {
     context: any | undefined, 
     onChunk: (chunk: string) => void
   ): Promise<string> {
-    const hasCredits = useBillingStore.getState().consumeCredits(1, 'AI Stream Generation');
-    if (!hasCredits) {
+    const account = useBillingStore.getState().account;
+    if (!account || account.available <= 0) {
       throw new Error('Insufficient credits. Please upgrade your plan or purchase more credits.');
     }
 
