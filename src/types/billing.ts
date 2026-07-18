@@ -5,6 +5,7 @@ export interface SubscriptionPlan {
   name: string;
   price: number;
   monthlyCredits: number;
+  allowedModels: string[];
   features: string[];
 }
 
@@ -28,13 +29,21 @@ export const PLANS: Record<PlanType, SubscriptionPlan> = {
     name: 'Free',
     price: 0,
     monthlyCredits: 50,
-    features: ['50 AI Queries / month', '3 Workspaces', 'Standard Processing']
+    allowedModels: ['gemini-1.5-flash'],
+    features: ['50 AI Queries / month', '3 Workspaces', 'Standard Processing', 'Gemini 1.5 Flash only']
   },
   pro: {
     id: 'pro',
     name: 'Pro',
     price: 15,
     monthlyCredits: 1000,
-    features: ['1000 AI Queries / month', 'Unlimited Workspaces', 'Priority Processing', 'Early Access Features']
+    allowedModels: ['gemini-1.5-flash', 'gemini-1.5-pro'],
+    features: ['1000 AI Queries / month', 'Unlimited Workspaces', 'Priority Processing', 'Early Access Features', 'Gemini 1.5 Pro access']
   }
 };
+
+export const AVAILABLE_MODELS: { code: string; name: string; requiredPlan: PlanType }[] = [
+  { code: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash (Fast)', requiredPlan: 'free' },
+  { code: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro (Advanced)', requiredPlan: 'pro' },
+];
+

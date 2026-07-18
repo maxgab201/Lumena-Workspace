@@ -33,11 +33,67 @@ serve(async (req) => {
     }
 
     const payload = await req.json()
-    const { prompt, workspace_id, action_type = 'chat', model_code = 'gemini-1.5-pro', fallback_models, document_id = null } = payload
+    const { prompt, workspace_id, action_type = 'chat', model_code = 'gemini-1.5-flash', fallback_models, document_id = null } = payload
 
     if (!prompt || !workspace_id) {
       return new Response(JSON.stringify({ error: 'Missing prompt or workspace_id' }), { status: 400, headers: corsHeaders })
     }
+
+    // ==========================================
+    // PLAN ENFORCEMENT: Fetch subscription
+    // ==========================================
+    const { data: subscription } = await supabaseClient
+      .from('subscriptions')
+      .select('plan_code')
+      .eq('workspace_id', workspace_id)
+      .single()
+
+    const planCode: string = subscription?.plan_code ?? 'free'
+
+    // Define plan capabilities
+    const PLAN_MODELS: Record<string, string[]> = {
+      free: ['gemini-1.5-flash'],
+      pro: ['gemini-1.5-flash', 'gemini-1.5-pro'],
+    }
+    const PLAN_MONTHLY_CREDIT_QUOTA: Record<string, number> = {
+      free: 50,
+      pro: 1000,
+    }
+
+    const allowedModels = PLAN_MODELS[planCode] ?? PLAN_MODELS['free']
+    const monthlyQuota = PLAN_MONTHLY_CREDIT_QUOTA[planCode] ?? 50
+
+    // Block access to restricted models
+    if (!allowedModels.includes(model_code)) {
+      return new Response(JSON.stringify({
+        error: `Model "${model_code}" is not available on the ${planCode} plan. Please upgrade to access advanced models.`,
+        plan_required: 'pro',
+        current_plan: planCode,
+      }), { status: 403, headers: corsHeaders })
+    }
+
+    // Enforce monthly credit quota
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+    const { data: monthlyUsage } = await supabaseClient
+      .from('credit_ledger')
+      .select('amount')
+      .eq('workspace_id', workspace_id)
+      .eq('entry_type', 'consume')
+      .gte('created_at', monthStart)
+
+    const totalConsumedThisMonth = monthlyUsage
+      ? monthlyUsage.reduce((acc: number, row: any) => acc + row.amount, 0)
+      : 0
+
+    if (totalConsumedThisMonth >= monthlyQuota) {
+      return new Response(JSON.stringify({
+        error: `Monthly credit quota of ${monthlyQuota} credits reached for your ${planCode} plan. Please upgrade or purchase additional credits.`,
+        quota: monthlyQuota,
+        consumed: totalConsumedThisMonth,
+        plan_required: planCode === 'free' ? 'pro' : null,
+      }), { status: 402, headers: corsHeaders })
+    }
+
 
     // ==========================================
     // SECURITY 1: Prompt Injection Check
