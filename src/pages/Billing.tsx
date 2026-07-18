@@ -10,7 +10,7 @@ import { cn } from '../lib/utils';
 import { motion } from 'framer-motion';
 
 export const Billing = () => {
-  const { subscription, account, transactions, fetchBillingData } = useBillingStore();
+  const { subscription, account, transactions, packages, loading, checkoutPackage, fetchBillingData } = useBillingStore();
   
   useEffect(() => {
     fetchBillingData();
@@ -263,6 +263,48 @@ export const Billing = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Credit Packages Section */}
+      <section className="mb-8">
+        <div className="flex flex-col mb-6">
+          <h2 className="text-2xl font-heading font-bold">Buy Additional Credits</h2>
+          <p className="text-muted-foreground text-sm mt-1">Need more credits this month? Top up your balance with a one-time purchase.</p>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {packages.length === 0 && (
+            <div className="col-span-3 text-center py-12 border border-white/5 border-dashed rounded-xl bg-secondary/10">
+              <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-muted-foreground text-sm">No credit packages available at the moment.</p>
+            </div>
+          )}
+          {packages.map((pkg) => (
+            <Card key={pkg.id} className="border-white/5 bg-card/40 backdrop-blur-md shadow-sm hover:shadow-md hover:border-accent/30 transition-all flex flex-col justify-between">
+              <CardHeader>
+                <CardTitle>{pkg.name}</CardTitle>
+                <CardDescription>{pkg.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold font-heading mb-2 text-foreground">
+                  ${pkg.price_usd}
+                </div>
+                <div className="text-sm font-medium text-accent flex items-center">
+                  <Zap className="w-4 h-4 mr-1.5 fill-accent" /> {pkg.credits.toLocaleString()} Credits
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button 
+                  className="w-full bg-secondary hover:bg-secondary/80 text-foreground"
+                  disabled={loading}
+                  onClick={() => checkoutPackage(pkg.id)}
+                >
+                  Buy Now
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </section>
 
       <UpgradeModal 
         isOpen={isUpgradeModalOpen} 

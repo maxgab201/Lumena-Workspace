@@ -26,42 +26,56 @@ interface CreditAccount {
   expired: number;
 }
 
+interface CreditPackage {
+  id: string;
+  name: string;
+  description: string | null;
+  credits: number;
+  price_usd: number;
+  stripe_price_id: string | null;
+}
+
 interface BillingStore {
   subscription: Subscription | null;
   account: CreditAccount | null;
   transactions: LedgerEntry[];
+  packages: CreditPackage[];
   loading: boolean;
   error: string | null;
   fetchBillingData: () => Promise<void>;
   upgradeToPro: () => Promise<void>;
+  checkoutPackage: (packageId: string) => Promise<void>;
 }
 
 export const useBillingStore = create<BillingStore>((set) => ({
   subscription: null,
   account: null,
   transactions: [],
+  packages: [],
   loading: false,
   error: null,
 
   fetchBillingData: async () => {
     const workspace = useWorkspaceStore.getState().activeWorkspace;
     if (!workspace) {
-      set({ subscription: null, account: null, transactions: [], loading: false, error: 'No workspace selected' });
+      set({ subscription: null, account: null, transactions: [], packages: [], loading: false, error: 'No workspace selected' });
       return;
     }
 
     set({ loading: true, error: null });
     try {
-      const [sub, account, txs] = await Promise.all([
+      const [sub, account, txs, pkgs] = await Promise.all([
         BillingRepository.getSubscription(workspace.id),
         BillingRepository.getCreditAccount(workspace.id),
         BillingRepository.getLedgerEntries(workspace.id),
+        BillingRepository.getCreditPackages(),
       ]);
 
       set({
         subscription: sub,
         account: account,
         transactions: txs || [],
+        packages: pkgs || [],
         loading: false,
       });
     } catch (err: any) {
@@ -70,13 +84,30 @@ export const useBillingStore = create<BillingStore>((set) => ({
   },
 
   upgradeToPro: async () => {
+    const workspace = useWorkspaceStore.getState().activeWorkspace;
+    if (!workspace) return;
+    
     set({ loading: true, error: null });
     try {
-      // Placeholder logic for Stripe checkout transition
-      // In reality, this would call a backend function to generate a Stripe Checkout URL
-      // and redirect the user.
+      // In a real scenario with subscription plans mapped to packages, we could pass the correct packageId
+      // For now, this is a placeholder or relies on the backend to know it's a subscription upgrade
       alert('Upgrading to Pro will redirect to Stripe Checkout in the final implementation.');
       set({ loading: false });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+    }
+  },
+
+  checkoutPackage: async (packageId: string) => {
+    const workspace = useWorkspaceStore.getState().activeWorkspace;
+    if (!workspace) return;
+    
+    set({ loading: true, error: null });
+    try {
+      const response = await BillingRepository.createCheckoutSession(workspace.id, packageId);
+      if (response && response.url) {
+        window.location.href = response.url;
+      }
     } catch (err: any) {
       set({ error: err.message, loading: false });
     }

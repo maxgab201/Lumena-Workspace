@@ -277,6 +277,39 @@ export type Database = {
           },
         ]
       }
+      credit_packages: {
+        Row: {
+          created_at: string
+          credits: number
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          price_usd: number
+          stripe_price_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          credits: number
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price_usd: number
+          stripe_price_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          credits?: number
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price_usd?: number
+          stripe_price_id?: string | null
+        }
+        Relationships: []
+      }
       credit_reservations: {
         Row: {
           created_at: string
@@ -973,6 +1006,60 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      purchases: {
+        Row: {
+          amount_usd: number
+          completed_at: string | null
+          created_at: string
+          credits_granted: number
+          id: string
+          package_id: string | null
+          status: string
+          stripe_session_id: string | null
+          user_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          amount_usd: number
+          completed_at?: string | null
+          created_at?: string
+          credits_granted: number
+          id?: string
+          package_id?: string | null
+          status?: string
+          stripe_session_id?: string | null
+          user_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          amount_usd?: number
+          completed_at?: string | null
+          created_at?: string
+          credits_granted?: number
+          id?: string
+          package_id?: string | null
+          status?: string
+          stripe_session_id?: string | null
+          user_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchases_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "credit_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchases_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rate_limit_counters: {
         Row: {
