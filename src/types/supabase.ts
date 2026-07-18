@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -104,6 +104,7 @@ export type Database = {
       documents: {
         Row: {
           created_at: string
+          file_hash: string | null
           file_path: string
           id: string
           mime_type: string | null
@@ -116,6 +117,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          file_hash?: string | null
           file_path: string
           id?: string
           mime_type?: string | null
@@ -128,6 +130,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          file_hash?: string | null
           file_path?: string
           id?: string
           mime_type?: string | null
@@ -429,34 +432,46 @@ export type Database = {
       }
       processing_jobs: {
         Row: {
+          completed_at: string | null
           created_at: string
           document_id: string
-          error_details: string | null
+          error_message: string | null
           id: string
+          processing_time: number | null
           progress: number
           provider_metadata: Json | null
+          retry_count: number
+          started_at: string | null
           status: Database["public"]["Enums"]["job_status"]
           updated_at: string
           workspace_id: string
         }
         Insert: {
+          completed_at?: string | null
           created_at?: string
           document_id: string
-          error_details?: string | null
+          error_message?: string | null
           id?: string
+          processing_time?: number | null
           progress?: number
           provider_metadata?: Json | null
+          retry_count?: number
+          started_at?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           updated_at?: string
           workspace_id: string
         }
         Update: {
+          completed_at?: string | null
           created_at?: string
           document_id?: string
-          error_details?: string | null
+          error_message?: string | null
           id?: string
+          processing_time?: number | null
           progress?: number
           provider_metadata?: Json | null
+          retry_count?: number
+          started_at?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           updated_at?: string
           workspace_id?: string
@@ -792,6 +807,7 @@ export type Database = {
         | "retrying"
         | "cancelled"
         | "paused"
+        | "processing"
       plan_type: "free" | "pro" | "team" | "enterprise"
       transaction_type: "grant" | "purchase" | "usage"
       workspace_role: "owner" | "member" | "viewer"
@@ -935,6 +951,7 @@ export const Constants = {
         "retrying",
         "cancelled",
         "paused",
+        "processing",
       ],
       plan_type: ["free", "pro", "team", "enterprise"],
       transaction_type: ["grant", "purchase", "usage"],

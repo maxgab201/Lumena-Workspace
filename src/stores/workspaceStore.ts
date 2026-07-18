@@ -18,6 +18,7 @@ interface Document {
   mime_type?: string | null;
   page_count?: number | null;
   created_at: string;
+  progress?: number;
 }
 
 interface WorkspaceStore {
@@ -36,6 +37,8 @@ interface WorkspaceStore {
   uploadDocument: (file: File) => Promise<void>;
   renameDocument: (id: string, name: string) => Promise<void>;
   deleteDocument: (documentId: string) => Promise<void>;
+  setupSubscriptions: (workspaceId: string) => void;
+  cleanupSubscriptions: () => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
@@ -45,6 +48,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   loading: false,
   uploadProgress: 0,
   error: null,
+  _subscription: null as any,
 
   fetchWorkspaces: async () => {
     set({ loading: true, error: null });
@@ -115,9 +119,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   setActiveWorkspace: (workspace) => {
+    const { cleanupSubscriptions, setupSubscriptions, fetchDocuments } = get();
+    cleanupSubscriptions();
+    
     set({ activeWorkspace: workspace });
+    
     if (workspace) {
-      get().fetchDocuments(workspace.id);
+      fetchDocuments(workspace.id);
+      setupSubscriptions(workspace.id);
     } else {
       set({ documents: [] });
     }
@@ -156,8 +165,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         mime_type: file.type || 'application/pdf',
       });
 
+      // Create backend processing job
+      await DocumentRepository.createProcessingJob(activeWorkspace.id, newDoc.id);
+
       set((state) => ({
-        documents: [newDoc, ...state.documents],
+        documents: [{ ...newDoc, progress: 0 }, ...state.documents],
         loading: false,
         uploadProgress: 0,
       }));
@@ -197,6 +209,33 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       }));
     } catch (err: any) {
       set({ error: err.message, loading: false });
+    }
+  },
+
+  setupSubscriptions: (workspaceId) => {
+    const sub = DocumentRepository.subscribeToProcessingJobs(workspaceId, (job) => {
+      set((state) => {
+        const documents = state.documents.map((doc) => {
+          if (doc.id === job.document_id) {
+            return {
+              ...doc,
+              status: job.status === 'completed' ? 'ready' : job.status === 'failed' ? 'error' : 'processing',
+              progress: job.progress,
+            };
+          }
+          return doc;
+        });
+        return { documents };
+      });
+    });
+    set({ _subscription: sub } as any);
+  },
+
+  cleanupSubscriptions: () => {
+    const state = get() as any;
+    if (state._subscription) {
+      state._subscription.unsubscribe();
+      set({ _subscription: null } as any);
     }
   },
 }));
