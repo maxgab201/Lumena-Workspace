@@ -39,14 +39,104 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Missing prompt or workspace_id' }), { status: 400, headers: corsHeaders })
     }
 
-    // Default fallback chain if none provided
+    // ==========================================
+    // SECURITY 1: Prompt Injection Check
+    // ==========================================
+    const injectionRegex = /(ignore\s+(all\s+)?(previous\s+)?instructions|system\s+prompt|system\s+override|forget\s+(all\s+)?previous)/i;
+    if (injectionRegex.test(prompt)) {
+      // Log Security Event
+      await supabaseClient.from('security_events').insert({
+        workspace_id,
+        user_id: user.id,
+        event_type: 'prompt_injection',
+        severity: 'HIGH',
+        signal: prompt.substring(0, 200), // Log snippet for audit
+        metadata: { action_type }
+      });
+      return new Response(JSON.stringify({ error: 'Malicious prompt detected and blocked.' }), { status: 400, headers: corsHeaders });
+    }
+
+    // ==========================================
+    // SECURITY 2: Rate Limiting (Fixed Window)
+    // ==========================================
+    // 50 actions per hour
+    const ACTION_LIMIT = 50;
+    const now = new Date();
+    // Get start of the current hour
+    const windowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0).toISOString();
+    
+    // Fallback if RPC isn't created yet (for prototyping, we do upsert in TS, though prone to race conditions)
+    // Actually, we can just do a standard select + insert/update or rely on unique constraint
+    let currentCount = 0;
+    const { data: existingLimit } = await supabaseClient
+      .from('rate_limit_counters')
+      .select('id, count')
+      .eq('scope_type', 'workspace')
+      .eq('scope_id', workspace_id)
+      .eq('metric', 'actions_per_hour')
+      .eq('window_start', windowStart)
+      .single();
+
+    if (existingLimit) {
+      currentCount = existingLimit.count + 1;
+      await supabaseClient.from('rate_limit_counters').update({ count: currentCount }).eq('id', existingLimit.id);
+    } else {
+      currentCount = 1;
+      await supabaseClient.from('rate_limit_counters').insert({
+        scope_type: 'workspace',
+        scope_id: workspace_id,
+        metric: 'actions_per_hour',
+        window_start: windowStart,
+        count: currentCount
+      });
+    }
+
+    if (currentCount > ACTION_LIMIT) {
+      await supabaseClient.from('security_events').insert({
+        workspace_id,
+        user_id: user.id,
+        event_type: 'rate_limit',
+        severity: 'MEDIUM',
+        metadata: { limit: ACTION_LIMIT, metric: 'actions_per_hour' }
+      });
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }), { status: 429, headers: corsHeaders });
+    }
+
+    // ==========================================
+    // SECURITY 3: Circuit Breaker (Daily Cap)
+    // ==========================================
+    const DAILY_CREDIT_CAP = 10000;
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
+
+    const { data: dailyUsage } = await supabaseClient
+      .from('credit_ledger')
+      .select('amount')
+      .eq('workspace_id', workspace_id)
+      .eq('entry_type', 'consume')
+      .gte('created_at', dayStart);
+
+    const totalConsumedToday = dailyUsage ? dailyUsage.reduce((acc, row) => acc + row.amount, 0) : 0;
+
+    if (totalConsumedToday > DAILY_CREDIT_CAP) {
+      await supabaseClient.from('security_events').insert({
+        workspace_id,
+        user_id: user.id,
+        event_type: 'circuit_breaker',
+        severity: 'HIGH',
+        metadata: { cap: DAILY_CREDIT_CAP, consumed: totalConsumedToday }
+      });
+      return new Response(JSON.stringify({ error: 'Daily credit cap reached. Circuit breaker tripped.' }), { status: 403, headers: corsHeaders });
+    }
+
+    // ==========================================
+    // ROUTING & EXECUTION
+    // ==========================================
     const chain = fallback_models || [model_code, 'gemini-1.5-flash']
 
     const { result, usedModel } = await router.routeWithFallback(
       chain,
       prompt,
       async (currentModelCode: string, provider: AIProvider) => {
-        // 1. Fetch Model and Pricing
         const { data: modelData, error: modelError } = await supabaseClient
           .from('provider_models')
           .select('id, provider_id, max_output_tokens, provider_pricing(input_price_per_1k, output_price_per_1k, credit_conversion_rate)')
@@ -60,7 +150,6 @@ serve(async (req) => {
 
         const pricing = modelData.provider_pricing[0]
         
-        // 2. Estimate Cost and Check Credits
         const estimatedInputTokens = Math.max(10, Math.ceil(prompt.length / 4))
         const estimatedOutputTokens = 1000 
 
@@ -84,7 +173,6 @@ serve(async (req) => {
           throw insufficientErr
         }
 
-        // Insert Usage Job (Pending)
         const { data: usageJob, error: jobError } = await supabaseClient
           .from('usage_jobs')
           .insert({
@@ -99,7 +187,6 @@ serve(async (req) => {
 
         if (jobError) throw new Error('Failed to create usage job')
 
-        // Reserve Credits
         await supabaseClient.from('credit_accounts').update({
           available: accountData.available - reservedCredits,
           reserved: accountData.reserved + reservedCredits
@@ -107,10 +194,8 @@ serve(async (req) => {
 
         let providerResult;
         try {
-          // 3. Execute LLM Call via Provider Adapter
           providerResult = await provider.generate(currentModelCode, prompt)
         } catch (llmError: any) {
-          // Refund reserved credits
           await supabaseClient.from('credit_accounts').update({
             available: accountData.available,
             reserved: accountData.reserved
@@ -125,7 +210,6 @@ serve(async (req) => {
           throw llmError
         }
 
-        // 4. Calculate Actual Cost & Settle
         const inputTokens = providerResult.usage.inputTokens
         const outputTokens = providerResult.usage.outputTokens
         const actualInputCostUsd = (inputTokens / 1000) * pricing.input_price_per_1k
@@ -134,7 +218,6 @@ serve(async (req) => {
         
         const actualCostCredits = Math.max(1, Math.ceil(totalActualUsd * pricing.credit_conversion_rate))
 
-        // Update Usage Job
         await supabaseClient.from('usage_jobs').update({
           status: 'success',
           input_tokens: inputTokens,
@@ -143,7 +226,6 @@ serve(async (req) => {
           completed_at: new Date().toISOString()
         }).eq('id', usageJob.id)
 
-        // Ledger Entry (Consume)
         await supabaseClient.from('credit_ledger').insert({
           workspace_id,
           entry_type: 'consume',
@@ -152,7 +234,6 @@ serve(async (req) => {
           job_id: usageJob.id
         })
 
-        // Finalize Account Balances (Refund unused reservation)
         const { data: finalAccount } = await supabaseClient
           .from('credit_accounts')
           .select('available, reserved, consumed')
@@ -174,7 +255,6 @@ serve(async (req) => {
       }
     )
 
-    // 5. Return Response
     return new Response(JSON.stringify({ 
       text: result.text,
       usage: result.usage,
@@ -195,6 +275,6 @@ serve(async (req) => {
       }), { status: 402, headers: corsHeaders })
     }
 
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders })
+    return new Response(JSON.stringify({ error: err.message }), { status: err.status || 500, headers: corsHeaders })
   }
 })
