@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useKnowledgeStore } from '../../stores/knowledgeStore';
+import { useBillingStore } from '../../stores/billingStore';
 import { Button } from '../ui/Button';
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles, Loader2 } from 'lucide-react';
 import { Input } from '../ui/Input';
 import { Textarea } from '../ui/Textarea';
+import { toast } from 'sonner';
 
 interface GlossaryViewProps {
   documentId: string;
@@ -11,7 +13,8 @@ interface GlossaryViewProps {
 }
 
 export const GlossaryView = ({ documentId, workspaceId }: GlossaryViewProps) => {
-  const { glossary, addGlossaryTerm } = useKnowledgeStore();
+  const { glossary, addGlossaryTerm, generateGlossary, isGenerating } = useKnowledgeStore();
+  const { fetchBillingData } = useBillingStore();
   const [isAdding, setIsAdding] = useState(false);
   const [term, setTerm] = useState('');
   const [definition, setDefinition] = useState('');
@@ -26,12 +29,22 @@ export const GlossaryView = ({ documentId, workspaceId }: GlossaryViewProps) => 
     setIsAdding(false);
   };
 
+  const handleGenerate = async () => {
+    try {
+      await generateGlossary(documentId, workspaceId);
+      await fetchBillingData();
+      toast.success('Glossary generated!', { description: 'Key terms extracted from your document.' });
+    } catch (err: any) {
+      toast.error('Generation failed', { description: err.message });
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {docTerms.length === 0 && !isAdding ? (
           <div className="text-center text-muted-foreground mt-8 text-sm">
-            No glossary terms yet. Create one or extract from document.
+            No glossary terms yet. Create one or generate with AI.
           </div>
         ) : (
           docTerms.map((item) => (
@@ -67,7 +80,16 @@ export const GlossaryView = ({ documentId, workspaceId }: GlossaryViewProps) => 
         )}
       </div>
       
-      <div className="p-4 border-t border-white/10 bg-background/50">
+      <div className="p-4 border-t border-white/10 bg-background/50 flex flex-col gap-2">
+        <Button 
+          className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" 
+          onClick={handleGenerate}
+          disabled={isGenerating}
+          data-testid="generate-glossary-btn"
+        >
+          {isGenerating ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
+          {isGenerating ? 'Generating...' : 'Generate with AI'}
+        </Button>
         {!isAdding && (
           <Button 
             className="w-full" 

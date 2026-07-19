@@ -60,8 +60,8 @@ export const KnowledgeSidebar = ({ documentId, workspaceId, onClose }: Knowledge
       <div className="flex-1 overflow-hidden">
         {activeTab === 'flashcards' && <FlashcardsView documentId={documentId} workspaceId={workspaceId} />}
         {activeTab === 'glossary' && <GlossaryView documentId={documentId} workspaceId={workspaceId} />}
-        {activeTab === 'mindmap' && <MindMapView documentId={documentId} />}
-        {activeTab === 'timeline' && <TimelineView documentId={documentId} />}
+        {activeTab === 'mindmap' && <MindMapView documentId={documentId} workspaceId={workspaceId} />}
+        {activeTab === 'timeline' && <TimelineView documentId={documentId} workspaceId={workspaceId} />}
       </div>
     </div>
   );

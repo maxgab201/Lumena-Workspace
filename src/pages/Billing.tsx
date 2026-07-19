@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -10,16 +10,24 @@ import { cn } from '../lib/utils';
 import { motion } from 'framer-motion';
 
 export const Billing = () => {
-  const { subscription, transactions } = useBillingStore();
-  const currentPlan = (subscription?.plan || 'free') as PlanType;
-  const creditsRemaining = subscription?.credits_remaining || 0;
+  const { subscription, account, transactions, packages, loading, checkoutPackage, fetchBillingData } = useBillingStore();
+  
+  useEffect(() => {
+    fetchBillingData();
+  }, [fetchBillingData]);
+
+  const currentPlan = (subscription?.plan?.code || 'free') as PlanType;
+  const creditsRemaining = account?.available || 0;
+  const creditsConsumed = account?.consumed || 0;
+  const creditsReserved = account?.reserved || 0;
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
-  const plan = PLANS[currentPlan];
-  const usagePercentage = Math.min(100, Math.max(0, 100 - (creditsRemaining / plan.monthlyCredits) * 100));
+  const plan = PLANS[currentPlan] || PLANS.free;
+  const creditsTotal = plan.monthlyCredits || 50; // Fallback
+  const usagePercentage = Math.min(100, Math.max(0, (creditsConsumed / creditsTotal) * 100));
 
-  // Mock breakdown data
+  // Mock breakdown data (would come from specific ledger queries in production)
   const breakdown = [
     { label: 'OCR Processing', value: 45, icon: <FileText size={14} />, color: 'bg-blue-500' },
     { label: 'Chat Engine', value: 30, icon: <MessageSquare size={14} />, color: 'bg-purple-500' },
@@ -53,7 +61,7 @@ export const Billing = () => {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="font-semibold text-foreground">Credit Usage</span>
-                  <span className="text-muted-foreground font-mono">{plan.monthlyCredits - creditsRemaining} / {plan.monthlyCredits}</span>
+                  <span className="text-muted-foreground font-mono">{creditsConsumed} / {creditsTotal}</span>
                 </div>
                 <div className="h-3 w-full bg-secondary/40 overflow-hidden rounded-full border border-white/5">
                   <motion.div 
@@ -66,9 +74,16 @@ export const Billing = () => {
                     )}
                   />
                 </div>
-                <p className="text-xs text-muted-foreground mt-2 flex items-center">
-                  <Activity size={12} className="mr-1.5" /> {creditsRemaining} credits remaining this cycle
-                </p>
+                <div className="flex flex-col mt-2 gap-1 text-xs text-muted-foreground">
+                  <p className="flex items-center text-foreground font-semibold">
+                    <Activity size={12} className="mr-1.5" /> {creditsRemaining} credits available
+                  </p>
+                  {creditsReserved > 0 && (
+                    <p className="flex items-center text-orange-400">
+                      <Zap size={12} className="mr-1.5" /> {creditsReserved} credits currently reserved
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>
@@ -82,7 +97,7 @@ export const Billing = () => {
               </Button>
             ) : (
               <Button variant="outline" className="w-full text-foreground border-white/10 rounded-full h-11" disabled>
-                Manage Subscription (Coming Soon)
+                Manage Subscription
               </Button>
             )}
           </CardFooter>
@@ -200,13 +215,13 @@ export const Billing = () => {
           <CardTitle className="flex items-center gap-2">
              Transaction History
           </CardTitle>
-          <CardDescription>Recent credit grants, purchases, and usage.</CardDescription>
+          <CardDescription>Recent credit ledger entries.</CardDescription>
         </CardHeader>
         <CardContent>
           {transactions.length === 0 ? (
             <div className="text-center py-12 border border-white/5 border-dashed rounded-xl bg-secondary/10">
               <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-muted-foreground text-sm">No transactions yet.</p>
+              <p className="text-muted-foreground text-sm">No ledger entries yet.</p>
             </div>
           ) : (
             <div className="rounded-xl border border-white/5 overflow-hidden bg-background/50">
@@ -214,7 +229,7 @@ export const Billing = () => {
                 <thead className="bg-secondary/30 border-b border-white/5 text-muted-foreground">
                   <tr>
                     <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Date</th>
-                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Description</th>
+                    <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider">Entry Type</th>
                     <th className="px-6 py-4 font-semibold text-xs uppercase tracking-wider text-right">Amount</th>
                   </tr>
                 </thead>
@@ -222,24 +237,23 @@ export const Billing = () => {
                   {transactions.map((tx) => (
                     <tr key={tx.id} className="hover:bg-secondary/40 transition-colors">
                       <td className="px-6 py-4 text-muted-foreground font-mono text-xs">
-                        {new Date(tx.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                        {new Date(tx.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                       </td>
                       <td className="px-6 py-4 font-medium text-foreground">
-                        {tx.description}
                         <span className={cn(
-                          "ml-3 text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider",
-                          tx.type === 'usage' ? "bg-destructive/10 text-destructive" : 
-                          tx.type === 'grant' ? "bg-blue-500/10 text-blue-500" :
-                          "bg-emerald-500/10 text-emerald-500"
+                          "text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider",
+                          ['consume', 'reserve'].includes(tx.entry_type) ? "bg-destructive/10 text-destructive" : 
+                          tx.entry_type.includes('grant') ? "bg-emerald-500/10 text-emerald-500" :
+                          "bg-blue-500/10 text-blue-500"
                         )}>
-                          {tx.type}
+                          {tx.entry_type}
                         </span>
                       </td>
                       <td className={cn(
                         "px-6 py-4 text-right font-bold font-mono",
-                        tx.amount > 0 ? "text-emerald-500" : "text-destructive"
+                        tx.direction > 0 ? "text-emerald-500" : "text-destructive"
                       )}>
-                        {tx.amount > 0 ? '+' : ''}{tx.amount}
+                        {tx.direction > 0 ? '+' : '-'}{tx.amount}
                       </td>
                     </tr>
                   ))}
@@ -249,6 +263,48 @@ export const Billing = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Credit Packages Section */}
+      <section className="mb-8">
+        <div className="flex flex-col mb-6">
+          <h2 className="text-2xl font-heading font-bold">Buy Additional Credits</h2>
+          <p className="text-muted-foreground text-sm mt-1">Need more credits this month? Top up your balance with a one-time purchase.</p>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          {packages.length === 0 && (
+            <div className="col-span-3 text-center py-12 border border-white/5 border-dashed rounded-xl bg-secondary/10">
+              <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-muted-foreground text-sm">No credit packages available at the moment.</p>
+            </div>
+          )}
+          {packages.map((pkg) => (
+            <Card key={pkg.id} className="border-white/5 bg-card/40 backdrop-blur-md shadow-sm hover:shadow-md hover:border-accent/30 transition-all flex flex-col justify-between">
+              <CardHeader>
+                <CardTitle>{pkg.name}</CardTitle>
+                <CardDescription>{pkg.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-bold font-heading mb-2 text-foreground">
+                  ${pkg.price_usd}
+                </div>
+                <div className="text-sm font-medium text-accent flex items-center">
+                  <Zap className="w-4 h-4 mr-1.5 fill-accent" /> {pkg.credits.toLocaleString()} Credits
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button 
+                  className="w-full bg-secondary hover:bg-secondary/80 text-foreground"
+                  disabled={loading}
+                  onClick={() => checkoutPackage(pkg.id)}
+                >
+                  Buy Now
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      </section>
 
       <UpgradeModal 
         isOpen={isUpgradeModalOpen} 

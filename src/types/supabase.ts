@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      billing_customers: {
+        Row: {
+          billing_email: string | null
+          created_at: string
+          external_customer_id: string
+          provider: string
+          workspace_id: string
+        }
+        Insert: {
+          billing_email?: string | null
+          created_at?: string
+          external_customer_id: string
+          provider?: string
+          workspace_id: string
+        }
+        Update: {
+          billing_email?: string | null
+          created_at?: string
+          external_customer_id?: string
+          provider?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_customers_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           content: string
@@ -101,9 +133,238 @@ export type Database = {
           },
         ]
       }
+      credit_accounts: {
+        Row: {
+          available: number
+          consumed: number
+          expired: number
+          reserved: number
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          available?: number
+          consumed?: number
+          expired?: number
+          reserved?: number
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          available?: number
+          consumed?: number
+          expired?: number
+          reserved?: number
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_accounts_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: true
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_buckets: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          original_amount: number
+          priority: number
+          remaining_amount: number
+          source_type: string
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          original_amount: number
+          priority?: number
+          remaining_amount: number
+          source_type: string
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          original_amount?: number
+          priority?: number
+          remaining_amount?: number
+          source_type?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_buckets_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_ledger: {
+        Row: {
+          amount: number
+          bucket_id: string | null
+          created_at: string
+          direction: number
+          entry_type: Database["public"]["Enums"]["ledger_entry_type"]
+          id: string
+          idempotency_key: string | null
+          job_id: string | null
+          reservation_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          amount: number
+          bucket_id?: string | null
+          created_at?: string
+          direction: number
+          entry_type: Database["public"]["Enums"]["ledger_entry_type"]
+          id?: string
+          idempotency_key?: string | null
+          job_id?: string | null
+          reservation_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          amount?: number
+          bucket_id?: string | null
+          created_at?: string
+          direction?: number
+          entry_type?: Database["public"]["Enums"]["ledger_entry_type"]
+          id?: string
+          idempotency_key?: string | null
+          job_id?: string | null
+          reservation_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_ledger_bucket_id_fkey"
+            columns: ["bucket_id"]
+            isOneToOne: false
+            referencedRelation: "credit_buckets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_ledger_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "processing_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_ledger_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "credit_reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_ledger_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      credit_packages: {
+        Row: {
+          created_at: string
+          credits: number
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          price_usd: number
+          stripe_price_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          credits: number
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          price_usd: number
+          stripe_price_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          credits?: number
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          price_usd?: number
+          stripe_price_id?: string | null
+        }
+        Relationships: []
+      }
+      credit_reservations: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          job_id: string | null
+          requested_amount: number
+          reserved_amount: number
+          settled_amount: number
+          status: Database["public"]["Enums"]["reservation_status"]
+          workspace_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          job_id?: string | null
+          requested_amount: number
+          reserved_amount: number
+          settled_amount?: number
+          status?: Database["public"]["Enums"]["reservation_status"]
+          workspace_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          job_id?: string | null
+          requested_amount?: number
+          reserved_amount?: number
+          settled_amount?: number
+          status?: Database["public"]["Enums"]["reservation_status"]
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_reservations_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "processing_jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_reservations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           created_at: string
+          file_hash: string | null
           file_path: string
           id: string
           mime_type: string | null
@@ -116,6 +377,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          file_hash?: string | null
           file_path: string
           id?: string
           mime_type?: string | null
@@ -128,6 +390,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          file_hash?: string | null
           file_path?: string
           id?: string
           mime_type?: string | null
@@ -395,6 +658,95 @@ export type Database = {
           },
         ]
       }
+      payment_events: {
+        Row: {
+          event_type: string
+          external_event_id: string
+          id: string
+          processed_at: string
+          provider: string
+          status: string
+        }
+        Insert: {
+          event_type: string
+          external_event_id: string
+          id?: string
+          processed_at?: string
+          provider?: string
+          status?: string
+        }
+        Update: {
+          event_type?: string
+          external_event_id?: string
+          id?: string
+          processed_at?: string
+          provider?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      plan_prices: {
+        Row: {
+          amount: number
+          billing_interval: string
+          created_at: string
+          currency: string
+          external_price_id: string | null
+          id: string
+          plan_id: string
+        }
+        Insert: {
+          amount: number
+          billing_interval: string
+          created_at?: string
+          currency?: string
+          external_price_id?: string | null
+          id?: string
+          plan_id: string
+        }
+        Update: {
+          amount?: number
+          billing_interval?: string
+          created_at?: string
+          currency?: string
+          external_price_id?: string | null
+          id?: string
+          plan_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_prices_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          code: string
+          created_at: string
+          display_name: string
+          id: string
+          is_public: boolean | null
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          display_name: string
+          id?: string
+          is_public?: boolean | null
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          display_name?: string
+          id?: string
+          is_public?: boolean | null
+        }
+        Relationships: []
+      }
       processing_events: {
         Row: {
           created_at: string
@@ -429,34 +781,46 @@ export type Database = {
       }
       processing_jobs: {
         Row: {
+          completed_at: string | null
           created_at: string
           document_id: string
-          error_details: string | null
+          error_message: string | null
           id: string
+          processing_time: number | null
           progress: number
           provider_metadata: Json | null
+          retry_count: number
+          started_at: string | null
           status: Database["public"]["Enums"]["job_status"]
           updated_at: string
           workspace_id: string
         }
         Insert: {
+          completed_at?: string | null
           created_at?: string
           document_id: string
-          error_details?: string | null
+          error_message?: string | null
           id?: string
+          processing_time?: number | null
           progress?: number
           provider_metadata?: Json | null
+          retry_count?: number
+          started_at?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           updated_at?: string
           workspace_id: string
         }
         Update: {
+          completed_at?: string | null
           created_at?: string
           document_id?: string
-          error_details?: string | null
+          error_message?: string | null
           id?: string
+          processing_time?: number | null
           progress?: number
           provider_metadata?: Json | null
+          retry_count?: number
+          started_at?: string | null
           status?: Database["public"]["Enums"]["job_status"]
           updated_at?: string
           workspace_id?: string
@@ -537,49 +901,290 @@ export type Database = {
         }
         Relationships: []
       }
-      subscriptions: {
+      provider_models: {
         Row: {
+          code: string
           created_at: string
-          credits_remaining: number
-          current_period_end: string | null
-          current_period_start: string | null
           id: string
-          plan: Database["public"]["Enums"]["plan_type"]
-          stripe_customer_id: string | null
-          stripe_subscription_id: string | null
-          updated_at: string
-          user_id: string
+          is_active: boolean | null
+          max_input_tokens: number | null
+          max_output_tokens: number | null
+          name: string
+          provider_id: string
         }
         Insert: {
+          code: string
           created_at?: string
-          credits_remaining?: number
-          current_period_end?: string | null
-          current_period_start?: string | null
           id?: string
-          plan?: Database["public"]["Enums"]["plan_type"]
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          updated_at?: string
-          user_id: string
+          is_active?: boolean | null
+          max_input_tokens?: number | null
+          max_output_tokens?: number | null
+          name: string
+          provider_id: string
         }
         Update: {
+          code?: string
           created_at?: string
-          credits_remaining?: number
-          current_period_end?: string | null
-          current_period_start?: string | null
           id?: string
-          plan?: Database["public"]["Enums"]["plan_type"]
-          stripe_customer_id?: string | null
-          stripe_subscription_id?: string | null
-          updated_at?: string
-          user_id?: string
+          is_active?: boolean | null
+          max_input_tokens?: number | null
+          max_output_tokens?: number | null
+          name?: string
+          provider_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "subscriptions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "profiles"
+            foreignKeyName: "provider_models_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      provider_pricing: {
+        Row: {
+          billing_interval_start: string
+          created_at: string
+          credit_conversion_rate: number
+          id: string
+          input_price_per_1k: number
+          is_active: boolean | null
+          model_id: string
+          output_price_per_1k: number
+        }
+        Insert: {
+          billing_interval_start?: string
+          created_at?: string
+          credit_conversion_rate?: number
+          id?: string
+          input_price_per_1k: number
+          is_active?: boolean | null
+          model_id: string
+          output_price_per_1k: number
+        }
+        Update: {
+          billing_interval_start?: string
+          created_at?: string
+          credit_conversion_rate?: number
+          id?: string
+          input_price_per_1k?: number
+          is_active?: boolean | null
+          model_id?: string
+          output_price_per_1k?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "provider_pricing_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "provider_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      providers: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          is_active: boolean | null
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+        }
+        Relationships: []
+      }
+      purchases: {
+        Row: {
+          amount_usd: number
+          completed_at: string | null
+          created_at: string
+          credits_granted: number
+          id: string
+          package_id: string | null
+          status: string
+          stripe_session_id: string | null
+          user_id: string | null
+          workspace_id: string
+        }
+        Insert: {
+          amount_usd: number
+          completed_at?: string | null
+          created_at?: string
+          credits_granted: number
+          id?: string
+          package_id?: string | null
+          status?: string
+          stripe_session_id?: string | null
+          user_id?: string | null
+          workspace_id: string
+        }
+        Update: {
+          amount_usd?: number
+          completed_at?: string | null
+          created_at?: string
+          credits_granted?: number
+          id?: string
+          package_id?: string | null
+          status?: string
+          stripe_session_id?: string | null
+          user_id?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchases_package_id_fkey"
+            columns: ["package_id"]
+            isOneToOne: false
+            referencedRelation: "credit_packages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchases_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rate_limit_counters: {
+        Row: {
+          count: number
+          created_at: string
+          id: string
+          metric: string
+          scope_id: string
+          scope_type: string
+          window_start: string
+        }
+        Insert: {
+          count?: number
+          created_at?: string
+          id?: string
+          metric: string
+          scope_id: string
+          scope_type: string
+          window_start: string
+        }
+        Update: {
+          count?: number
+          created_at?: string
+          id?: string
+          metric?: string
+          scope_id?: string
+          scope_type?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
+      security_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          severity: string
+          signal: string | null
+          user_id: string | null
+          workspace_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          severity?: string
+          signal?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          severity?: string
+          signal?: string | null
+          user_id?: string | null
+          workspace_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          external_subscription_id: string
+          id: string
+          plan_id: string | null
+          provider: string
+          status: Database["public"]["Enums"]["subscription_status"]
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          external_subscription_id: string
+          id?: string
+          plan_id?: string | null
+          provider?: string
+          status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          external_subscription_id?: string
+          id?: string
+          plan_id?: string | null
+          provider?: string
+          status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subscriptions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscriptions_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
         ]
@@ -660,6 +1265,73 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      usage_jobs: {
+        Row: {
+          action_type: string
+          completed_at: string | null
+          document_id: string | null
+          error_details: string | null
+          id: string
+          input_tokens: number | null
+          model_id: string | null
+          output_tokens: number | null
+          started_at: string
+          status: string
+          total_cost_credits: number | null
+          workspace_id: string
+        }
+        Insert: {
+          action_type: string
+          completed_at?: string | null
+          document_id?: string | null
+          error_details?: string | null
+          id?: string
+          input_tokens?: number | null
+          model_id?: string | null
+          output_tokens?: number | null
+          started_at?: string
+          status?: string
+          total_cost_credits?: number | null
+          workspace_id: string
+        }
+        Update: {
+          action_type?: string
+          completed_at?: string | null
+          document_id?: string | null
+          error_details?: string | null
+          id?: string
+          input_tokens?: number | null
+          model_id?: string | null
+          output_tokens?: number | null
+          started_at?: string
+          status?: string
+          total_cost_credits?: number | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "usage_jobs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_jobs_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "provider_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "usage_jobs_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
             referencedColumns: ["id"]
           },
         ]
@@ -792,7 +1464,37 @@ export type Database = {
         | "retrying"
         | "cancelled"
         | "paused"
+        | "processing"
+      ledger_entry_type:
+        | "grant_plan"
+        | "grant_purchase"
+        | "grant_promotion"
+        | "reserve"
+        | "release"
+        | "consume"
+        | "refund"
+        | "expire"
+        | "chargeback_hold"
+        | "chargeback_reversal"
+        | "manual_adjustment"
       plan_type: "free" | "pro" | "team" | "enterprise"
+      reservation_status:
+        | "pending"
+        | "confirmed"
+        | "partially_settled"
+        | "released"
+        | "expired"
+        | "cancelled"
+        | "failed"
+      subscription_status:
+        | "trialing"
+        | "active"
+        | "past_due"
+        | "canceled"
+        | "unpaid"
+        | "incomplete"
+        | "incomplete_expired"
+        | "paused"
       transaction_type: "grant" | "purchase" | "usage"
       workspace_role: "owner" | "member" | "viewer"
     }
@@ -935,8 +1637,41 @@ export const Constants = {
         "retrying",
         "cancelled",
         "paused",
+        "processing",
+      ],
+      ledger_entry_type: [
+        "grant_plan",
+        "grant_purchase",
+        "grant_promotion",
+        "reserve",
+        "release",
+        "consume",
+        "refund",
+        "expire",
+        "chargeback_hold",
+        "chargeback_reversal",
+        "manual_adjustment",
       ],
       plan_type: ["free", "pro", "team", "enterprise"],
+      reservation_status: [
+        "pending",
+        "confirmed",
+        "partially_settled",
+        "released",
+        "expired",
+        "cancelled",
+        "failed",
+      ],
+      subscription_status: [
+        "trialing",
+        "active",
+        "past_due",
+        "canceled",
+        "unpaid",
+        "incomplete",
+        "incomplete_expired",
+        "paused",
+      ],
       transaction_type: ["grant", "purchase", "usage"],
       workspace_role: ["owner", "member", "viewer"],
     },

@@ -52,6 +52,13 @@ interface KnowledgeStoreState {
   deleteTimelineEvent: (id: string, documentId: string) => Promise<void>;
 
   setStudyMode: (active: boolean) => void;
+
+  // AI Generation actions
+  isGenerating: boolean;
+  generationError: string | null;
+  generateFlashcards: (documentId: string, workspaceId: string) => Promise<void>;
+  generateGlossary: (documentId: string, workspaceId: string) => Promise<void>;
+  generateMindMap: (documentId: string, workspaceId: string) => Promise<void>;
 }
 
 export const useKnowledgeStore = create<KnowledgeStoreState>((set) => ({
@@ -61,6 +68,8 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set) => ({
   timelineEvents: {},
   isStudyModeActive: false,
   isLoading: false,
+  isGenerating: false,
+  generationError: null,
 
   loadKnowledge: async (documentId) => {
     set({ isLoading: true });
@@ -214,4 +223,61 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set) => ({
   },
 
   setStudyMode: (active) => set({ isStudyModeActive: active }),
+
+  generateFlashcards: async (documentId, workspaceId) => {
+    set({ isGenerating: true, generationError: null });
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase.functions.invoke('generate-knowledge', {
+        body: { document_id: documentId, workspace_id: workspaceId, action_type: 'flashcards' }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      set((state) => ({
+        flashcards: { ...state.flashcards, [documentId]: [...(state.flashcards[documentId] ?? []), ...(data?.items ?? [])] },
+        isGenerating: false,
+      }));
+    } catch (err: any) {
+      set({ isGenerating: false, generationError: err.message });
+      throw err;
+    }
+  },
+
+  generateGlossary: async (documentId, workspaceId) => {
+    set({ isGenerating: true, generationError: null });
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase.functions.invoke('generate-knowledge', {
+        body: { document_id: documentId, workspace_id: workspaceId, action_type: 'glossary' }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      set((state) => ({
+        glossary: { ...state.glossary, [documentId]: [...(state.glossary[documentId] ?? []), ...(data?.items ?? [])] },
+        isGenerating: false,
+      }));
+    } catch (err: any) {
+      set({ isGenerating: false, generationError: err.message });
+      throw err;
+    }
+  },
+
+  generateMindMap: async (documentId, workspaceId) => {
+    set({ isGenerating: true, generationError: null });
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase.functions.invoke('generate-knowledge', {
+        body: { document_id: documentId, workspace_id: workspaceId, action_type: 'mindmap' }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      set((state) => ({
+        mindMapNodes: { ...state.mindMapNodes, [documentId]: [...(state.mindMapNodes[documentId] ?? []), ...(data?.items ?? [])] },
+        isGenerating: false,
+      }));
+    } catch (err: any) {
+      set({ isGenerating: false, generationError: err.message });
+      throw err;
+    }
+  },
 }));

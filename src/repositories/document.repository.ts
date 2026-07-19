@@ -50,6 +50,38 @@ export const DocumentRepository = {
   },
 
   /**
+   * Create a processing job for a document. This triggers the backend webhook.
+   */
+  async createProcessingJob(workspaceId: string, documentId: string) {
+    const { data, error } = await supabase
+      .from('processing_jobs')
+      .insert({
+        workspace_id: workspaceId,
+        document_id: documentId,
+        status: 'queued',
+        progress: 0,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  /**
+   * Subscribe to real-time updates for processing jobs in a workspace.
+   */
+  subscribeToProcessingJobs(workspaceId: string, onUpdate: (job: any) => void) {
+    return supabase
+      .channel(`processing_jobs_${workspaceId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'processing_jobs', filter: `workspace_id=eq.${workspaceId}` },
+        (payload) => onUpdate(payload.new)
+      )
+      .subscribe();
+  },
+
+  /**
    * Fetch a single document by ID.
    */
   async getDocument(id: string) {

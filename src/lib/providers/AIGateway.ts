@@ -1,83 +1,86 @@
-import { ProviderFallback } from './ProviderFallback';
-import type { AIData } from './interfaces/AIProvider';
-import type { ProviderResult } from './types';
-import { providerConfig } from './provider.config';
 import { useBillingStore } from '../../stores/billingStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { supabase } from '../supabase';
 
-/**
- * AIGateway orchestrates calls to text generation models (LLMs).
- * It uses the ProviderFallback system to ensure resilience and model routing.
- */
 export class AIGateway {
   /**
-   * Generates a text response based on a prompt and optional context.
-   * Routes through the fallback sequence defined for 'ai' capabilities.
-   * 
-   * @param prompt The prompt to send to the LLM.
-   * @param context Additional contextual data.
-   * @returns A promise resolving to the generated AIData.
+   * Generates a text response based on a prompt.
+   * This now routes securely through the Supabase Edge Function 'ai-gateway'
+   * to ensure accurate cost metering, credit reservation, and consumption.
    */
-  static async generate(prompt: string, context?: any): Promise<ProviderResult<AIData>> {
-    const hasCredits = useBillingStore.getState().consumeCredits(1, 'AI Generation');
-    if (!hasCredits) {
+  static async generate(prompt: string, context?: any, modelCode: string = 'gemini-1.5-flash'): Promise<{ text: string, usage?: any }> {
+    const account = useBillingStore.getState().account;
+    const workspaceId = useWorkspaceStore.getState().activeWorkspace?.id;
+
+    if (!workspaceId) {
+      throw new Error('No active workspace selected.');
+    }
+
+    if (!account || account.available <= 0) {
       throw new Error('Insufficient credits. Please upgrade your plan or purchase more credits.');
     }
 
     try {
-      const providerIds = providerConfig.fallbacks.ai || [];
-      const result = await ProviderFallback.executeWithFallback<any, ProviderResult<AIData>>(
-        providerIds,
-        async (provider) => {
-          // Type guard to ensure the provider is an AIProvider
-          if (provider.getMetadata().providerType !== 'ai') {
-            throw new Error(`Provider ${provider.getMetadata().id} does not support 'ai' generation.`);
-          }
-          
-          // Invoke the specific generate method on the AI provider
-          return provider.generate(prompt, context);
+      const { data, error } = await supabase.functions.invoke('ai-gateway', {
+        body: {
+          prompt,
+          workspace_id: workspaceId,
+          action_type: 'chat',
+          model_code: modelCode,
+          document_id: context?.documentId || null
         }
-      );
-      return result;
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Error generating AI response');
+      }
+
+      if (data.error) {
+        if (data.status === 402) {
+          throw new Error('Insufficient credits for this operation.');
+        }
+        throw new Error(data.error);
+      }
+
+      // Refresh billing data to reflect new account balances after consumption
+      useBillingStore.getState().fetchBillingData();
+
+      return {
+        text: data.text,
+        usage: data.usage
+      };
     } catch (error) {
-      console.error('[AIGateway] All AI providers failed:', error);
+      console.error('[AIGateway] Backend generation failed:', error);
       throw error;
     }
   }
 
   /**
-   * Generates a streamed response based on a prompt and optional context.
-   * Routes through the fallback sequence.
+   * Stub for streaming. 
+   * In a full implementation, we'd use native fetch to handle the ReadableStream 
+   * returned by the Edge Function, or standard Edge Function streaming responses.
+   * For Phase 16, we default to the synchronous metering call and mock the stream chunks.
    */
   static async generateStream(
     prompt: string, 
     context: any | undefined, 
+    modelCode: string = 'gemini-1.5-flash',
     onChunk: (chunk: string) => void
   ): Promise<string> {
-    const hasCredits = useBillingStore.getState().consumeCredits(1, 'AI Stream Generation');
-    if (!hasCredits) {
-      throw new Error('Insufficient credits. Please upgrade your plan or purchase more credits.');
+    // For now, we perform the synchronous call to guarantee metering,
+    // and then mock the streaming behavior to the UI.
+    const result = await this.generate(prompt, context, modelCode);
+    
+    // Simulate streaming the result text
+    const text = result.text;
+    const chunkSize = 10;
+    
+    for (let i = 0; i < text.length; i += chunkSize) {
+      onChunk(text.substring(i, i + chunkSize));
+      // Small delay to simulate network streaming
+      await new Promise(resolve => setTimeout(resolve, 20));
     }
-
-    try {
-      const providerIds = providerConfig.fallbacks.ai || [];
-      const result = await ProviderFallback.executeWithFallback<any, string>(
-        providerIds,
-        async (provider) => {
-          if (provider.getMetadata().providerType !== 'ai') {
-            throw new Error(`Provider ${provider.getMetadata().id} does not support 'ai' generation.`);
-          }
-          // The provider type guard needs to be cast to call the specific method
-          const aiProvider = provider as any; 
-          if (typeof aiProvider.generateStream !== 'function') {
-            throw new Error(`Provider ${provider.getMetadata().id} does not implement generateStream.`);
-          }
-          return aiProvider.generateStream(prompt, context, onChunk);
-        }
-      );
-      return result;
-    } catch (error) {
-      console.error('[AIGateway] All AI providers failed during streaming:', error);
-      throw error;
-    }
+    
+    return text;
   }
 }
