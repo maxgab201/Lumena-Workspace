@@ -56,9 +56,10 @@ export const Dashboard = () => {
       setIsUploading(true);
       await uploadDocument(file);
       toast.success('Document uploaded successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to upload document', error);
-      toast.error('Upload failed', { description: 'An error occurred while uploading the document.' });
+      const msg = error?.message || error?.error?.message || 'Error desconocido al subir el archivo.';
+      toast.error('Upload failed', { description: msg });
     } finally {
       setIsUploading(false);
     }
@@ -143,7 +144,7 @@ export const Dashboard = () => {
              <p className="text-xs text-muted-foreground">{t('dashboard.processingDetail')}</p>
            </div>
          ) : (
-           <div className="flex flex-col items-center justify-center space-y-4 pointer-events-none">
+           <div className="flex flex-col items-center justify-center space-y-4">
              <div className="w-16 h-16 rounded-full bg-background border border-white/5 flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg">
                <UploadCloud className="w-7 h-7 text-muted-foreground group-hover:text-accent transition-colors" />
              </div>

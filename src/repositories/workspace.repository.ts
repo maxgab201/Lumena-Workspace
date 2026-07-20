@@ -2,13 +2,25 @@ import { supabase } from '../lib/supabase';
 
 export const WorkspaceRepository = {
   async createWorkspace(name: string) {
-    const { data, error } = await supabase
+    // Get current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) throw new Error('Not authenticated');
+
+    // Create workspace
+    const { data: workspace, error } = await supabase
       .from('workspaces')
       .insert({ name })
       .select()
       .single();
     if (error) throw error;
-    return data;
+
+    // Add user as owner (required for RLS storage policies)
+    const { error: memberError } = await supabase
+      .from('workspace_members')
+      .insert({ workspace_id: workspace.id, user_id: user.id, role: 'owner' });
+    if (memberError) throw memberError;
+
+    return workspace;
   },
 
   async getWorkspaceById(id: string) {
