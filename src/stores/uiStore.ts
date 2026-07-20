@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import { SettingsRepository } from '../repositories/settings.repository';
 import { supabase } from '../lib/supabase';
+import { getLanguage, setLanguage, type Language } from '../i18n';
 
 interface UiStore {
   theme: 'light' | 'dark' | 'system';
+  lang: Language;
   viewMode: 'grid' | 'list';
   sortBy: 'date' | 'name' | 'size';
   sortOrder: 'asc' | 'desc';
@@ -12,6 +14,7 @@ interface UiStore {
   commandPaletteOpen: boolean;
   activeRightPanel: 'chat' | 'activity' | 'knowledge' | 'none' | null;
   setTheme: (theme: 'light' | 'dark' | 'system') => Promise<void>;
+  setLang: (lang: Language) => Promise<void>;
   setViewMode: (mode: 'grid' | 'list') => Promise<void>;
   setSortBy: (sort: 'date' | 'name' | 'size') => Promise<void>;
   toggleSortOrder: () => Promise<void>;
@@ -38,6 +41,7 @@ async function persistSettingsIfAuthenticated(
 
 export const useUiStore = create<UiStore>((set, get) => ({
   theme: 'system',
+  lang: getLanguage(),
   viewMode: 'grid',
   sortBy: 'date',
   sortOrder: 'desc',
@@ -62,6 +66,12 @@ export const useUiStore = create<UiStore>((set, get) => ({
     }
 
     await persistSettingsIfAuthenticated({ theme });
+  },
+
+  setLang: async (lang) => {
+    setLanguage(lang);
+    set({ lang });
+    await persistSettingsIfAuthenticated({ lang });
   },
 
   setViewMode: async (viewMode) => {
