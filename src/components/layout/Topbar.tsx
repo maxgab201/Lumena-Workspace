@@ -1,4 +1,4 @@
-import { Bell, Search, Command, Menu, ChevronRight } from 'lucide-react';
+import { Bell, Search, Command, Menu, ChevronRight, Globe } from 'lucide-react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/Avatar';
@@ -7,6 +7,16 @@ import { useUserStore } from '../../stores/userStore';
 import { useUiStore } from '../../stores/uiStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useState } from 'react';
+import { toast } from 'sonner';
+
+const LANGUAGES = [
+  { code: 'en', name: 'English', flag: '🇺🇸' },
+  { code: 'es', name: 'Español', flag: '🇪🇸' },
+  { code: 'pt', name: 'Português', flag: '🇧🇷' },
+  { code: 'fr', name: 'Français', flag: '🇫🇷' },
+  { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
+  { code: 'it', name: 'Italiano', flag: '🇮🇹' },
+];
 
 export const Topbar = () => {
   const { user, profile, signOut } = useUserStore();
@@ -16,6 +26,8 @@ export const Topbar = () => {
   const location = useLocation();
   const params = useParams();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  const [selectedLang, setSelectedLang] = useState('en');
 
   const handleLogout = async () => {
     try {
@@ -97,6 +109,39 @@ export const Topbar = () => {
       </div>
       
       <div className="flex items-center space-x-2 ml-3">
+        {/* Language Switcher */}
+        <DropdownMenu open={langOpen} onOpenChange={setLangOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-full w-9 h-9"
+              aria-label="Change language"
+              data-testid="language-btn"
+            >
+              <Globe size={18} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48 mt-1 border-white/10 shadow-2xl p-1">
+            {LANGUAGES.map((lang) => (
+              <DropdownMenuItem
+                key={lang.code}
+                className={`cursor-pointer flex items-center gap-2 ${selectedLang === lang.code ? 'bg-accent/10 text-accent' : ''}`}
+                onSelect={() => {
+                  setSelectedLang(lang.code);
+                  toast.success(`Language changed to ${lang.name}`);
+                }}
+              >
+                <span className="text-base">{lang.flag}</span>
+                <span className="font-medium">{lang.name}</span>
+                {selectedLang === lang.code && <span className="ml-auto text-accent">✓</span>}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
+
         {/* Notifications */}
         <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
           <DropdownMenuTrigger asChild>

@@ -53,9 +53,10 @@ export const Dashboard = () => {
       setIsUploading(true);
       await uploadDocument(file);
       toast.success('Document uploaded successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to upload document', error);
-      toast.error('Upload failed', { description: 'An error occurred while uploading the document.' });
+      const errorMessage = error?.message || error?.error?.message || 'An error occurred while uploading the document.';
+      toast.error('Upload failed', { description: errorMessage });
     } finally {
       setIsUploading(false);
     }
@@ -140,7 +141,7 @@ export const Dashboard = () => {
              <p className="text-xs text-muted-foreground">Extracting layout, text, and images.</p>
            </div>
          ) : (
-           <div className="flex flex-col items-center justify-center space-y-4 pointer-events-none">
+           <div className="flex flex-col items-center justify-center space-y-4">
              <div className="w-16 h-16 rounded-full bg-background border border-white/5 flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg">
                <UploadCloud className="w-7 h-7 text-muted-foreground group-hover:text-accent transition-colors" />
              </div>
@@ -148,7 +149,7 @@ export const Dashboard = () => {
                <p className="text-base font-medium text-foreground">Click to upload or drag and drop</p>
                <p className="text-xs text-muted-foreground">Supports PDF files up to 50MB</p>
              </div>
-             <label className="cursor-pointer pointer-events-auto mt-2">
+             <label className="cursor-pointer mt-2">
                <Button variant="secondary" className="relative z-10 rounded-full px-6 bg-background/50 hover:bg-background border-white/5">
                  Browse Files
                </Button>
