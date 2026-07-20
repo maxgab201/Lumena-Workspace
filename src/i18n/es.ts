@@ -70,7 +70,7 @@ const es: Record<TranslationKey, string> = {
   'billing.buyCreditsDesc': '¿Necesitas más créditos este mes? Recarga tu saldo con una compra única.',
   'billing.noPackages': 'No hay paquetes de créditos disponibles.',
   'billing.buyNow': 'Comprar Ahora',
-  'billing.manageSubscription': 'Gestionar Suscripción',
+  'billing.manageSubscription': 'Administrar Suscripción',
   'billing.billedAnnually': 'Facturado anualmente',
   'settings.title': 'Configuración',
   'settings.description': 'Administra las preferencias de tu cuenta, apariencia y controles de teclado.',
