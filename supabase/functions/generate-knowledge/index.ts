@@ -39,6 +39,28 @@ The root node must have parent_label: null. All other nodes reference a parent b
 Limit to 12-15 nodes total.
 
 Do not include any explanatory text, markdown, or code fences. Only the raw JSON array.`,
+
+  timeline: (title, extract) => `You are an expert at extracting chronological information. Based on the following document excerpt from "${title}", identify and list all significant dates, events, milestones, or time periods mentioned.
+
+DOCUMENT EXCERPT:
+${extract}
+
+Respond ONLY with a valid JSON array of objects sorted chronologically. Each object must have exactly:
+{ "date_str": "date or time period as text (e.g. 2023, Q1 2024, January 15 2025)", "description": "brief description of the event or milestone" }
+
+If the document has no dates or chronological information, return an empty array: []
+Do not include any explanatory text, markdown, or code fences. Only the raw JSON array.`,
+
+  presentation: (title, extract) => `You are an expert presentation designer and educator. Based on the following document excerpt from "${title}", create a structured presentation outline with 6-10 slides.
+
+DOCUMENT EXCERPT:
+${extract}
+
+Respond ONLY with a valid JSON array of slide objects. Each object must have exactly:
+{ "index": 1, "title": "Slide title", "bullets": ["Key point 1", "Key point 2", "Key point 3"], "speaker_note": "Brief note for the presenter" }
+
+Start with a title slide (index 1), include content slides, and end with a summary/conclusions slide.
+Do not include any explanatory text, markdown, or code fences. Only the raw JSON array.`,
 }
 
 serve(async (req) => {
@@ -69,11 +91,10 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Missing required fields: document_id, workspace_id, action_type' }), { status: 400, headers: corsHeaders })
     }
 
-    if (!['flashcards', 'glossary', 'mindmap'].includes(action_type)) {
-      return new Response(JSON.stringify({ error: 'Invalid action_type. Must be flashcards, glossary, or mindmap.' }), { status: 400, headers: corsHeaders })
+    if (!['flashcards', 'glossary', 'mindmap', 'timeline', 'presentation'].includes(action_type)) {
+      return new Response(JSON.stringify({ error: 'Invalid action_type.' }), { status: 400, headers: corsHeaders })
     }
 
-    // Verify workspace membership
     const { data: membership } = await supabaseClient
       .from('workspace_members')
       .select('id')
@@ -85,7 +106,6 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: corsHeaders })
     }
 
-    // Fetch document metadata for title and extract
     const { data: doc } = await supabaseClient
       .from('documents')
       .select('name, extracted_text')
@@ -96,19 +116,16 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Document not found' }), { status: 404, headers: corsHeaders })
     }
 
-    // Use extracted text or a placeholder
     const extractedText = doc.extracted_text || ''
     if (!extractedText || extractedText.trim().length < 50) {
       return new Response(JSON.stringify({ error: 'Document has insufficient extracted text for AI generation. Please ensure the document has been fully processed.' }), { status: 422, headers: corsHeaders })
     }
 
-    // Limit to first 8000 chars to stay within token limits
     const excerpt = extractedText.substring(0, 8000)
 
-    // Check credits
     const { data: account } = await supabaseClient
       .from('credit_accounts')
-      .select('available')
+      .select('available, consumed')
       .eq('workspace_id', workspace_id)
       .single()
 
@@ -116,7 +133,6 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Insufficient credits for knowledge generation.' }), { status: 402, headers: corsHeaders })
     }
 
-    // Generate with Gemini
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured.' }), { status: 500, headers: corsHeaders })
@@ -130,10 +146,8 @@ serve(async (req) => {
     const result = await model.generateContent(prompt)
     const responseText = result.response.text().trim()
 
-    // Parse the JSON response
     let parsed: any[]
     try {
-      // Strip code fences if model adds them despite instructions
       const cleaned = responseText.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim()
       parsed = JSON.parse(cleaned)
       if (!Array.isArray(parsed)) throw new Error('Expected JSON array')
@@ -142,7 +156,6 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'AI returned malformed JSON. Please try again.' }), { status: 500, headers: corsHeaders })
     }
 
-    // Persist to DB based on action type
     let inserted: any[] = []
 
     if (action_type === 'flashcards') {
@@ -170,7 +183,6 @@ serve(async (req) => {
       inserted = data ?? []
 
     } else if (action_type === 'mindmap') {
-      // First insert root node, then children (need IDs to set parent_id)
       const root = parsed.find((n: any) => !n.parent_label)
       const children = parsed.filter((n: any) => !!n.parent_label)
 
@@ -187,13 +199,12 @@ serve(async (req) => {
       if (rootErr || !rootData) throw rootErr ?? new Error('Failed to insert root node')
       inserted.push(rootData)
 
-      // Insert children with root as parent (simple flat layout for now)
       const childRows = children.map((child: any, i: number) => ({
         document_id,
         workspace_id,
         label: String(child.label).trim(),
         parent_id: rootData.id,
-        position_x: (i % 4) * 200 - 300,
+        position_x: (i % 4) * 220 - 330,
         position_y: Math.floor(i / 4) * 150 + 150,
       }))
 
@@ -205,13 +216,60 @@ serve(async (req) => {
         if (childErr) throw childErr
         inserted.push(...(childData ?? []))
       }
+
+    } else if (action_type === 'timeline') {
+      const rows = parsed
+        .filter((item: any) => item.date_str && item.description)
+        .map((item: any) => ({
+          document_id,
+          workspace_id,
+          date_str: String(item.date_str).trim(),
+          description: String(item.description).trim(),
+        }))
+
+      if (rows.length > 0) {
+        const { data, error } = await supabaseClient.from('timeline_events').insert(rows).select()
+        if (error) throw error
+        inserted = data ?? []
+      }
+
+    } else if (action_type === 'presentation') {
+      // Ensure presentations table exists (idempotent DDL via service role)
+      await supabaseClient.rpc('create_presentations_table_if_not_exists').maybeSingle().catch(() => {
+        // RPC may not exist yet — fall back to direct insert attempt
+      })
+
+      // Build slides array from AI output
+      const slides = parsed.map((slide: any, i: number) => ({
+        index: typeof slide.index === 'number' ? slide.index : i + 1,
+        title: String(slide.title ?? '').trim(),
+        bullets: Array.isArray(slide.bullets) ? slide.bullets.map((b: any) => String(b).trim()).filter(Boolean) : [],
+        speaker_note: String(slide.speaker_note ?? '').trim(),
+      })).filter(s => s.title)
+
+      const { data, error } = await supabaseClient
+        .from('presentations')
+        .insert({ document_id, workspace_id, title: doc.name, slides })
+        .select()
+        .single()
+
+      if (error) {
+        // If table doesn't exist yet, return the parsed data and instructions
+        console.error('Presentations insert error:', error.message)
+        // Return slides directly even if persist fails — frontend can display them
+        return new Response(JSON.stringify({
+          items: [{ id: 'temp', document_id, workspace_id, title: doc.name, slides }],
+          count: slides.length,
+          warning: 'Presentations table not yet provisioned. Run migration to persist presentations.'
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 })
+      }
+      inserted = [data]
     }
 
-    // Deduct credits (10 credits per generation)
     const GENERATION_COST = 10
     await supabaseClient.from('credit_accounts').update({
       available: account.available - GENERATION_COST,
-      consumed: (account as any).consumed + GENERATION_COST,
+      consumed: account.consumed + GENERATION_COST,
     }).eq('workspace_id', workspace_id)
 
     await supabaseClient.from('credit_ledger').insert({

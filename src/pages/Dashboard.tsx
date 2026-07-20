@@ -4,7 +4,7 @@ import { useUserStore } from '../stores/userStore';
 import { UploadCloud, MessageSquare, Clock, Search, FileText, Calendar, MoreVertical, Pencil, Trash, LayoutGrid, List, ArrowDown, ArrowUp, HardDrive, Loader2, Play } from 'lucide-react';
 import { ProcessingCenter } from '../components/processing/ProcessingCenter';
 import { Button } from '../components/ui/Button';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,7 +23,7 @@ import {
 } from '../components/ui/DropdownMenu';
 
 export const Dashboard = () => {
-  const { activeWorkspace, documents, uploadDocument, deleteDocument, renameDocument } = useWorkspaceStore();
+  const { activeWorkspace, documents, uploadDocument, deleteDocument, renameDocument, fetchWorkspaces } = useWorkspaceStore();
   const { viewMode, setViewMode, sortBy, setSortBy, sortOrder, toggleSortOrder } = useUiStore();
   const { user } = useUserStore();
   const navigate = useNavigate();
@@ -31,6 +31,10 @@ export const Dashboard = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    fetchWorkspaces();
+  }, [fetchWorkspaces]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
