@@ -6,14 +6,15 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../co
 import { Button } from '../components/ui/Button';
 import { useUiStore } from '../stores/uiStore';
 import { useUserStore } from '../stores/userStore';
-import { 
-  User, 
-  Monitor, 
-  Sun, 
-  Moon, 
-  Bell, 
-  Keyboard, 
-  Info, 
+import { toast } from 'sonner';
+import {
+  User,
+  Monitor,
+  Sun,
+  Moon,
+  Bell,
+  Keyboard,
+  Info,
   Camera,
   Check,
   Shield,
@@ -112,8 +113,8 @@ export const Settings = () => {
                         <h4 className="text-sm font-semibold text-foreground">Profile Picture</h4>
                         <p className="text-xs text-muted-foreground">PNG, JPG or GIF up to 2MB.</p>
                         <div className="flex space-x-2 pt-1">
-                          <Button size="sm" variant="outline" className="h-8 text-xs border-white/5 bg-secondary/30">Upload</Button>
-                          <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground hover:text-foreground">Remove</Button>
+                          <Button size="sm" variant="outline" className="h-8 text-xs border-white/5 bg-secondary/30" onClick={() => toast.info('Avatar upload not yet implemented')}>Upload</Button>
+                          <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground hover:text-foreground" onClick={() => toast.info('Avatar removal not yet implemented')}>Remove</Button>
                         </div>
                       </div>
                     </div>

@@ -149,7 +149,7 @@ export const Dashboard = () => {
                <p className="text-xs text-muted-foreground">Supports PDF files up to 50MB</p>
              </div>
              <label className="cursor-pointer pointer-events-auto mt-2">
-               <Button variant="secondary" className="relative z-10 pointer-events-none rounded-full px-6 bg-background/50 hover:bg-background border-white/5">
+               <Button variant="secondary" className="relative z-10 rounded-full px-6 bg-background/50 hover:bg-background border-white/5" onClick={() => toast.info('Click to browse files')}>
                  Browse Files
                </Button>
                <input type="file" className="hidden" accept=".pdf" onChange={handleFileSelect} disabled={isUploading} />
@@ -394,7 +394,7 @@ export const Dashboard = () => {
             <p className="text-sm text-muted-foreground/90 leading-relaxed mb-4">
               Select multiple documents or press <kbd className="font-mono text-xs px-1.5 py-0.5 bg-background rounded border border-white/10 text-foreground">⌘ K</kbd> to query across your entire workspace at once.
             </p>
-            <Button variant="secondary" size="sm" className="w-full bg-background hover:bg-background/80 border-white/5 shadow-sm text-xs h-9 rounded-full">
+            <Button variant="secondary" size="sm" className="w-full bg-background hover:bg-background/80 border-white/5 shadow-sm text-xs h-9 rounded-full" onClick={() => toast.info('Global search coming soon')}>
               Try Global Search
             </Button>
           </div>
