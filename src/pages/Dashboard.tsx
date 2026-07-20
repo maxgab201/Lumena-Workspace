@@ -149,7 +149,7 @@ export const Dashboard = () => {
                <p className="text-xs text-muted-foreground">Supports PDF files up to 50MB</p>
              </div>
              <label className="cursor-pointer pointer-events-auto mt-2">
-               <Button variant="secondary" className="relative z-10 rounded-full px-6 bg-background/50 hover:bg-background border-white/5" onClick={() => toast.info('Click to browse files')}>
+               <Button variant="secondary" className="relative z-10 rounded-full px-6 bg-background/50 hover:bg-background border-white/5">
                  Browse Files
                </Button>
                <input type="file" className="hidden" accept=".pdf" onChange={handleFileSelect} disabled={isUploading} />
