@@ -9,6 +9,8 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
+import { t } from '../i18n';
+import { useLanguage } from '../hooks/useLanguage';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -25,6 +27,7 @@ export const Dashboard = () => {
   const { viewMode, setViewMode, sortBy, setSortBy, sortOrder, toggleSortOrder } = useUiStore();
   const { user } = useUserStore();
   const navigate = useNavigate();
+  useLanguage(); // subscribe to language changes for re-render
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,9 +56,10 @@ export const Dashboard = () => {
       setIsUploading(true);
       await uploadDocument(file);
       toast.success('Document uploaded successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to upload document', error);
-      toast.error('Upload failed', { description: 'An error occurred while uploading the document.' });
+      const msg = error?.message || error?.error?.message || 'Error desconocido al subir el archivo.';
+      toast.error('Upload failed', { description: msg });
     } finally {
       setIsUploading(false);
     }
@@ -115,10 +119,10 @@ export const Dashboard = () => {
              <FileText className="w-12 h-12 text-accent relative z-10" strokeWidth={1.5} />
           </div>
           <h2 className="text-3xl md:text-4xl font-heading font-bold tracking-tight mb-4">
-            Build your knowledge base
+            {t('dashboard.buildKnowledge')}
           </h2>
           <p className="text-muted-foreground text-base max-w-lg mx-auto leading-relaxed">
-            Upload PDFs, research papers, and books. Lumena extracts the content, parses tables, and prepares everything for AI synthesis.
+            {t('dashboard.uploadDescription')}
           </p>
         </motion.div>
       )}
@@ -136,21 +140,21 @@ export const Dashboard = () => {
          {isUploading ? (
            <div className="flex flex-col items-center justify-center space-y-4">
              <Loader2 className="w-10 h-10 text-accent animate-spin" />
-             <p className="text-sm font-medium animate-pulse text-foreground">Processing document...</p>
-             <p className="text-xs text-muted-foreground">Extracting layout, text, and images.</p>
+             <p className="text-sm font-medium animate-pulse text-foreground">{t('dashboard.processing')}</p>
+             <p className="text-xs text-muted-foreground">{t('dashboard.processingDetail')}</p>
            </div>
          ) : (
-           <div className="flex flex-col items-center justify-center space-y-4 pointer-events-none">
+           <div className="flex flex-col items-center justify-center space-y-4">
              <div className="w-16 h-16 rounded-full bg-background border border-white/5 flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg">
                <UploadCloud className="w-7 h-7 text-muted-foreground group-hover:text-accent transition-colors" />
              </div>
              <div className="space-y-1">
-               <p className="text-base font-medium text-foreground">Click to upload or drag and drop</p>
-               <p className="text-xs text-muted-foreground">Supports PDF files up to 50MB</p>
+               <p className="text-base font-medium text-foreground">{t('dashboard.clickToUpload')}</p>
+               <p className="text-xs text-muted-foreground">{t('dashboard.supportedFiles')}</p>
              </div>
              <label className="cursor-pointer pointer-events-auto mt-2">
-               <Button variant="secondary" className="relative z-10 pointer-events-none rounded-full px-6 bg-background/50 hover:bg-background border-white/5">
-                 Browse Files
+               <Button variant="secondary" className="relative z-10 rounded-full px-6 bg-background/50 hover:bg-background border-white/5">
+                 {t('dashboard.browseFiles')}
                </Button>
                <input type="file" className="hidden" accept=".pdf" onChange={handleFileSelect} disabled={isUploading} />
              </label>
@@ -171,10 +175,10 @@ export const Dashboard = () => {
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
               <h1 className="text-3xl font-heading font-bold tracking-tight text-foreground">
-                Welcome back, {user?.email?.split('@')[0] || 'Researcher'}
+                {t('dashboard.welcome', { name: user?.email?.split('@')[0] || 'Researcher' })}
               </h1>
               <p className="text-muted-foreground mt-1">
-                You have {documents.length} documents in <strong className="text-foreground">{activeWorkspace?.name}</strong>
+                {t('dashboard.docCount', { count: documents.length })} <strong className="text-foreground">{activeWorkspace?.name}</strong>
               </p>
             </div>
 
@@ -237,8 +241,8 @@ export const Dashboard = () => {
               <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                  <div className="relative w-full max-w-sm">
                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                   <input 
-                     placeholder="Search documents..." 
+                   <input
+                     placeholder={t('dashboard.searchPlaceholder')}
                      value={searchQuery}
                      onChange={(e) => setSearchQuery(e.target.value)}
                      className="w-full bg-background/50 backdrop-blur-sm border border-white/10 rounded-full pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-all shadow-sm"
@@ -251,7 +255,7 @@ export const Dashboard = () => {
               {processedDocuments.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground">
                   <Search className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                  <p>No documents found matching "{searchQuery}"</p>
+                  <p>{t('dashboard.noResults', { query: searchQuery })}</p>
                 </div>
               ) : (
                 <motion.div 
@@ -390,12 +394,12 @@ export const Dashboard = () => {
             <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center text-white shadow-md shadow-accent/20 mb-4">
               <MessageSquare size={18} fill="currentColor" />
             </div>
-            <h3 className="font-heading font-semibold text-lg mb-1">Global AI Search</h3>
+            <h3 className="font-heading font-semibold text-lg mb-1">{t('dashboard.globalSearch')}</h3>
             <p className="text-sm text-muted-foreground/90 leading-relaxed mb-4">
-              Select multiple documents or press <kbd className="font-mono text-xs px-1.5 py-0.5 bg-background rounded border border-white/10 text-foreground">⌘ K</kbd> to query across your entire workspace at once.
+              {t('dashboard.globalSearchDesc')} <kbd className="font-mono text-xs px-1.5 py-0.5 bg-background rounded border border-white/10 text-foreground">⌘ K</kbd> {t('dashboard.globalSearchKey')}
             </p>
             <Button variant="secondary" size="sm" className="w-full bg-background hover:bg-background/80 border-white/5 shadow-sm text-xs h-9 rounded-full">
-              Try Global Search
+              {t('dashboard.tryGlobalSearch')}
             </Button>
           </div>
         </div>
@@ -406,17 +410,17 @@ export const Dashboard = () => {
         <div className="flex-1 glass-card border border-white/5 rounded-3xl shadow-sm overflow-hidden flex flex-col">
           <div className="h-14 border-b border-white/5 flex items-center px-6 shrink-0 bg-background/30 backdrop-blur-sm">
             <Clock className="w-4 h-4 text-muted-foreground mr-2" />
-            <span className="text-sm font-semibold">Recent Activity</span>
+            <span className="text-sm font-semibold">{t('dashboard.recentActivity')}</span>
           </div>
           <div className="flex-1 p-6 overflow-y-auto space-y-5 custom-scrollbar">
             {documents.length === 0 ? (
-              <div className="text-center text-muted-foreground text-sm py-4">No recent activity.</div>
+              <div className="text-center text-muted-foreground text-sm py-4">{t('dashboard.noActivity')}</div>
             ) : (
               documents.slice(0, 5).map(doc => (
                 <div key={`act-${doc.id}`} className="flex gap-4 relative before:absolute before:left-[5px] before:top-4 before:bottom-[-20px] before:w-[2px] before:bg-white/5 last:before:hidden">
                    <div className="w-3 h-3 mt-1 rounded-full bg-accent shrink-0 shadow-[0_0_10px_rgba(var(--accent-hsl),0.5)] z-10 ring-4 ring-background" />
                    <div>
-                      <p className="text-sm text-foreground">Added <strong className="font-medium text-accent hover:underline cursor-pointer" onClick={() => navigate(`/viewer/${doc.id}`)}>{doc.name}</strong></p>
+                      <p className="text-sm text-foreground">{t('dashboard.added')} <strong className="font-medium text-accent hover:underline cursor-pointer" onClick={() => navigate(`/viewer/${doc.id}`)}>{doc.name}</strong></p>
                       <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                         <Clock size={10} /> {new Date(doc.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
@@ -427,8 +431,8 @@ export const Dashboard = () => {
             <div className="flex gap-4 z-10 relative">
                <div className="w-3 h-3 mt-1 rounded-full bg-secondary shrink-0 ring-4 ring-background" />
                <div>
-                  <p className="text-sm text-foreground">Workspace <strong>{activeWorkspace?.name}</strong> initialized</p>
-                  <p className="text-xs text-muted-foreground mt-1">Session start</p>
+                  <p className="text-sm text-foreground">{t('dashboard.workspaceInitialized')} <strong>{activeWorkspace?.name}</strong></p>
+                  <p className="text-xs text-muted-foreground mt-1">{t('dashboard.sessionStart')}</p>
                </div>
             </div>
           </div>
