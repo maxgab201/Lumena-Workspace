@@ -1,4 +1,4 @@
-import { Bell, Search, Command, Menu, ChevronRight } from 'lucide-react';
+import { Bell, Search, Command, Menu, ChevronRight, Globe } from 'lucide-react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/Avatar';
@@ -7,15 +7,23 @@ import { useUserStore } from '../../stores/userStore';
 import { useUiStore } from '../../stores/uiStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useState } from 'react';
+import { t } from '../../i18n';
+import type { Language } from '../../i18n';
+
+const LANGUAGES: { code: Language; label: string; flag: string }[] = [
+  { code: 'en', label: 'English', flag: '🇺🇸' },
+  { code: 'es', label: 'Español', flag: '🇪🇸' },
+];
 
 export const Topbar = () => {
   const { user, profile, signOut } = useUserStore();
-  const { setCommandPaletteOpen, setMobileSidebarOpen } = useUiStore();
+  const { setCommandPaletteOpen, setMobileSidebarOpen, lang, setLang } = useUiStore();
   const { documents } = useWorkspaceStore();
   const navigate = useNavigate();
   const location = useLocation();
   const params = useParams();
   const [notifOpen, setNotifOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
 
   const handleLogout = async () => {
     try {
@@ -97,6 +105,33 @@ export const Topbar = () => {
       </div>
       
       <div className="flex items-center space-x-2 ml-3">
+        {/* Language Switcher */}
+        <DropdownMenu open={langOpen} onOpenChange={setLangOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground hover:bg-secondary/50 rounded-full w-9 h-9"
+              aria-label={t('topbar.language')}
+            >
+              <Globe size={18} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44 border-white/10 shadow-2xl">
+            {LANGUAGES.map((l) => (
+              <DropdownMenuItem
+                key={l.code}
+                className={`cursor-pointer ${lang === l.code ? 'text-accent font-medium' : ''}`}
+                onSelect={() => setLang(l.code)}
+              >
+                {l.flag} {l.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="h-4 w-px bg-border mx-1 hidden sm:block" />
+
         {/* Notifications */}
         <DropdownMenu open={notifOpen} onOpenChange={setNotifOpen}>
           <DropdownMenuTrigger asChild>
@@ -112,12 +147,12 @@ export const Topbar = () => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72 mt-1 border-white/10 shadow-2xl p-0">
             <div className="px-4 py-3 border-b border-white/5">
-              <p className="text-sm font-semibold">Notifications</p>
+              <p className="text-sm font-semibold">{t('topbar.notifications')}</p>
             </div>
             <div className="px-4 py-8 text-center">
               <Bell size={28} className="mx-auto text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground font-medium">No notifications yet</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">We'll notify you when something important happens.</p>
+              <p className="text-sm text-muted-foreground font-medium">{t('topbar.noNotifications')}</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">{t('topbar.noNotificationsDesc')}</p>
             </div>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -146,10 +181,10 @@ export const Topbar = () => {
               </div>
             </div>
             <DropdownMenuSeparator className="bg-white/5" />
-            <DropdownMenuItem className="cursor-pointer" onSelect={() => navigate('/settings')}>Settings</DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer" onSelect={() => navigate('/billing')}>Billing</DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer" onSelect={() => navigate('/settings')}>{t('nav.settings')}</DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer" onSelect={() => navigate('/billing')}>{t('nav.billing')}</DropdownMenuItem>
             <DropdownMenuSeparator className="bg-white/5" />
-            <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer" onSelect={handleLogout}>Log out</DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive focus:bg-destructive/10 focus:text-destructive cursor-pointer" onSelect={handleLogout}>{t('topbar.logOut')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
