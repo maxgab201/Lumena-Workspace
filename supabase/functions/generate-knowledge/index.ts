@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.2.1"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -133,18 +132,37 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Insufficient credits for knowledge generation.' }), { status: 402, headers: corsHeaders })
     }
 
-    const apiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured.' }), { status: 500, headers: corsHeaders })
-    }
-
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    // Route through ai-gateway instead of direct SDK call
     const promptFn = PROMPTS[action_type]
     const prompt = promptFn(doc.name, excerpt)
 
-    const result = await model.generateContent(prompt)
-    const responseText = result.response.text().trim()
+    // Call ai-gateway Edge Function for AI generation
+    const aiGatewayResponse = await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-gateway`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'apikey': Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        },
+        body: JSON.stringify({
+          prompt,
+          workspace_id,
+          action_type: 'knowledge_generation',
+          model_code: '',
+          document_id,
+        }),
+      }
+    )
+
+    if (!aiGatewayResponse.ok) {
+      const errorData = await aiGatewayResponse.json()
+      return new Response(JSON.stringify({ error: errorData.error || 'AI generation failed' }), { status: aiGatewayResponse.status, headers: corsHeaders })
+    }
+
+    const aiResult = await aiGatewayResponse.json()
+    const responseText = aiResult.text?.trim() || ''
 
     let parsed: any[]
     try {

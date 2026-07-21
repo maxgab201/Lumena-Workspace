@@ -130,6 +130,16 @@ const es: Record<TranslationKey, string> = {
   'upgrade.priorityProcessing': 'Procesamiento OCR prioritario',
   'upgrade.cancel': 'Cancelar',
   'upgrade.upgradeNow': 'Mejorar Ahora',
+  'pageSelection.title': 'Seleccionar Páginas a Procesar',
+  'pageSelection.subtitle': '{count} de {total} páginas seleccionadas',
+  'pageSelection.selectAll': 'Seleccionar Todas',
+  'pageSelection.clearAll': 'Limpiar Todas',
+  'pageSelection.cancel': 'Cancelar',
+  'pageSelection.process': 'Procesar',
+  'pageSelection.processing': 'Procesando...',
+  'highlightModel.label': 'Modelo de IA',
+  'highlightModel.noModels': 'No hay modelos disponibles',
+  'highlightModel.placeholder': 'No hay modelos de IA configurados aún',
 };
 
 export default es;

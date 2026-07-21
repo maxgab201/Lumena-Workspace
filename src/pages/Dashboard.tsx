@@ -156,12 +156,10 @@ export const Dashboard = () => {
                <p className="text-base font-medium text-foreground">{t('dashboard.clickToUpload')}</p>
                <p className="text-xs text-muted-foreground">{t('dashboard.supportedFiles')}</p>
              </div>
-             <label className="cursor-pointer pointer-events-auto mt-2">
-               <Button variant="secondary" className="relative z-10 rounded-full px-6 bg-background/50 hover:bg-background border-white/5">
+             <label className="cursor-pointer mt-2 inline-flex items-center justify-center rounded-full px-6 py-2 bg-secondary/60 backdrop-blur-md text-secondary-foreground hover:bg-secondary/80 transition-all duration-300 active:scale-[0.97] text-sm font-medium border border-white/5">
                  {t('dashboard.browseFiles')}
-               </Button>
+               </label>
                <input type="file" className="hidden" accept=".pdf" onChange={handleFileSelect} disabled={isUploading} />
-             </label>
            </div>
          )}
       </div>

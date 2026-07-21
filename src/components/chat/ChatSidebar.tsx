@@ -69,33 +69,39 @@ export const ChatSidebar = () => {
         {/* Plan-aware Model Selector */}
         <div className="flex flex-col gap-1">
           <div className="flex flex-col gap-1">
-            {AVAILABLE_MODELS.map((model) => {
-              const isLocked = !planConfig.allowedModels.includes(model.code);
-              const isActive = selectedModel === model.code;
-              return (
-                <button
-                  key={model.code}
-                  disabled={isLocked || isGenerating || isLoadingSession}
-                  onClick={() => handleModelChange(model.code)}
-                  className={`flex items-center justify-between text-xs px-3 py-2 rounded-lg border transition-all ${
-                    isActive
-                      ? 'border-accent/50 bg-accent/10 text-accent font-medium'
-                      : isLocked
-                      ? 'border-white/5 bg-secondary/10 text-muted-foreground/40 cursor-not-allowed'
-                      : 'border-white/5 bg-secondary/20 text-muted-foreground hover:text-foreground hover:border-white/20'
-                  }`}
-                >
-                  <span>{model.name}</span>
-                  {isLocked && (
-                    <span className="flex items-center gap-1 text-[10px] text-accent/70 font-semibold">
-                      <Lock className="w-3 h-3" /> Pro
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+            {AVAILABLE_MODELS.length === 0 ? (
+              <div className="text-xs text-muted-foreground/50 px-3 py-2 rounded-lg border border-white/5 bg-secondary/10">
+                No AI models available yet.
+              </div>
+            ) : (
+              AVAILABLE_MODELS.map((model) => {
+                const isLocked = !planConfig.allowedModels.includes(model.code);
+                const isActive = selectedModel === model.code;
+                return (
+                  <button
+                    key={model.code}
+                    disabled={isLocked || isGenerating || isLoadingSession}
+                    onClick={() => handleModelChange(model.code)}
+                    className={`flex items-center justify-between text-xs px-3 py-2 rounded-lg border transition-all ${
+                      isActive
+                        ? 'border-accent/50 bg-accent/10 text-accent font-medium'
+                        : isLocked
+                        ? 'border-white/5 bg-secondary/10 text-muted-foreground/40 cursor-not-allowed'
+                        : 'border-white/5 bg-secondary/20 text-muted-foreground hover:text-foreground hover:border-white/20'
+                    }`}
+                  >
+                    <span>{model.name}</span>
+                    {isLocked && (
+                      <span className="flex items-center gap-1 text-[10px] text-accent/70 font-semibold">
+                        <Lock className="w-3 h-3" /> Pro
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
           </div>
-          {currentPlan === 'free' && (
+          {currentPlan === 'free' && AVAILABLE_MODELS.length > 0 && (
             <p className="text-[10px] text-muted-foreground/50 mt-0.5">
               Upgrade to Pro to unlock advanced models.
             </p>

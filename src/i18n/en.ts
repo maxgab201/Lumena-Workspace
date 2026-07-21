@@ -128,6 +128,16 @@ const en = {
   'upgrade.priorityProcessing': 'Priority OCR & Processing Queue',
   'upgrade.cancel': 'Cancel',
   'upgrade.upgradeNow': 'Upgrade Now',
+  'pageSelection.title': 'Select Pages to Process',
+  'pageSelection.subtitle': '{count} of {total} pages selected',
+  'pageSelection.selectAll': 'Select All',
+  'pageSelection.clearAll': 'Clear All',
+  'pageSelection.cancel': 'Cancel',
+  'pageSelection.process': 'Process',
+  'pageSelection.processing': 'Processing...',
+  'highlightModel.label': 'AI Model',
+  'highlightModel.noModels': 'No models available',
+  'highlightModel.placeholder': 'No AI models configured yet',
 } as const;
 
 export default en;
