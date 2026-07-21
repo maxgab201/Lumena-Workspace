@@ -39,7 +39,7 @@ export const DocumentRepository = {
     size_bytes: number;
     file_path: string;
     mime_type?: string;
-    status?: string;
+    status?: 'uploading' | 'processing' | 'ready' | 'error';
   }) {
     const { data, error } = await supabase
       .from('documents')
