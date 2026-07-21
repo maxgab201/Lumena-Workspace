@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import * as pdfjs from "https://esm.sh/pdfjs-dist@3.11.174"
+// Note: pdfjs-dist requires canvas which isn't available in Deno Edge Functions
+// Text extraction will be done client-side or via alternative method
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -244,58 +245,27 @@ serve(async (req) => {
       throw new Error(`Failed to download PDF: ${downloadError?.message || 'Unknown error'}`)
     }
 
-    // Stage 2: Extract text using pdfjs-dist
-    console.log(`Job ${jobId}: Extracting text from PDF...`)
+    // Stage 2: Mark for client-side OCR (pdfjs-dist requires canvas which isn't available in Deno)
+    console.log(`Job ${jobId}: Marking document for client-side OCR...`)
     await supabaseClient
       .from('processing_jobs')
       .update({ progress: 30 })
       .eq('id', jobId)
 
-    const arrayBuffer = await fileData.arrayBuffer()
-    const uint8Array = new Uint8Array(arrayBuffer)
+    // Since pdfjs-dist requires canvas (not available in Deno Edge Functions),
+    // we mark the document for client-side OCR processing
+    // The client will use react-pdf's TextLayer to extract text
+    const totalPages = docFull.page_count || 1
 
-    // Set worker source for pdfjs
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
-
-    const pdf = await pdfjs.getDocument({ data: uint8Array }).promise
-    const totalPages = pdf.numPages
-    let extractedText = ''
-    let hasNativeText = false
-
-    // Stage 3: Extract text from each page
-    console.log(`Job ${jobId}: Processing ${totalPages} pages...`)
-
-    for (let i = 1; i <= totalPages; i++) {
-      const page = await pdf.getPage(i)
-      const textContent = await page.getTextContent()
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ')
-        .trim()
-
-      if (pageText.length > 0) {
-        hasNativeText = true
-        extractedText += `[Page ${i}]\n${pageText}\n\n`
-      }
-
-      // Update progress (30% to 80%)
-      const progress = 30 + Math.round((i / totalPages) * 50)
-      await supabaseClient
-        .from('processing_jobs')
-        .update({ progress })
-        .eq('id', jobId)
-    }
-
-    console.log(`Job ${jobId}: Extracted ${extractedText.length} characters from ${totalPages} pages`)
-
-    // Stage 4: Save extracted text and update document status
-    console.log(`Job ${jobId}: Saving extracted text...`)
     await supabaseClient
       .from('processing_jobs')
-      .update({ progress: 85 })
+      .update({ progress: 80 })
       .eq('id', jobId)
 
-    const ocrStatus = hasNativeText ? 'completed' : 'needs_client_ocr'
+    // Stage 3: Mark for client-side OCR
+    console.log(`Job ${jobId}: Document marked for client-side OCR (${totalPages} pages)`)
+
+    const ocrStatus = 'needs_client_ocr'
 
     await supabaseClient
       .from('documents')
