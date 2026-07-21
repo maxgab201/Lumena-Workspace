@@ -156,13 +156,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         set({ uploadProgress: progress });
       });
 
-      // Create document record in database
+      // Create document record in database with status 'ready'
       const newDoc = await DocumentRepository.createDocumentRecord({
         workspace_id: activeWorkspace.id,
         name: file.name,
         size_bytes: file.size,
         file_path: filePath,
         mime_type: file.type || 'application/pdf',
+        status: 'ready',
       });
 
       // Create backend processing job
