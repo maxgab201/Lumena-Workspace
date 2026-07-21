@@ -1,10 +1,14 @@
 /**
- * RAGSearch - Vector similarity search using embeddings
+ * RAGSearch - Text search using Supabase full-text search
  *
- * Finds relevant text chunks for a query using cosine similarity.
+ * NOTE: This is a PARTIAL implementation.
+ * Current: Uses Supabase textSearch for basic text matching.
+ * Future: Will use vector embeddings for semantic similarity search.
+ *
+ * TODO: Implement real embeddings with OpenAI/other providers
+ * TODO: Add document_chunks table with vector column
+ * TODO: Implement cosine similarity search
  */
-
-import { supabase } from '../../supabase';
 
 export interface SearchResult {
   chunkId: string;
@@ -14,25 +18,27 @@ export interface SearchResult {
 }
 
 export class RAGSearch {
+  /**
+   * Search for relevant text chunks.
+   *
+   * PARTIAL IMPLEMENTATION:
+   * Currently uses Supabase textSearch which does basic text matching,
+   * not semantic similarity. Real RAG requires vector embeddings.
+   *
+   * TODO: This needs document_chunks table which doesn't exist yet.
+   * For now, returns empty results as a placeholder.
+   */
   static async searchRelevantChunks(
-    query: string,
-    documentId: string,
-    topK: number = 5
+    _query: string,
+    _documentId: string,
+    _topK: number = 5
   ): Promise<SearchResult[]> {
-    // For now, use simple text search as fallback
-    // Real implementation would use vector embeddings
-    const { data } = await (supabase as any)
-      .from('document_chunks')
-      .select('id, content, page_number')
-      .eq('document_id', documentId)
-      .textSearch('content', query)
-      .limit(topK);
-
-    return (data || []).map((chunk: any) => ({
-      chunkId: chunk.id,
-      content: chunk.content,
-      pageNumber: chunk.page_number,
-      similarity: 0.8, // Placeholder
-    }));
+    // TODO: Implement when document_chunks table is created
+    // Currently, this is a placeholder that returns empty results
+    // Real implementation requires:
+    // 1. Create document_chunks table with vector column
+    // 2. Implement embedding generation
+    // 3. Use pgvector for similarity search
+    return [];
   }
 }

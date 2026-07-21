@@ -9,9 +9,10 @@ import { SupabaseTaskQueue } from './TaskQueue';
 import type { AnalysisPlugin, PluginContext } from './AnalysisPlugin';
 import { AnalysisCache } from './AnalysisCache';
 import { AnalysisEvents } from './AnalysisEvents';
+import type { AnalysisTaskType } from './TaskQueue';
 
 export class AnalysisJobEngine {
-  private plugins: Map<string, AnalysisPlugin> = new Map();
+  private plugins: Map<AnalysisTaskType, AnalysisPlugin> = new Map();
   private queue: SupabaseTaskQueue;
   private cache: AnalysisCache;
   private events: AnalysisEvents;
@@ -23,13 +24,12 @@ export class AnalysisJobEngine {
   }
 
   registerPlugin(plugin: AnalysisPlugin) {
-    this.plugins.set(plugin.taskType, plugin);
+    this.plugins.set(plugin.taskType as AnalysisTaskType, plugin);
   }
 
   async processDocument(documentId: string) {
     const graph = this.buildDependencyGraph();
 
-    // Execute each level in parallel
     for (const level of graph) {
       await Promise.all(
         level.map(task => this.executeTask(documentId, task))
@@ -37,27 +37,23 @@ export class AnalysisJobEngine {
     }
   }
 
-  async executeTask(documentId: string, taskType: string) {
+  async executeTask(documentId: string, taskType: AnalysisTaskType) {
     const plugin = this.plugins.get(taskType);
     if (!plugin) return;
 
-    // Check if can run
     const canRun = await plugin.canRun(documentId);
     if (!canRun) return;
 
-    // Check cache
     const cached = await this.cache.get(documentId, taskType);
     if (cached) return cached;
 
-    // Create task record
     await this.queue.enqueue({
       documentId,
       task: taskType,
-      dependsOn: plugin.dependencies,
+      dependsOn: plugin.dependencies as AnalysisTaskType[],
       version: 1,
     });
 
-    // Execute
     try {
       this.events.emit({
         type: 'TaskStarted',
@@ -68,7 +64,6 @@ export class AnalysisJobEngine {
       const context = await this.buildContext(documentId);
       const result = await plugin.execute(documentId, context);
 
-      // Store in cache
       await this.cache.set(documentId, taskType, result);
 
       this.events.emit({
@@ -90,27 +85,25 @@ export class AnalysisJobEngine {
     }
   }
 
-  private buildDependencyGraph(): string[][] {
-    const inDegree = new Map<string, number>();
-    const adjList = new Map<string, string[]>();
+  private buildDependencyGraph(): AnalysisTaskType[][] {
+    const inDegree = new Map<AnalysisTaskType, number>();
+    const adjList = new Map<AnalysisTaskType, AnalysisTaskType[]>();
 
-    // Initialize
     for (const [taskType] of this.plugins) {
       inDegree.set(taskType, 0);
       adjList.set(taskType, []);
     }
 
-    // Build graph
     for (const [taskType, plugin] of this.plugins) {
       for (const dep of plugin.dependencies) {
-        adjList.get(dep)?.push(taskType);
+        const depType = dep as AnalysisTaskType;
+        adjList.get(depType)?.push(taskType);
         inDegree.set(taskType, (inDegree.get(taskType) || 0) + 1);
       }
     }
 
-    // Topological sort
-    const result: string[][] = [];
-    const queue: string[] = [];
+    const result: AnalysisTaskType[][] = [];
+    const queue: AnalysisTaskType[] = [];
 
     for (const [task, degree] of inDegree) {
       if (degree === 0) queue.push(task);
@@ -118,7 +111,7 @@ export class AnalysisJobEngine {
 
     while (queue.length > 0) {
       result.push([...queue]);
-      const nextQueue: string[] = [];
+      const nextQueue: AnalysisTaskType[] = [];
 
       for (const task of queue) {
         for (const neighbor of adjList.get(task) || []) {
@@ -136,7 +129,6 @@ export class AnalysisJobEngine {
   }
 
   private async buildContext(documentId: string): Promise<PluginContext> {
-    // This will be implemented to fetch document pages, chunks, etc.
     return {
       documentId,
       documentPages: [],

@@ -16,17 +16,25 @@ export interface BoundingBox {
 
 export class BoundingBoxCache {
   async get(highlightId: string): Promise<BoundingBox | null> {
-    const { data } = await (supabase as any)
+    const { data } = await supabase
       .from('highlight_bboxes')
       .select('*')
       .eq('highlight_id', highlightId)
       .single();
 
-    return data;
+    if (!data) return null;
+
+    return {
+      pageNumber: data.page_number,
+      x: data.x ?? 0,
+      y: data.y ?? 0,
+      width: data.width ?? 0,
+      height: data.height ?? 0,
+    };
   }
 
   async set(highlightId: string, bbox: BoundingBox): Promise<void> {
-    await (supabase as any)
+    await supabase
       .from('highlight_bboxes')
       .upsert({
         highlight_id: highlightId,
@@ -39,7 +47,7 @@ export class BoundingBoxCache {
   }
 
   async invalidate(highlightId: string): Promise<void> {
-    await (supabase as any)
+    await supabase
       .from('highlight_bboxes')
       .delete()
       .eq('highlight_id', highlightId);

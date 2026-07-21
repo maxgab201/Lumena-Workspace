@@ -9,7 +9,21 @@ import { PromptBuilder } from './PromptBuilder';
 import { AnalysisCache } from './AnalysisCache';
 import type { TextChunk } from '../processing/TextChunker';
 
-export type HighlightCategory = string;
+export type HighlightCategory =
+  | 'concept'
+  | 'definition'
+  | 'formula'
+  | 'date'
+  | 'fact'
+  | 'person'
+  | 'location'
+  | 'relationship'
+  | 'warning'
+  | 'keyword'
+  | 'question'
+  | 'summary'
+  | 'example'
+  | 'reference';
 
 export interface AIHighlight {
   text: string;
@@ -32,9 +46,9 @@ export class AIAnalysisService {
     pageText: string,
     documentContext: string
   ): Promise<AIHighlight[]> {
-    // Check cache first
-    const cached = await this.cache.get(documentId, `highlights_p${pageNumber}`);
-    if (cached) return cached;
+    const cacheKey = `highlights_p${pageNumber}`;
+    const cached = await this.cache.get(documentId, cacheKey);
+    if (cached) return cached as AIHighlight[];
 
     const prompt = PromptBuilder.buildHighlightPrompt({
       pageNumber,
@@ -45,8 +59,8 @@ export class AIAnalysisService {
     const response = await AIGateway.generate(prompt);
 
     try {
-      const highlights = JSON.parse(response.text);
-      await this.cache.set(documentId, `highlights_p${pageNumber}`, highlights);
+      const highlights = JSON.parse(response.text) as AIHighlight[];
+      await this.cache.set(documentId, cacheKey, highlights);
       return highlights;
     } catch {
       return [];
@@ -58,7 +72,7 @@ export class AIAnalysisService {
     pageChunks: TextChunk[]
   ): Promise<string> {
     const cached = await this.cache.get(documentId, 'summary');
-    if (cached) return cached;
+    if (cached) return cached as string;
 
     const prompt = PromptBuilder.buildSummaryPrompt(pageChunks);
     const response = await AIGateway.generate(prompt);
@@ -72,13 +86,13 @@ export class AIAnalysisService {
     pageChunks: TextChunk[]
   ): Promise<Array<{ term: string; definition: string }>> {
     const cached = await this.cache.get(documentId, 'glossary');
-    if (cached) return cached;
+    if (cached) return cached as Array<{ term: string; definition: string }>;
 
     const prompt = PromptBuilder.buildGlossaryPrompt(pageChunks);
     const response = await AIGateway.generate(prompt);
 
     try {
-      const glossary = JSON.parse(response.text);
+      const glossary = JSON.parse(response.text) as Array<{ term: string; definition: string }>;
       await this.cache.set(documentId, 'glossary', glossary);
       return glossary;
     } catch {

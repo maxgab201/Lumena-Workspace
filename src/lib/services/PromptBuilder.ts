@@ -10,7 +10,7 @@ export interface ChatPromptParams {
   userQuery: string;
   documentName: string;
   pageChunks: TextChunk[];
-  highlights: Highlight[];
+  highlights: Array<{ category: string; text: string }>;
   conversationHistory: Array<{ role: string; content: string }>;
   currentPage: number;
 }
@@ -28,7 +28,7 @@ export class PromptBuilder {
       .join('\n\n');
 
     const highlightsText = params.highlights
-      .map((h: any) => `[${h.category}] ${h.text}`)
+      .map(h => `[${h.category}] ${h.text}`)
       .join('\n');
 
     const historyText = params.conversationHistory

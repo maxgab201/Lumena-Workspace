@@ -3,6 +3,10 @@
  *
  * Shows category-colored overlays with tooltips.
  * Different visual style from manual highlights (subtle glow).
+ *
+ * NOTE: Currently all highlights are treated as manual since
+ * the AI highlight generation is not yet implemented.
+ * This overlay will render highlights that have a category set.
  */
 
 import { useHighlightStore } from '../../../stores/highlightStore';
@@ -20,15 +24,14 @@ export function AutoHighlightOverlay({ pageIndex }: AutoHighlightOverlayProps) {
 
   if (!showOverlays || !documentId) return null;
 
-  const pageHighlights = getHighlightsForPage(documentId, pageIndex).filter(
-    (h: any) => h.source === 'ai'
-  );
+  const pageHighlights = getHighlightsForPage(documentId, pageIndex);
 
   return (
     <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 35 }}>
-      {pageHighlights.map((highlight: any) => {
-        const config = getCategoryConfig(highlight.category as HighlightCategory);
-        return highlight.rects.map((rect: any, i: number) => (
+      {pageHighlights.map((highlight) => {
+        // Use category_id to determine color, fallback to highlight color
+        const categoryConfig = getCategoryConfig(highlight.category_id as HighlightCategory || 'concept');
+        return highlight.rects.map((rect, i) => (
           <div
             key={`${highlight.id}-${i}`}
             className="absolute"
@@ -37,12 +40,12 @@ export function AutoHighlightOverlay({ pageIndex }: AutoHighlightOverlayProps) {
               top: `${rect.y * 100}%`,
               width: `${rect.width * 100}%`,
               height: `${rect.height * 100}%`,
-              backgroundColor: config.color,
+              backgroundColor: highlight.color || categoryConfig.color,
               opacity: 0.4,
               borderRadius: '2px',
-              boxShadow: `0 0 8px ${config.color}40`,
+              boxShadow: `0 0 8px ${highlight.color || categoryConfig.color}40`,
             }}
-            title={`${config.label}: ${highlight.text}`}
+            title={highlight.text}
           />
         ));
       })}
