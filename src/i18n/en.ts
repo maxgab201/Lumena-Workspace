@@ -135,9 +135,16 @@ const en = {
   'pageSelection.cancel': 'Cancel',
   'pageSelection.process': 'Process',
   'pageSelection.processing': 'Processing...',
-  'highlightModel.label': 'AI Model',
+  'highlightModel.label': 'OCR Model',
   'highlightModel.noModels': 'No models available',
   'highlightModel.placeholder': 'No AI models configured yet',
+  'highlightModel.textOcr': 'Text OCR',
+  'highlightModel.textOcrDesc': 'Best for PDFs with selectable text layers',
+  'highlightModel.imageOcr': 'Image OCR',
+  'highlightModel.imageOcrDesc': 'Best for scanned documents and images',
+  'highlightModel.aiHighlight': 'AI Highlight',
+  'highlightModel.aiHighlightDesc': 'AI-powered intelligent highlighting',
+  'highlightModel.comingSoon': 'Coming Soon',
 } as const;
 
 export default en;

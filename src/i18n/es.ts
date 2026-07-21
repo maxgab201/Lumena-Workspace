@@ -137,9 +137,16 @@ const es: Record<TranslationKey, string> = {
   'pageSelection.cancel': 'Cancelar',
   'pageSelection.process': 'Procesar',
   'pageSelection.processing': 'Procesando...',
-  'highlightModel.label': 'Modelo de IA',
+  'highlightModel.label': 'Modelo OCR',
   'highlightModel.noModels': 'No hay modelos disponibles',
   'highlightModel.placeholder': 'No hay modelos de IA configurados aún',
+  'highlightModel.textOcr': 'OCR de Texto',
+  'highlightModel.textOcrDesc': 'Mejor para PDFs con capas de texto seleccionable',
+  'highlightModel.imageOcr': 'OCR de Imagen',
+  'highlightModel.imageOcrDesc': 'Mejor para documentos escaneados e imágenes',
+  'highlightModel.aiHighlight': 'Resaltado IA',
+  'highlightModel.aiHighlightDesc': 'Resaltado inteligente con IA',
+  'highlightModel.comingSoon': 'Próximamente',
 };
 
 export default es;

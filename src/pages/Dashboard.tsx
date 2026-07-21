@@ -156,10 +156,19 @@ export const Dashboard = () => {
                <p className="text-base font-medium text-foreground">{t('dashboard.clickToUpload')}</p>
                <p className="text-xs text-muted-foreground">{t('dashboard.supportedFiles')}</p>
              </div>
-             <label className="cursor-pointer mt-2 inline-flex items-center justify-center rounded-full px-6 py-2 bg-secondary/60 backdrop-blur-md text-secondary-foreground hover:bg-secondary/80 transition-all duration-300 active:scale-[0.97] text-sm font-medium border border-white/5">
+             <div className="relative">
+               <input
+                 type="file"
+                 id="file-upload"
+                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                 accept=".pdf"
+                 onChange={handleFileSelect}
+                 disabled={isUploading}
+               />
+               <span className="inline-flex items-center justify-center rounded-full px-6 py-2 bg-secondary/60 backdrop-blur-md text-secondary-foreground hover:bg-secondary/80 transition-all duration-300 active:scale-[0.97] text-sm font-medium border border-white/5 pointer-events-none">
                  {t('dashboard.browseFiles')}
-               </label>
-               <input type="file" className="hidden" accept=".pdf" onChange={handleFileSelect} disabled={isUploading} />
+               </span>
+             </div>
            </div>
          )}
       </div>
