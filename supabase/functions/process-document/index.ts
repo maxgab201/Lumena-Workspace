@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import * as pdfjs from "https://esm.sh/pdfjs-dist@3.11.174"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,26 +38,23 @@ serve(async (req) => {
     // ==========================================
     // 1. ESTIMATE & RESERVE CREDITS
     // ==========================================
-    // Cost estimation: 5 credits per page, minimum 20 credits.
-    // Fetch document to get page count
     const { data: docData } = await supabaseClient
       .from('documents')
       .select('page_count')
       .eq('id', documentId)
       .single()
-    
+
     const pageCount = docData?.page_count || 1;
     const estimatedCost = Math.max(pageCount * 5, 20);
 
-    // Check available balance
     const { data: accountData } = await supabaseClient
       .from('credit_accounts')
       .select('available')
       .eq('workspace_id', workspaceId)
       .single()
-    
+
     if (!accountData || accountData.available < estimatedCost) {
-      console.error(`Job ${jobId} failed: Insufficient credits (Requires ${estimatedCost}, Available ${accountData?.available || 0})`)
+      console.error(`Job ${jobId} failed: Insufficient credits`)
       await supabaseClient
         .from('processing_jobs')
         .update({
@@ -66,14 +62,13 @@ serve(async (req) => {
           error_message: `Insufficient credits. Required: ${estimatedCost}, Available: ${accountData?.available || 0}`
         })
         .eq('id', jobId)
-      
+
       return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 402, // Payment Required
+        status: 402,
       })
     }
 
-    // Create reservation
     const { data: reservation, error: reserveError } = await supabaseClient
       .from('credit_reservations')
       .insert({
@@ -81,19 +76,15 @@ serve(async (req) => {
         job_id: jobId,
         requested_amount: estimatedCost,
         reserved_amount: estimatedCost,
-        expires_at: new Date(Date.now() + 1000 * 60 * 60).toISOString(), // 1 hour expiry
+        expires_at: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
         status: 'pending'
       })
       .select('id')
       .single()
-      
+
     if (reserveError) throw new Error('Failed to reserve credits: ' + reserveError.message)
     const reservationId = reservation.id;
 
-    // Deduct reserved amount from available, add to reserved
-    // Real implementation would use an RPC for atomic decrement to prevent race conditions.
-    // For this prototype, we'll do it safely via an RPC or simple update if race conditions are ignored.
-    // Ideally, we'd use an RPC, but we didn't add one in the migration. Let's do a basic update.
     await supabaseClient
       .from('credit_accounts')
       .update({
@@ -101,8 +92,7 @@ serve(async (req) => {
         reserved: (accountData.reserved || 0) + estimatedCost
       })
       .eq('workspace_id', workspaceId)
-      
-    // Write to ledger
+
     await supabaseClient
       .from('credit_ledger')
       .insert({
@@ -115,7 +105,7 @@ serve(async (req) => {
       })
 
     // ==========================================
-    // 2. PROCESS DOCUMENT - REAL OCR EXTRACTION
+    // 2. PROCESS DOCUMENT
     // ==========================================
     await supabaseClient
       .from('processing_jobs')
@@ -125,7 +115,6 @@ serve(async (req) => {
       })
       .eq('id', jobId)
 
-    // Fetch document metadata including file path
     const { data: docFull } = await supabaseClient
       .from('documents')
       .select('id, name, file_path, workspace_id, page_count')
@@ -136,86 +125,45 @@ serve(async (req) => {
       throw new Error('Document or file path not found')
     }
 
-    // Stage 1: Download PDF from Supabase Storage
     console.log(`Job ${jobId}: Downloading PDF...`)
     await supabaseClient
       .from('processing_jobs')
       .update({ progress: 10 })
       .eq('id', jobId)
 
-    const { data: fileData, error: downloadError } = await supabaseClient
+    const { error: downloadError } = await supabaseClient
       .storage
       .from('workspace_documents')
       .download(docFull.file_path)
 
-    if (downloadError || !fileData) {
-      throw new Error(`Failed to download PDF: ${downloadError?.message || 'Unknown error'}`)
+    if (downloadError) {
+      throw new Error(`Failed to download PDF: ${downloadError.message}`)
     }
 
-    // Stage 2: Extract text using pdfjs-dist
-    console.log(`Job ${jobId}: Extracting text from PDF...`)
+    // Mark for client-side OCR (pdfjs-dist requires canvas which isn't available in Deno)
+    console.log(`Job ${jobId}: Marking document for client-side OCR...`)
     await supabaseClient
       .from('processing_jobs')
-      .update({ progress: 30 })
+      .update({ progress: 50 })
       .eq('id', jobId)
 
-    const arrayBuffer = await fileData.arrayBuffer()
-    const uint8Array = new Uint8Array(arrayBuffer)
+    const totalPages = docFull.page_count || 1
 
-    // Set worker source for pdfjs
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
-
-    const pdf = await pdfjs.getDocument({ data: uint8Array }).promise
-    const totalPages = pdf.numPages
-    let extractedText = ''
-    let hasNativeText = false
-
-    // Stage 3: Extract text from each page
-    console.log(`Job ${jobId}: Processing ${totalPages} pages...`)
-
-    for (let i = 1; i <= totalPages; i++) {
-      const page = await pdf.getPage(i)
-      const textContent = await page.getTextContent()
-      const pageText = textContent.items
-        .map((item: any) => item.str)
-        .join(' ')
-        .trim()
-
-      if (pageText.length > 0) {
-        hasNativeText = true
-        extractedText += `[Page ${i}]\n${pageText}\n\n`
-      }
-
-      // Update progress (30% to 80%)
-      const progress = 30 + Math.round((i / totalPages) * 50)
-      await supabaseClient
-        .from('processing_jobs')
-        .update({ progress })
-        .eq('id', jobId)
-    }
-
-    console.log(`Job ${jobId}: Extracted ${extractedText.length} characters from ${totalPages} pages`)
-
-    // Stage 4: Save extracted text and update document status
-    console.log(`Job ${jobId}: Saving extracted text...`)
     await supabaseClient
       .from('processing_jobs')
-      .update({ progress: 85 })
+      .update({ progress: 80 })
       .eq('id', jobId)
 
-    const ocrStatus = hasNativeText ? 'completed' : 'needs_client_ocr'
+    console.log(`Job ${jobId}: Document marked for client-side OCR (${totalPages} pages)`)
 
     await supabaseClient
       .from('documents')
       .update({
-        extracted_text: extractedText,
-        ocr_status: ocrStatus,
+        ocr_status: 'needs_client_ocr',
         page_count: totalPages,
         status: 'ready',
       })
       .eq('id', documentId)
-
-    console.log(`Job ${jobId}: OCR status: ${ocrStatus}, text length: ${extractedText.length}`)
 
     const endTime = Date.now()
     const processingTime = Math.round((endTime - startTime) / 1000)
@@ -223,11 +171,8 @@ serve(async (req) => {
     // ==========================================
     // 3. SETTLE CREDITS
     // ==========================================
-    // The actual cost in a real pipeline might depend on images/pages detected.
-    // For prototype, we assume the estimated cost was perfectly accurate.
     const actualCost = estimatedCost;
 
-    // Settle reservation
     await supabaseClient
       .from('credit_reservations')
       .update({
@@ -236,7 +181,6 @@ serve(async (req) => {
       })
       .eq('id', reservationId)
 
-    // Ledger consume entry
     await supabaseClient
       .from('credit_ledger')
       .insert({
@@ -248,7 +192,6 @@ serve(async (req) => {
         job_id: jobId
       })
 
-    // Update account (subtract from reserved, add to consumed)
     const { data: finalAccount } = await supabaseClient
       .from('credit_accounts')
       .select('reserved, consumed')
@@ -265,7 +208,6 @@ serve(async (req) => {
         .eq('workspace_id', workspaceId)
     }
 
-    // Complete Job
     await supabaseClient
       .from('processing_jobs')
       .update({
@@ -283,10 +225,10 @@ serve(async (req) => {
       status: 200,
     })
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown processing error'
     console.error('Processing job failed:', error)
-    
-    // Attempt to mark as failed
+
     try {
       const payload = await req.json().catch(() => ({}))
       const jobId = payload?.record?.id
@@ -299,7 +241,7 @@ serve(async (req) => {
           .from('processing_jobs')
           .update({
             status: 'failed',
-            error_message: error.message || 'Unknown processing error'
+            error_message: errorMessage
           })
           .eq('id', jobId)
       }
@@ -307,11 +249,7 @@ serve(async (req) => {
       // Ignore inner catch errors
     }
 
-    // Note: A robust system would also have a periodic cron or failure handler 
-    // to refund abandoned reservations. We skip it here for brevity, 
-    // but the reservation 'expires_at' ensures it can be cleaned up later.
-
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: errorMessage }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
     })

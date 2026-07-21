@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       billing_customers: {
@@ -361,6 +386,91 @@ export type Database = {
           },
         ]
       }
+      document_analysis: {
+        Row: {
+          analysis_type: Database["public"]["Enums"]["analysis_task_type"]
+          created_at: string | null
+          document_id: string | null
+          id: string
+          model: string | null
+          provider: string | null
+          result: Json
+          version: number | null
+        }
+        Insert: {
+          analysis_type: Database["public"]["Enums"]["analysis_task_type"]
+          created_at?: string | null
+          document_id?: string | null
+          id?: string
+          model?: string | null
+          provider?: string | null
+          result: Json
+          version?: number | null
+        }
+        Update: {
+          analysis_type?: Database["public"]["Enums"]["analysis_task_type"]
+          created_at?: string | null
+          document_id?: string | null
+          id?: string
+          model?: string | null
+          provider?: string | null
+          result?: Json
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_analysis_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_pages: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          document_id: string | null
+          embedding_status: string | null
+          id: string
+          layout_json: Json | null
+          ocr_provider: string | null
+          page_number: number
+          raw_text: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          document_id?: string | null
+          embedding_status?: string | null
+          id?: string
+          layout_json?: Json | null
+          ocr_provider?: string | null
+          page_number: number
+          raw_text?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          document_id?: string | null
+          embedding_status?: string | null
+          id?: string
+          layout_json?: Json | null
+          ocr_provider?: string | null
+          page_number?: number
+          raw_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_pages_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           created_at: string
@@ -369,6 +479,7 @@ export type Database = {
           id: string
           mime_type: string | null
           name: string
+          ocr_status: string | null
           page_count: number | null
           size_bytes: number
           status: Database["public"]["Enums"]["document_status"]
@@ -382,6 +493,7 @@ export type Database = {
           id?: string
           mime_type?: string | null
           name: string
+          ocr_status?: string | null
           page_count?: number | null
           size_bytes: number
           status?: Database["public"]["Enums"]["document_status"]
@@ -395,6 +507,7 @@ export type Database = {
           id?: string
           mime_type?: string | null
           name?: string
+          ocr_status?: string | null
           page_count?: number | null
           size_bytes?: number
           status?: Database["public"]["Enums"]["document_status"]
@@ -503,6 +616,47 @@ export type Database = {
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      highlight_bboxes: {
+        Row: {
+          cached_at: string | null
+          height: number | null
+          highlight_id: string | null
+          id: string
+          page_number: number
+          width: number | null
+          x: number | null
+          y: number | null
+        }
+        Insert: {
+          cached_at?: string | null
+          height?: number | null
+          highlight_id?: string | null
+          id?: string
+          page_number: number
+          width?: number | null
+          x?: number | null
+          y?: number | null
+        }
+        Update: {
+          cached_at?: string | null
+          height?: number | null
+          highlight_id?: string | null
+          id?: string
+          page_number?: number
+          width?: number | null
+          x?: number | null
+          y?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "highlight_bboxes_highlight_id_fkey"
+            columns: ["highlight_id"]
+            isOneToOne: false
+            referencedRelation: "highlights"
             referencedColumns: ["id"]
           },
         ]
@@ -870,6 +1024,75 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "processing_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      processing_tasks: {
+        Row: {
+          created_at: string | null
+          depends_on: Database["public"]["Enums"]["analysis_task_type"][] | null
+          document_id: string | null
+          error: string | null
+          finished_at: string | null
+          id: string
+          metadata: Json | null
+          model: string | null
+          prompt_version: string | null
+          provider: string | null
+          provider_version: string | null
+          schema_version: string | null
+          started_at: string | null
+          status: string | null
+          task: Database["public"]["Enums"]["analysis_task_type"]
+          version: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          depends_on?:
+            | Database["public"]["Enums"]["analysis_task_type"][]
+            | null
+          document_id?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          metadata?: Json | null
+          model?: string | null
+          prompt_version?: string | null
+          provider?: string | null
+          provider_version?: string | null
+          schema_version?: string | null
+          started_at?: string | null
+          status?: string | null
+          task: Database["public"]["Enums"]["analysis_task_type"]
+          version?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          depends_on?:
+            | Database["public"]["Enums"]["analysis_task_type"][]
+            | null
+          document_id?: string | null
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          metadata?: Json | null
+          model?: string | null
+          prompt_version?: string | null
+          provider?: string | null
+          provider_version?: string | null
+          schema_version?: string | null
+          started_at?: string | null
+          status?: string | null
+          task?: Database["public"]["Enums"]["analysis_task_type"]
+          version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "processing_tasks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
             referencedColumns: ["id"]
           },
         ]
@@ -1451,6 +1674,19 @@ export type Database = {
       get_user_workspace_ids: { Args: never; Returns: string[] }
     }
     Enums: {
+      analysis_task_type:
+        | "ocr"
+        | "layout"
+        | "chunking"
+        | "embeddings"
+        | "highlights"
+        | "summary"
+        | "glossary"
+        | "timeline"
+        | "flashcards"
+        | "mindmap"
+        | "podcast"
+        | "presentation"
       chat_role: "user" | "assistant" | "system"
       document_status: "uploading" | "processing" | "ready" | "error"
       job_status:
@@ -1622,8 +1858,25 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
+      analysis_task_type: [
+        "ocr",
+        "layout",
+        "chunking",
+        "embeddings",
+        "highlights",
+        "summary",
+        "glossary",
+        "timeline",
+        "flashcards",
+        "mindmap",
+        "podcast",
+        "presentation",
+      ],
       chat_role: ["user", "assistant", "system"],
       document_status: ["uploading", "processing", "ready", "error"],
       job_status: [
@@ -1677,4 +1930,3 @@ export const Constants = {
     },
   },
 } as const
-

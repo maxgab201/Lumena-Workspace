@@ -41,14 +41,43 @@ El proyecto ha avanzado desde un prototipo a una arquitectura SaaS de grado de p
 - **Desarrollo por Bloques:** El desarrollo está dividido en Fases estrictas. No se avanza a la siguiente sin que el código de la actual compile (`npm run build`), pase linting (`npm run lint`), y sea verificado.
 - **Estética "Premium":** Se evitan los diseños básicos; se implementan componentes con *glassmorphism*, animaciones sutiles e interfaces limpias, priorizando UX moderna.
 
-## 6. Problemas Conocidos y Pendientes
-- **Fallo en MCP Tools de Supabase:** En la última sesión, la herramienta MCP `apply_migration` arrojó errores de serialización (`"Invalid input: expected record, received string"`) al intentar ejecutar consultas SQL / DDL. Como consecuencia temporal, la tabla para "Presentaciones" (`presentations`) quedó pendiente de creación, y la v2 del Edge Function `generate-knowledge` (con soporte para líneas de tiempo y presentaciones) falló al desplegarse por el mismo error en `deploy_edge_function`.
-- **Warning en Deno:** Un warning menor en el catch block (`catch (_parseErr)`) del Edge Function `generate-knowledge` fue corregido a `catch (_)`, pero la corrección no se pudo desplegar por el fallo del MCP.
+## 6. Estado de Implementación - Análisis AI
 
-## 7. Próximos Pasos (Fase 23)
-1. **Solucionar despliegue de Edge Functions:** Lograr subir la actualización de `generate-knowledge` (que añade soporte para `timeline` y `presentation`).
-2. **Migración de Base de Datos:** Crear la tabla `presentations` en Supabase (ya sea reparando el MCP, usando el CLI local `supabase db push`, o mediante DDL en un Edge Function).
-3. **Frontend (Líneas de Tiempo y Presentaciones):** Conectar `TimelineView.tsx` al `knowledgeStore.ts` e implementar `PresentationsView.tsx` para renderizar el esquema de diapositivas generado por IA.
+### ✅ Implementado y Funcional
+- **TaskQueue**: Cola de tareas con dependencias y status tracking
+- **AnalysisJobEngine**: Orquestador con topological sort para ejecución paralela
+- **AnalysisCache**: Caché para evitar regeneración de análisis
+- **AnalysisEvents**: Sistema de eventos para UI en tiempo real
+- **PromptBuilder**: Construcción unificada de prompts para chat, highlights, summary, glossary
+- **AIAnalysisService**: Operaciones AI centralizadas con AIGateway
+- **BoundingBoxCache**: Caché de coordenadas calculadas
+- **TextChunker**: División semántica de texto en chunks
+- **CitationEngine**: Parseo de citas [Page X] en respuestas AI
+- **AutoHighlightOverlay**: Rendering de highlights AI con colores por categoría
+- **14 categorías de highlights**: concept, definition, formula, date, fact, etc.
+
+### ⚠️ Implementación Parcial (Placeholder/Stub)
+- **RAGSearch**: Usa Supabase `textSearch` como fallback. **NO tiene embeddings vectoriales reales.** Para RAG completo se necesita:
+  - Tabla `document_chunks` con columna `embedding VECTOR(1536)`
+  - Proveedor de embeddings (OpenAI text-embedding-3-small u otro)
+  - Búsqueda por coseno de similitud
+- **OCR en Edge Functions**: `process-document` marca documentos para `client-side OCR` porque `pdfjs-dist` requiere canvas (no disponible en Deno). El OCR real se hace en el cliente usando `react-pdf` TextLayer.
+- **process-document Edge Function**: Solo descarga el PDF y lo marca para OCR client-side. No extrae texto real.
+
+### ❌ No Implementado
+- Embeddings vectoriales
+- Búsqueda semántica real (cosine similarity)
+- Extracción de texto en Edge Functions (requiere canvas)
+
+## 7. Problemas Conocidos y Pendientes
+- **MCP de Supabase**: La herramienta MCP `apply_migration` falla. Se usa el CLI de Supabase para aplicar migraciones.
+- **Tablas creadas desde Edge Function**: El `process-document` creaba tablas en caliente (`CREATE TABLE IF NOT EXISTS`). Esto fue eliminado y se usa únicamente la migración oficial `20240725000001_add_analysis_tables.sql`.
+
+## 8. Próximos Pasos (Fase 24)
+1. **Embeddings Vectoriales**: Implementar embeddings reales con OpenAI u otro proveedor para RAG completo.
+2. **Búsqueda Semántica**: Reemplazar `textSearch` por búsqueda por cosino de similitud con vectores.
+3. **OCR Client-Side**: Implementar `ClientOCRRunner` para extraer texto de PDFs escaneados usando Tesseract.
+4. **Frontend (Líneas de Tiempo y Presentaciones):** Conectar `TimelineView.tsx` al `knowledgeStore.ts` e implementar `PresentationsView.tsx`.
 
 ## 8. Cosas para NO repetir
 - **No crear implementaciones Mock:** Lumena ya no es un prototipo. Toda feature debe conectarse al backend y persistir datos reales.

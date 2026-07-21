@@ -4,6 +4,7 @@ import { LayoutOverlay } from './overlays/LayoutOverlay';
 import { OCROverlay } from './overlays/OCROverlay';
 import { VisionOverlay } from './overlays/VisionOverlay';
 import { HighlightOverlay } from './overlays/HighlightOverlay';
+import { AutoHighlightOverlay } from './overlays/AutoHighlightOverlay';
 
 interface PDFPageProps {
   pageIndex: number;
@@ -63,7 +64,10 @@ export const PDFPage = ({ pageIndex, width, style }: PDFPageProps) => {
         {/* Layer 6: Highlight Layer */}
         <HighlightOverlay pageIndex={pageIndex} />
 
-        {/* Layer 7: AI Overlay Layer */}
+        {/* Layer 7: AI Auto-Highlights */}
+        <AutoHighlightOverlay pageIndex={pageIndex} />
+
+        {/* Layer 8: AI Overlay Layer */}
         <VisionOverlay pageIndex={pageIndex} />
       </div>
     </div>
