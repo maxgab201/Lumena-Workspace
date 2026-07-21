@@ -33,7 +33,7 @@ serve(async (req) => {
     }
 
     const payload = await req.json()
-    const { prompt, workspace_id, action_type = 'chat', model_code = 'gemini-1.5-flash', fallback_models, document_id = null } = payload
+    const { prompt, workspace_id, action_type = 'chat', model_code = '', fallback_models, document_id = null } = payload
 
     if (!prompt || !workspace_id) {
       return new Response(JSON.stringify({ error: 'Missing prompt or workspace_id' }), { status: 400, headers: corsHeaders })
@@ -52,8 +52,8 @@ serve(async (req) => {
 
     // Define plan capabilities
     const PLAN_MODELS: Record<string, string[]> = {
-      free: ['gemini-1.5-flash'],
-      pro: ['gemini-1.5-flash', 'gemini-1.5-pro'],
+      free: [],
+      pro: [],
     }
     const PLAN_MONTHLY_CREDIT_QUOTA: Record<string, number> = {
       free: 50,

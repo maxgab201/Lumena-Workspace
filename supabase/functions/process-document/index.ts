@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
+import * as pdfjs from "https://esm.sh/pdfjs-dist@3.11.174"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -114,7 +115,7 @@ serve(async (req) => {
       })
 
     // ==========================================
-    // 2. PROCESS DOCUMENT
+    // 2. PROCESS DOCUMENT - REAL OCR EXTRACTION
     // ==========================================
     await supabaseClient
       .from('processing_jobs')
@@ -124,40 +125,97 @@ serve(async (req) => {
       })
       .eq('id', jobId)
 
-    // Simulate different processing stages
-    const stages = ['inspecting', 'extracting', 'ocr', 'layout']
-    let currentProgress = 10
+    // Fetch document metadata including file path
+    const { data: docFull } = await supabaseClient
+      .from('documents')
+      .select('id, name, file_path, workspace_id, page_count')
+      .eq('id', documentId)
+      .single()
 
-    for (const stage of stages) {
-      await new Promise((resolve) => setTimeout(resolve, 1500)) // Fake delay
-      currentProgress += 20
-      await supabaseClient
-        .from('processing_jobs')
-        .update({ progress: currentProgress })
-        .eq('id', jobId)
-      console.log(`Job ${jobId} finished stage: ${stage}`)
+    if (!docFull || !docFull.file_path) {
+      throw new Error('Document or file path not found')
     }
 
-    // Generate Knowledge Items (stubbed content but real DB persistence)
-    const mockKnowledge = [
-      {
-        workspace_id: workspaceId,
-        document_id: documentId,
-        type: 'flashcard',
-        content: {
-          front: 'What is the main topic of this document?',
-          back: 'This document was processed by the new real backend pipeline.'
-        },
-        metadata: { page: 1, confidence: 0.95 }
-      }
-    ]
+    // Stage 1: Download PDF from Supabase Storage
+    console.log(`Job ${jobId}: Downloading PDF...`)
+    await supabaseClient
+      .from('processing_jobs')
+      .update({ progress: 10 })
+      .eq('id', jobId)
 
-    await supabaseClient.from('knowledge').insert(mockKnowledge)
+    const { data: fileData, error: downloadError } = await supabaseClient
+      .storage
+      .from('workspace_documents')
+      .download(docFull.file_path)
+
+    if (downloadError || !fileData) {
+      throw new Error(`Failed to download PDF: ${downloadError?.message || 'Unknown error'}`)
+    }
+
+    // Stage 2: Extract text using pdfjs-dist
+    console.log(`Job ${jobId}: Extracting text from PDF...`)
+    await supabaseClient
+      .from('processing_jobs')
+      .update({ progress: 30 })
+      .eq('id', jobId)
+
+    const arrayBuffer = await fileData.arrayBuffer()
+    const uint8Array = new Uint8Array(arrayBuffer)
+
+    // Set worker source for pdfjs
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
+
+    const pdf = await pdfjs.getDocument({ data: uint8Array }).promise
+    const totalPages = pdf.numPages
+    let extractedText = ''
+    let hasNativeText = false
+
+    // Stage 3: Extract text from each page
+    console.log(`Job ${jobId}: Processing ${totalPages} pages...`)
+
+    for (let i = 1; i <= totalPages; i++) {
+      const page = await pdf.getPage(i)
+      const textContent = await page.getTextContent()
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ')
+        .trim()
+
+      if (pageText.length > 0) {
+        hasNativeText = true
+        extractedText += `[Page ${i}]\n${pageText}\n\n`
+      }
+
+      // Update progress (30% to 80%)
+      const progress = 30 + Math.round((i / totalPages) * 50)
+      await supabaseClient
+        .from('processing_jobs')
+        .update({ progress })
+        .eq('id', jobId)
+    }
+
+    console.log(`Job ${jobId}: Extracted ${extractedText.length} characters from ${totalPages} pages`)
+
+    // Stage 4: Save extracted text and update document status
+    console.log(`Job ${jobId}: Saving extracted text...`)
+    await supabaseClient
+      .from('processing_jobs')
+      .update({ progress: 85 })
+      .eq('id', jobId)
+
+    const ocrStatus = hasNativeText ? 'completed' : 'needs_client_ocr'
 
     await supabaseClient
       .from('documents')
-      .update({ status: 'ready' })
+      .update({
+        extracted_text: extractedText,
+        ocr_status: ocrStatus,
+        page_count: totalPages,
+        status: 'ready',
+      })
       .eq('id', documentId)
+
+    console.log(`Job ${jobId}: OCR status: ${ocrStatus}, text length: ${extractedText.length}`)
 
     const endTime = Date.now()
     const processingTime = Math.round((endTime - startTime) / 1000)
