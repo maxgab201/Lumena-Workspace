@@ -17,12 +17,50 @@ serve(async (req) => {
   let jobId: string | null = null
 
   try {
-    // Validate content type
+    // ==========================================
+    // AUTHENTICATION: Verify request comes from our pg_net webhook
+    // ==========================================
+    // The PostgreSQL trigger sends Authorization: Bearer <SUPABASE_ANON_KEY>.
+    // We verify this matches our expected anon key to reject unauthorized requests.
+    const authHeader = req.headers.get('authorization')
+    const expectedAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error(`[SECURITY] Rejected request: missing or malformed Authorization header. IP: ${req.headers.get('x-forwarded-for') || 'unknown'}`)
+      return new Response(JSON.stringify({ error: 'Unauthorized: missing Authorization header' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401,
+      })
+    }
+
+    const token = authHeader.replace('Bearer ', '')
+    if (token !== expectedAnonKey) {
+      console.error(`[SECURITY] Rejected request: invalid Bearer token. IP: ${req.headers.get('x-forwarded-for') || 'unknown'}`)
+      return new Response(JSON.stringify({ error: 'Unauthorized: invalid token' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401,
+      })
+    }
+
+    // ==========================================
+    // SCHEMA VALIDATION: Strict payload structure check
+    // ==========================================
     const contentType = req.headers.get('content-type')
     if (!contentType?.includes('application/json')) {
+      console.error(`[SECURITY] Rejected request: invalid content-type: ${contentType}`)
       return new Response(JSON.stringify({ error: 'Invalid content type' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
+      })
+    }
+
+    // Limit request body size (prevent DoS via large payloads)
+    const contentLength = parseInt(req.headers.get('content-length') || '0', 10)
+    if (contentLength > 10240) { // 10KB max for job payloads
+      console.error(`[SECURITY] Rejected request: payload too large (${contentLength} bytes)`)
+      return new Response(JSON.stringify({ error: 'Payload too large' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 413,
       })
     }
 
@@ -31,46 +69,98 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    const payload = await req.json()
-    const job = payload.record
-
-    // Validate job structure
-    if (!job || typeof job !== 'object') {
-      return new Response(JSON.stringify({ error: 'Invalid payload: missing record' }), {
+    let payload: Record<string, unknown>
+    try {
+      payload = await req.json()
+    } catch {
+      console.error(`[SECURITY] Rejected request: invalid JSON body`)
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       })
     }
 
-    if (!job.id || !job.document_id || !job.workspace_id) {
-      return new Response(JSON.stringify({ error: 'Invalid job: missing required fields (id, document_id, workspace_id)' }), {
+    // Strict schema: must have exactly { record: { id, document_id, workspace_id, status, ... } }
+    const job = payload.record as Record<string, unknown> | undefined
+    if (!job || typeof job !== 'object' || Array.isArray(job)) {
+      console.error(`[SECURITY] Rejected request: missing or invalid "record" field`)
+      return new Response(JSON.stringify({ error: 'Invalid payload: missing or invalid "record"' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       })
     }
 
-    // Validate UUID format
+    // Required fields with type checks
+    const requiredFields = ['id', 'document_id', 'workspace_id', 'status']
+    for (const field of requiredFields) {
+      if (typeof job[field] !== 'string' || !job[field]) {
+        console.error(`[SECURITY] Rejected request: missing or non-string field "${field}"`)
+        return new Response(JSON.stringify({ error: `Invalid job: "${field}" must be a non-empty string` }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        })
+      }
+    }
+
+    // UUID format validation
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!uuidRegex.test(job.id) || !uuidRegex.test(job.document_id) || !uuidRegex.test(job.workspace_id)) {
+    if (!uuidRegex.test(job.id as string) || !uuidRegex.test(job.document_id as string) || !uuidRegex.test(job.workspace_id as string)) {
+      console.error(`[SECURITY] Rejected request: invalid UUID format`)
       return new Response(JSON.stringify({ error: 'Invalid UUID format in job fields' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       })
     }
 
+    // Status must be exactly 'queued'
     if (job.status !== 'queued') {
+      console.error(`[SECURITY] Rejected request: unexpected job status "${job.status}"`)
       return new Response(JSON.stringify({ error: `Invalid job status: ${job.status} (expected: queued)` }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       })
     }
 
-    jobId = job.id
-    const documentId = job.document_id
-    const workspaceId = job.workspace_id
+    // Reject unknown top-level fields (strict schema)
+    const knownFields = ['record']
+    for (const key of Object.keys(payload)) {
+      if (!knownFields.includes(key)) {
+        console.error(`[SECURITY] Rejected request: unexpected field "${key}" in payload`)
+        return new Response(JSON.stringify({ error: `Unexpected field: ${key}` }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        })
+      }
+    }
+
+    jobId = job.id as string
+    const documentId = job.document_id as string
+    const workspaceId = job.workspace_id as string
     const startTime = Date.now()
 
-    console.log(`Starting processing for job ${jobId} (Document: ${documentId})`)
+    // ==========================================
+    // RATE LIMITING: Max 10 processing jobs per workspace per hour
+    // ==========================================
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    const { count: recentJobs } = await supabaseClient
+      .from('processing_jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('workspace_id', workspaceId)
+      .gte('created_at', oneHourAgo)
+
+    if (recentJobs && recentJobs >= 10) {
+      console.error(`[RATE-LIMIT] Rejected job ${jobId}: workspace ${workspaceId} has ${recentJobs} jobs in the last hour`)
+      await supabaseClient
+        .from('processing_jobs')
+        .update({ status: 'failed', error_message: 'Rate limit exceeded: max 10 processing jobs per hour' })
+        .eq('id', jobId)
+      return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 429,
+      })
+    }
+
+    console.log(`[AUTH] Validated request for job ${jobId} (Document: ${documentId}, Workspace: ${workspaceId})`)
 
     // ==========================================
     // 1. VERIFY DOCUMENT & ESTIMATE CREDITS
