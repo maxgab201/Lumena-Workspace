@@ -50,11 +50,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        
-        if (width === 0 || height === 0) {
-          console.log(`[DEBUG] Viewer dimensions: width=${width}, height=${height}`);
-        }
-        
+
         setDimensions({ width, height });
       }
     });
@@ -64,12 +60,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
 
   // Handle successful PDF load
   const onDocumentLoadSuccess = useCallback(
-    async (pdf: { numPages: number; getPageLabels?: () => Promise<string[] | null> }) => {
-      try {
-        // We removed pageLabels from initializeDocument since we'll set it per-page when OCR runs
-      } catch (err) {
-        console.warn('Could not read page labels', err);
-      }
+    (pdf: { numPages: number }) => {
       initializeDocument(pdf.numPages);
     },
     [initializeDocument]
@@ -173,8 +164,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
               data-width={dimensions.width}
               data-height={dimensions.height}
             >
-              {/* eslint-disable-next-line no-constant-binary-expression */}
-              {(dimensions.width > 0 || true) && (
+              {dimensions.width > 0 && (
                 <PDFPageList
                   containerWidth={Math.max(dimensions.width, 800)}
                   containerHeight={Math.max(dimensions.height, 600)}

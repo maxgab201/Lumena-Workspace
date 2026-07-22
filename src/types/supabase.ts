@@ -429,37 +429,40 @@ export type Database = {
       }
       document_chunks: {
         Row: {
+          chunk_type: string
           content: string
           created_at: string
           document_id: string
           end_offset: number
           id: string
           page_number: number
+          search_vector: unknown
           start_offset: number
           token_count: number
-          chunk_type: string
         }
         Insert: {
+          chunk_type?: string
           content: string
           created_at?: string
           document_id: string
           end_offset?: number
           id: string
           page_number: number
+          search_vector?: unknown
           start_offset?: number
           token_count?: number
-          chunk_type?: string
         }
         Update: {
+          chunk_type?: string
           content?: string
           created_at?: string
           document_id?: string
           end_offset?: number
           id?: string
           page_number?: number
+          search_vector?: unknown
           start_offset?: number
           token_count?: number
-          chunk_type?: string
         }
         Relationships: [
           {
@@ -468,7 +471,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "documents"
             referencedColumns: ["id"]
-          }
+          },
         ]
       }
       document_pages: {
