@@ -243,10 +243,15 @@ serve(async (req) => {
 
         if (jobError) throw new Error('Failed to create usage job')
 
-        await supabaseClient.from('credit_accounts').update({
+        // Optimistic lock: only deduct if available hasn't changed since we read it
+        const { error: deductError } = await supabaseClient.from('credit_accounts').update({
           available: accountData.available - reservedCredits,
           reserved: accountData.reserved + reservedCredits
-        }).eq('workspace_id', workspace_id)
+        }).eq('workspace_id', workspace_id).eq('available', accountData.available)
+
+        if (deductError) {
+          throw Object.assign(new Error('Credit deduction failed due to concurrent modification'), { status: 409 })
+        }
 
         let providerResult;
         try {

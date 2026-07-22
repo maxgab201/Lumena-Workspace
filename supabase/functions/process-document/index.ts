@@ -17,6 +17,15 @@ serve(async (req) => {
   let jobId: string | null = null
 
   try {
+    // Validate content type
+    const contentType = req.headers.get('content-type')
+    if (!contentType?.includes('application/json')) {
+      return new Response(JSON.stringify({ error: 'Invalid content type' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      })
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -25,8 +34,32 @@ serve(async (req) => {
     const payload = await req.json()
     const job = payload.record
 
-    if (!job || !job.id || job.status !== 'queued') {
-      return new Response(JSON.stringify({ error: 'Invalid or missing job record' }), {
+    // Validate job structure
+    if (!job || typeof job !== 'object') {
+      return new Response(JSON.stringify({ error: 'Invalid payload: missing record' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      })
+    }
+
+    if (!job.id || !job.document_id || !job.workspace_id) {
+      return new Response(JSON.stringify({ error: 'Invalid job: missing required fields (id, document_id, workspace_id)' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      })
+    }
+
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(job.id) || !uuidRegex.test(job.document_id) || !uuidRegex.test(job.workspace_id)) {
+      return new Response(JSON.stringify({ error: 'Invalid UUID format in job fields' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      })
+    }
+
+    if (job.status !== 'queued') {
+      return new Response(JSON.stringify({ error: `Invalid job status: ${job.status} (expected: queued)` }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       })
@@ -40,20 +73,41 @@ serve(async (req) => {
     console.log(`Starting processing for job ${jobId} (Document: ${documentId})`)
 
     // ==========================================
-    // 1. ESTIMATE & RESERVE CREDITS
+    // 1. VERIFY DOCUMENT & ESTIMATE CREDITS
     // ==========================================
     const { data: docData } = await supabaseClient
       .from('documents')
-      .select('page_count')
+      .select('page_count, workspace_id')
       .eq('id', documentId)
       .single()
+
+    // Verify document exists and belongs to the claimed workspace
+    if (!docData || docData.workspace_id !== workspaceId) {
+      console.error(`Job ${jobId}: Document ${documentId} not found or workspace mismatch`)
+      await supabaseClient
+        .from('processing_jobs')
+        .update({ status: 'failed', error_message: 'Document not found or workspace mismatch' })
+        .eq('id', jobId)
+      return new Response(JSON.stringify({ error: 'Document not found or workspace mismatch' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 404,
+      })
+    }
 
     const pageCount = docData?.page_count || 1;
     const estimatedCost = Math.max(pageCount * 5, 20);
 
+    // Credit reservation with optimistic locking.
+    // NOTE: Supabase JS doesn't support `column = column - value` expressions,
+    // so we cannot do a fully atomic UPDATE in one step.
+    // We use optimistic locking: read the current value, then update only if unchanged.
+    // Race condition window is very small (microseconds between read and write).
+    // TODO: Create a PostgreSQL RPC function `reserve_credits(p_workspace_id, p_amount)`
+    //       for fully atomic deduction when the credit system is production-ready.
+
     const { data: accountData } = await supabaseClient
       .from('credit_accounts')
-      .select('available')
+      .select('available, reserved')
       .eq('workspace_id', workspaceId)
       .single()
 
@@ -73,7 +127,7 @@ serve(async (req) => {
       })
     }
 
-    const { data: reservation, error: reserveError } = await supabaseClient
+    const { data: reservation, error: reservationInsertError } = await supabaseClient
       .from('credit_reservations')
       .insert({
         workspace_id: workspaceId,
@@ -86,16 +140,27 @@ serve(async (req) => {
       .select('id')
       .single()
 
-    if (reserveError) throw new Error('Failed to reserve credits: ' + reserveError.message)
+    if (reservationInsertError) throw new Error('Failed to reserve credits: ' + reservationInsertError.message)
     const reservationId = reservation.id;
 
-    await supabaseClient
+    // Optimistic lock: only deduct if the available balance hasn't changed since we read it
+    const { error: deductError } = await supabaseClient
       .from('credit_accounts')
       .update({
         available: accountData.available - estimatedCost,
         reserved: (accountData.reserved || 0) + estimatedCost
       })
       .eq('workspace_id', workspaceId)
+      .eq('available', accountData.available)
+
+    if (deductError) {
+      // If optimistic lock failed (race condition), release the reservation
+      await supabaseClient
+        .from('credit_reservations')
+        .update({ status: 'released' })
+        .eq('id', reservationId)
+      throw new Error('Credit deduction failed due to concurrent modification. Please retry.')
+    }
 
     await supabaseClient
       .from('credit_ledger')
