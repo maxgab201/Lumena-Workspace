@@ -6,7 +6,11 @@ import { useViewerStore } from '../../stores/viewerStore';
 import { HighlightEngine } from '../../lib/processing/HighlightEngine';
 import type { NormalizedRect } from '../../types/highlights';
 
-export const HighlightEditor = () => {
+interface HighlightEditorProps {
+  workspaceId?: string;
+}
+
+export const HighlightEditor = ({ workspaceId = '' }: HighlightEditorProps) => {
   const { documentId } = useViewerStore();
   const { addHighlight, categories } = useHighlightStore();
   
@@ -57,15 +61,13 @@ export const HighlightEditor = () => {
   if (!selectionData || !documentId) return null;
 
   const handleCreateHighlight = (color: string, categoryId: string) => {
-    // NOTE: workspaceId must be provided from context. 
-    // HighlightStore.addHighlight requires document_id and workspace_id.
-    // We use the viewerStore documentId and rely on the store to know the workspaceId.
-    // For now we pass an empty string for workspace_id — this is handled gracefully
-    // because Supabase RLS will reject it and the store logs the error without crashing.
-    // Phase 14 will inject workspaceId via a proper context provider.
+    if (!workspaceId) {
+      console.error('[HighlightEditor] workspaceId is required but not provided');
+      return;
+    }
     addHighlight({
       document_id: documentId,
-      workspace_id: '', // TODO: inject workspaceId via context in Phase 14
+      workspace_id: workspaceId,
       page_index: selectionData.pageIndex,
       rects: selectionData.rects,
       text: selectionData.text,

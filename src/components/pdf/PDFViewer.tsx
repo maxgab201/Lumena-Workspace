@@ -155,7 +155,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
           loading={null}
           className="flex-1 flex flex-col min-h-0 bg-background relative"
         >
-          <HighlightEditor />
+          <HighlightEditor workspaceId={workspaceId} />
 
           {/* Main Document Content */}
           {isLoading ? (
