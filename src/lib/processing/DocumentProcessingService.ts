@@ -17,11 +17,13 @@
 
 import { ExtractionStage } from './stages/ExtractionStage';
 import { InspectionStage } from './stages/InspectionStage';
+import { TextChunker } from './TextChunker';
 import { ProviderFallback } from '../providers/ProviderFallback';
 import { providerConfig } from '../providers/provider.config';
 import { usePageRegistryStore } from '../../stores/pageRegistryStore';
 import { EventBus } from './EventBus';
 import { DocumentRepository } from '../../repositories/document.repository';
+import { ChunkRepository } from '../../repositories/chunk.repository';
 import { PROCESSING_LIMITS } from './constants';
 import type { OCRProvider, OCRData } from '../providers/interfaces/OCRProvider';
 import type { DocumentProfile, ProviderResult } from '../providers/types';
@@ -240,6 +242,15 @@ export class DocumentProcessingService {
       ocr_provider: result.providerId,
       confidence: result.confidence,
     });
+
+    // Chunk the extracted text and persist chunks for full-text search
+    if (result.data.text.trim().length > 0) {
+      const chunker = new TextChunker(512);
+      const chunks = chunker.chunk(this.documentId, pageIndex, result.data.text);
+      if (chunks.length > 0) {
+        await ChunkRepository.upsertBatch(chunks);
+      }
+    }
 
     // Update UI: completed
     usePageRegistryStore.getState().updatePage(pageIndex, {

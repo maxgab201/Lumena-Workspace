@@ -427,6 +427,50 @@ export type Database = {
           },
         ]
       }
+      document_chunks: {
+        Row: {
+          content: string
+          created_at: string
+          document_id: string
+          end_offset: number
+          id: string
+          page_number: number
+          start_offset: number
+          token_count: number
+          chunk_type: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          document_id: string
+          end_offset?: number
+          id: string
+          page_number: number
+          start_offset?: number
+          token_count?: number
+          chunk_type?: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          document_id?: string
+          end_offset?: number
+          id?: string
+          page_number?: number
+          start_offset?: number
+          token_count?: number
+          chunk_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       document_pages: {
         Row: {
           confidence: number | null

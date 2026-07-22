@@ -1,14 +1,11 @@
 /**
- * RAGSearch - Text search using Supabase full-text search
+ * RAGSearch - Text search using PostgreSQL full-text search
  *
- * NOTE: This is a PARTIAL implementation.
- * Current: Uses Supabase textSearch for basic text matching.
+ * Uses tsvector/tsquery for efficient text matching.
  * Future: Will use vector embeddings for semantic similarity search.
- *
- * TODO: Implement real embeddings with OpenAI/other providers
- * TODO: Add document_chunks table with vector column
- * TODO: Implement cosine similarity search
  */
+
+import { ChunkRepository } from '../../../repositories/chunk.repository';
 
 export interface SearchResult {
   chunkId: string;
@@ -19,26 +16,35 @@ export interface SearchResult {
 
 export class RAGSearch {
   /**
-   * Search for relevant text chunks.
+   * Search for relevant text chunks using PostgreSQL full-text search.
    *
-   * PARTIAL IMPLEMENTATION:
-   * Currently uses Supabase textSearch which does basic text matching,
-   * not semantic similarity. Real RAG requires vector embeddings.
+   * Uses plainto_tsquery which handles natural language queries:
+   * - Stemming (running → run)
+   * - Stop word removal (the, a, is)
+   * - Language-aware tokenization
    *
-   * TODO: This needs document_chunks table which doesn't exist yet.
-   * For now, returns empty results as a placeholder.
+   * NOTE: This is text matching, not semantic similarity.
+   * For semantic search, vector embeddings are needed (Issue #18).
    */
   static async searchRelevantChunks(
-    _query: string,
-    _documentId: string,
-    _topK: number = 5
+    query: string,
+    documentId: string,
+    topK: number = 5
   ): Promise<SearchResult[]> {
-    // TODO: Implement when document_chunks table is created
-    // Currently, this is a placeholder that returns empty results
-    // Real implementation requires:
-    // 1. Create document_chunks table with vector column
-    // 2. Implement embedding generation
-    // 3. Use pgvector for similarity search
-    return [];
+    if (!query.trim() || !documentId) return [];
+
+    try {
+      const results = await ChunkRepository.searchChunks(documentId, query, topK);
+
+      return results.map(r => ({
+        chunkId: r.id,
+        content: r.content,
+        pageNumber: r.page_number,
+        similarity: 1.0 - (r.rank * 0.1), // Rough relevance score based on rank
+      }));
+    } catch (error) {
+      console.error('[RAGSearch] Search failed:', error);
+      return [];
+    }
   }
 }
