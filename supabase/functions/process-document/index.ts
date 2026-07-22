@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
+import { extractText, getDocumentProxy } from "npm:unpdf@1.6.2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +12,9 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  // Hoist jobId so the catch block can access it without re-reading the body
+  let jobId: string | null = null
 
   try {
     const supabaseClient = createClient(
@@ -28,7 +32,7 @@ serve(async (req) => {
       })
     }
 
-    const jobId = job.id
+    jobId = job.id
     const documentId = job.document_id
     const workspaceId = job.workspace_id
     const startTime = Date.now()
@@ -131,7 +135,7 @@ serve(async (req) => {
       .update({ progress: 10 })
       .eq('id', jobId)
 
-    const { error: downloadError } = await supabaseClient
+    const { data: pdfData, error: downloadError } = await supabaseClient
       .storage
       .from('workspace_documents')
       .download(docFull.file_path)
@@ -140,30 +144,84 @@ serve(async (req) => {
       throw new Error(`Failed to download PDF: ${downloadError.message}`)
     }
 
-    // Mark for client-side OCR (pdfjs-dist requires canvas which isn't available in Deno)
-    console.log(`Job ${jobId}: Marking document for client-side OCR...`)
+    // ==========================================
+    // Extract native text with unpdf
+    // ==========================================
+    console.log(`Job ${jobId}: Extracting native text...`)
     await supabaseClient
       .from('processing_jobs')
-      .update({ progress: 50 })
+      .update({ progress: 30 })
       .eq('id', jobId)
 
-    const totalPages = docFull.page_count || 1
+    const pdfBytes = new Uint8Array(await pdfData.arrayBuffer())
+    const pdf = await getDocumentProxy(pdfBytes)
+
+    let pageTexts: string[] = []
+    let totalPages = 0
+    try {
+      const result = await extractText(pdf, { mergePages: false })
+      pageTexts = result.text
+      totalPages = pdf.numPages
+    } finally {
+      // Always clean up the PDF document proxy to free memory
+      pdf.destroy()
+    }
+
+    // Determine if PDF has native text (digital) or is scanned
+    const hasNativeText = pageTexts.some((t: string) => t.trim().length > 0)
 
     await supabaseClient
       .from('processing_jobs')
-      .update({ progress: 80 })
+      .update({ progress: 60 })
       .eq('id', jobId)
 
-    console.log(`Job ${jobId}: Document marked for client-side OCR (${totalPages} pages)`)
+    if (hasNativeText) {
+      // Digital PDF: save extracted text to document_pages
+      console.log(`Job ${jobId}: Digital PDF detected. Saving ${totalPages} pages of text...`)
 
-    await supabaseClient
-      .from('documents')
-      .update({
-        ocr_status: 'needs_client_ocr',
-        page_count: totalPages,
-        status: 'ready',
-      })
-      .eq('id', documentId)
+      for (let i = 0; i < totalPages; i++) {
+        const pageText = (pageTexts[i] || '').trim()
+        if (pageText.length > 0) {
+          await supabaseClient
+            .from('document_pages')
+            .upsert({
+              document_id: documentId,
+              page_number: i,
+              raw_text: pageText,
+              ocr_provider: 'native',
+              confidence: 1.0,
+            }, { onConflict: 'document_id,page_number' })
+        }
+      }
+
+      await supabaseClient
+        .from('processing_jobs')
+        .update({ progress: 90 })
+        .eq('id', jobId)
+
+      await supabaseClient
+        .from('documents')
+        .update({
+          ocr_status: 'completed',
+          page_count: totalPages,
+          status: 'ready',
+        })
+        .eq('id', documentId)
+
+      console.log(`Job ${jobId}: Text extraction complete (${totalPages} pages)`)
+    } else {
+      // Scanned PDF: delegate to client-side OCR
+      console.log(`Job ${jobId}: Scanned PDF detected. Marking for client-side OCR (${totalPages} pages)...`)
+
+      await supabaseClient
+        .from('documents')
+        .update({
+          ocr_status: 'needs_client_ocr',
+          page_count: totalPages,
+          status: 'ready',
+        })
+        .eq('id', documentId)
+    }
 
     const endTime = Date.now()
     const processingTime = Math.round((endTime - startTime) / 1000)
@@ -229,10 +287,9 @@ serve(async (req) => {
     const errorMessage = error instanceof Error ? error.message : 'Unknown processing error'
     console.error('Processing job failed:', error)
 
-    try {
-      const payload = await req.json().catch(() => ({}))
-      const jobId = payload?.record?.id
-      if (jobId) {
+    // Use the hoisted jobId — don't re-read the consumed request body
+    if (jobId) {
+      try {
         const supabaseClient = createClient(
           Deno.env.get('SUPABASE_URL') ?? '',
           Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -244,9 +301,9 @@ serve(async (req) => {
             error_message: errorMessage
           })
           .eq('id', jobId)
+      } catch {
+        // Ignore inner catch errors
       }
-    } catch {
-      // Ignore inner catch errors
     }
 
     return new Response(JSON.stringify({ error: errorMessage }), {

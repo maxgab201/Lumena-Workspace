@@ -177,4 +177,69 @@ export const DocumentRepository = {
     if (error) throw error;
     return data.signedUrl;
   },
+
+  // ─── OCR / document_pages ───────────────────────────────────
+
+  /**
+   * Update the ocr_status field on a document record.
+   */
+  async updateOCRStatus(
+    id: string,
+    ocrStatus: 'pending' | 'processing' | 'completed' | 'needs_client_ocr' | 'error',
+  ) {
+    const { data, error } = await supabase
+      .from('documents')
+      .update({ ocr_status: ocrStatus })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  /**
+   * Get all extracted text entries for a document, ordered by page number.
+   */
+  async getPageTexts(documentId: string) {
+    const { data, error } = await supabase
+      .from('document_pages')
+      .select('*')
+      .eq('document_id', documentId)
+      .order('page_number', { ascending: true });
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  /**
+   * Upsert extracted text for a single page.
+   * Uses onConflict to safely handle re-runs without duplicates.
+   */
+  async upsertPageText(page: {
+    document_id: string;
+    page_number: number;
+    raw_text: string;
+    ocr_provider: string;
+    confidence: number;
+  }) {
+    const { error } = await supabase
+      .from('document_pages')
+      .upsert(page, { onConflict: 'document_id,page_number' });
+    if (error) throw error;
+  },
+
+  /**
+   * Batch upsert extracted text for multiple pages at once.
+   */
+  async upsertPageTextBatch(pages: Array<{
+    document_id: string;
+    page_number: number;
+    raw_text: string;
+    ocr_provider: string;
+    confidence: number;
+  }>) {
+    const { error } = await supabase
+      .from('document_pages')
+      .upsert(pages, { onConflict: 'document_id,page_number' });
+    if (error) throw error;
+  },
 };
