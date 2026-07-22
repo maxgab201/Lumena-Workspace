@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PDFViewer } from '../components/pdf/PDFViewer';
+import { OCRProgressIndicator } from '../components/pdf/OCRProgressIndicator';
+import { useDocumentProcessing } from '../hooks/useDocumentProcessing';
 import { useViewerStore } from '../stores/viewerStore';
 import { useChatStore } from '../stores/chatStore';
 import { useHighlightStore } from '../stores/highlightStore';
@@ -28,6 +30,7 @@ interface DocumentMeta {
   created_at: string;
   page_count?: number | null;
   mime_type?: string | null;
+  ocr_status?: string | null;
 }
 
 export const Viewer = () => {
@@ -42,6 +45,14 @@ export const Viewer = () => {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [isLoadingMeta, setIsLoadingMeta] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // OCR processing — triggers automatically if document needs client-side OCR
+  const { status: ocrStatus } = useDocumentProcessing(
+    documentId ?? null,
+    fileUrl,
+    document?.page_count ?? null,
+    document?.ocr_status ?? null,
+  );
 
   const loadDocument = useCallback(async () => {
     if (!documentId) return;
@@ -207,6 +218,12 @@ export const Viewer = () => {
           />
         </div>
       </div>
+
+      {/* OCR Progress Indicator */}
+      <OCRProgressIndicator
+        status={ocrStatus}
+        totalPages={document?.page_count}
+      />
     </div>
   );
 };
