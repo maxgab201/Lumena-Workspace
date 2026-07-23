@@ -6,8 +6,9 @@
  */
 
 import type { AIActionRequest, AIActionResponse, ActionContext, ActionHandler } from "../types.ts"
+import { EmbeddingProviderRouter } from "../EmbeddingProviderRouter.ts"
 
-const OPENAI_EMBEDDING_URL = "https://api.openai.com/v1/embeddings"
+const router = new EmbeddingProviderRouter()
 const EMBEDDING_MODEL = "text-embedding-3-small"
 const EMBEDDING_DIMENSIONS = 1536
 
@@ -22,22 +23,13 @@ export class EmbeddingAction implements ActionHandler {
     return null
   }
 
-  requiresPlanEnforcement(): boolean {
-    return false  // Internal service — no plan restrictions
-  }
-
-  consumesCredits(): boolean {
-    return true  // Embeddings cost tokens
+  authPolicy(): 'user' | 'system' {
+    return 'system'  // Embedding is system-initiated: credits only, no plan enforcement
   }
 
   async execute(request: AIActionRequest, context: ActionContext): Promise<AIActionResponse> {
     const { supabase, workspaceId, documentId, jobId, isSystemInitiated } = context
     const { texts, action_type, document_id } = request
-
-    const openaiKey = Deno.env.get("OPENAI_API_KEY")
-    if (!openaiKey) {
-      return { success: false, data: { error: "OPENAI_API_KEY not configured" } }
-    }
 
     // Estimate token count (rough: 1 token ≈ 4 chars for English)
     const totalChars = texts!.reduce((sum, t) => sum + t.length, 0)
@@ -101,29 +93,11 @@ export class EmbeddingAction implements ActionHandler {
       usageJobId = usageJob?.id ?? null
     }
 
-    // Call OpenAI Embedding API
+    // Call embedding provider via router (no direct API dependency)
     try {
-      const response = await fetch(OPENAI_EMBEDDING_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${openaiKey}`,
-        },
-        body: JSON.stringify({
-          model: EMBEDDING_MODEL,
-          input: texts,
-          dimensions: EMBEDDING_DIMENSIONS,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorBody = await response.text()
-        throw new Error(`OpenAI API error: ${response.status} ${errorBody}`)
-      }
-
-      const result = await response.json()
-      const embeddings = result.data.map((item: { embedding: number[] }) => item.embedding)
-      const actualTokens = result.usage?.total_tokens ?? estimatedTokens
+      const result = await router.embed(texts!)
+      const embeddings = result.embeddings
+      const actualTokens = result.totalTokens || estimatedTokens
       const actualCostUsd = (actualTokens / 1000) * costPer1k
       const actualCostCredits = Math.max(1, Math.ceil(actualCostUsd * creditRate))
 

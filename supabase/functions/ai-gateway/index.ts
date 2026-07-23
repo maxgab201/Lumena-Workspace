@@ -221,11 +221,9 @@ serve(async (req) => {
       })
     }
 
-    // ─── Determine if system-initiated ───
-    // System actions: embedding, reranking, extraction (no user interaction)
-    // User actions: chat, classification (user-initiated)
-    const systemActions = ['embedding', 'reranking', 'extraction']
-    const isSystemInitiated = systemActions.includes(actionType)
+    // ─── Resolve authorization policy ───
+    const authPolicy = handler.authPolicy()
+    const isSystemInitiated = authPolicy === 'system'
 
     // ─── Build Action Context ───
     const context: ActionContext = {

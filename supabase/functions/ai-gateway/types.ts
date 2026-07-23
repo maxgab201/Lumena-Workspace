@@ -50,6 +50,9 @@ export interface ActionContext {
   isSystemInitiated: boolean  // true if called by another service, not user
 }
 
+/** Authorization policy for actions */
+export type AuthPolicy = 'user' | 'system'
+
 /** Action handler interface */
 export interface ActionHandler {
   /** Validate action-specific fields */
@@ -58,9 +61,6 @@ export interface ActionHandler {
   /** Execute the action */
   execute(request: AIActionRequest, context: ActionContext): Promise<AIActionResponse>
 
-  /** Whether this action requires plan enforcement */
-  requiresPlanEnforcement(): boolean
-
-  /** Whether this action consumes credits */
-  consumesCredits(): boolean
+  /** Authorization policy: 'user' = plan enforcement + credits, 'system' = credits only */
+  authPolicy(): AuthPolicy
 }

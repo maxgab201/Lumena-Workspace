@@ -26,12 +26,8 @@ export class ChatAction implements ActionHandler {
     return null
   }
 
-  requiresPlanEnforcement(): boolean {
-    return true
-  }
-
-  consumesCredits(): boolean {
-    return true
+  authPolicy(): 'user' | 'system' {
+    return 'user'  // Chat is user-initiated: plan enforcement + credits
   }
 
   async execute(request: AIActionRequest, context: ActionContext): Promise<AIActionResponse> {
