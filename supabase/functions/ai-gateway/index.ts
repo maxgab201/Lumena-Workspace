@@ -1,14 +1,158 @@
+/**
+ * AI Gateway — Unified entry point for all AI operations.
+ *
+ * Architecture:
+ * - Action Router dispatches to action-specific handlers
+ * - Shared auth/authz pipeline for all actions
+ * - Billing differentiates user vs system actions
+ * - Common contract: AIActionRequest → AIActionResponse
+ *
+ * Actions:
+ * - chat: LLM text generation (user-initiated)
+ * - embedding: Text embedding generation (system-initiated)
+ * - Future: reranking, extraction, classification, etc.
+ */
+
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import { ProviderRouter } from "./router.ts"
-import type { AIProvider } from "./providers/Provider.ts"
+import type { AIActionRequest, AIActionResponse, ActionContext, ActionHandler } from "./types.ts"
+import { ChatAction } from "./actions/ChatAction.ts"
+import { EmbeddingAction } from "./actions/EmbeddingAction.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const router = new ProviderRouter()
+// ─── Action Registry ─────────────────────────────────────────
+
+const actions: Record<string, ActionHandler> = {
+  chat: new ChatAction(),
+  embedding: new EmbeddingAction(),
+  // Future: reranking, extraction, classification, etc.
+}
+
+// ─── Shared Security Pipeline ────────────────────────────────
+
+async function checkRateLimit(
+  supabase: ReturnType<typeof createClient>,
+  workspaceId: string,
+  userId: string,
+): Promise<{ allowed: boolean; error?: Response }> {
+  const ACTION_LIMIT = 50
+  const now = new Date()
+  const windowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0).toISOString()
+
+  let currentCount = 0
+  const { data: existing } = await supabase
+    .from('rate_limit_counters')
+    .select('id, count')
+    .eq('scope_type', 'workspace')
+    .eq('scope_id', workspaceId)
+    .eq('metric', 'actions_per_hour')
+    .eq('window_start', windowStart)
+    .single()
+
+  if (existing) {
+    currentCount = existing.count + 1
+    await supabase.from('rate_limit_counters').update({ count: currentCount }).eq('id', existing.id)
+  } else {
+    currentCount = 1
+    await supabase.from('rate_limit_counters').insert({
+      scope_type: 'workspace',
+      scope_id: workspaceId,
+      metric: 'actions_per_hour',
+      window_start: windowStart,
+      count: currentCount,
+    })
+  }
+
+  if (currentCount > ACTION_LIMIT) {
+    await supabase.from('security_events').insert({
+      workspace_id: workspaceId,
+      user_id: userId,
+      event_type: 'rate_limit',
+      severity: 'MEDIUM',
+      metadata: { limit: ACTION_LIMIT, metric: 'actions_per_hour' },
+    })
+    return {
+      allowed: false,
+      error: new Response(JSON.stringify({ error: 'Rate limit exceeded.' }), {
+        status: 429,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }),
+    }
+  }
+
+  return { allowed: true }
+}
+
+async function checkCircuitBreaker(
+  supabase: ReturnType<typeof createClient>,
+  workspaceId: string,
+  userId: string,
+): Promise<{ allowed: boolean; error?: Response }> {
+  const DAILY_CAP = 10000
+  const dayStart = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 0, 0, 0, 0).toISOString()
+
+  const { data: dailyUsage } = await supabase
+    .from('credit_ledger')
+    .select('amount')
+    .eq('workspace_id', workspaceId)
+    .eq('entry_type', 'consume')
+    .gte('created_at', dayStart)
+
+  const total = dailyUsage ? dailyUsage.reduce((acc: number, row: { amount: number }) => acc + row.amount, 0) : 0
+
+  if (total > DAILY_CAP) {
+    await supabase.from('security_events').insert({
+      workspace_id: workspaceId,
+      user_id: userId,
+      event_type: 'circuit_breaker',
+      severity: 'HIGH',
+      metadata: { cap: DAILY_CAP, consumed: total },
+    })
+    return {
+      allowed: false,
+      error: new Response(JSON.stringify({ error: 'Daily credit cap reached.' }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }),
+    }
+  }
+
+  return { allowed: true }
+}
+
+async function checkPromptInjection(
+  prompt: string,
+  workspaceId: string,
+  userId: string,
+  actionType: string,
+  supabase: ReturnType<typeof createClient>,
+): Promise<{ safe: boolean; error?: Response }> {
+  const injectionRegex = /(ignore\s+(all\s+)?(previous\s+)?instructions|system\s+prompt|system\s+override|forget\s+(all\s+)?previous)/i
+  if (injectionRegex.test(prompt)) {
+    await supabase.from('security_events').insert({
+      workspace_id: workspaceId,
+      user_id: userId,
+      event_type: 'prompt_injection',
+      severity: 'HIGH',
+      signal: prompt.substring(0, 200),
+      metadata: { action_type: actionType },
+    })
+    return {
+      safe: false,
+      error: new Response(JSON.stringify({ error: 'Malicious prompt detected.' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }),
+    }
+  }
+  return { safe: true }
+}
+
+// ─── Main Handler ────────────────────────────────────────────
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -16,326 +160,117 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     )
 
+    // ─── Authentication ───
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { status: 401, headers: corsHeaders })
+      return new Response(JSON.stringify({ error: 'Missing Authorization' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
+
     const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-    
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
+    // ─── Parse Request ───
     const payload = await req.json()
-    const { prompt, workspace_id, action_type = 'chat', model_code = '', fallback_models, document_id = null } = payload
+    const actionType: string = payload.action_type ?? 'chat'
 
-    if (!prompt || !workspace_id) {
-      return new Response(JSON.stringify({ error: 'Missing prompt or workspace_id' }), { status: 400, headers: corsHeaders })
+    const request: AIActionRequest = {
+      action_type: actionType,
+      workspace_id: payload.workspace_id,
+      document_id: payload.document_id ?? null,
+      user_id: user.id,
+      job_id: payload.job_id ?? null,
+      prompt: payload.prompt,
+      model_code: payload.model_code,
+      fallback_models: payload.fallback_models,
+      texts: payload.texts,
+      metadata: payload.metadata,
     }
 
-    // ==========================================
-    // PLAN ENFORCEMENT: Fetch subscription
-    // ==========================================
-    const { data: subscription } = await supabaseClient
-      .from('subscriptions')
-      .select('plan_code')
-      .eq('workspace_id', workspace_id)
-      .single()
-
-    const planCode: string = subscription?.plan_code ?? 'free'
-
-    // Define plan capabilities
-    const PLAN_MODELS: Record<string, string[]> = {
-      free: [],
-      pro: [],
-    }
-    const PLAN_MONTHLY_CREDIT_QUOTA: Record<string, number> = {
-      free: 50,
-      pro: 1000,
+    // Validate workspace_id
+    if (!request.workspace_id) {
+      return new Response(JSON.stringify({ error: 'Missing workspace_id' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    const allowedModels = PLAN_MODELS[planCode] ?? PLAN_MODELS['free']
-    const monthlyQuota = PLAN_MONTHLY_CREDIT_QUOTA[planCode] ?? 50
-
-    // Block access to restricted models
-    if (!allowedModels.includes(model_code)) {
-      return new Response(JSON.stringify({
-        error: `Model "${model_code}" is not available on the ${planCode} plan. Please upgrade to access advanced models.`,
-        plan_required: 'pro',
-        current_plan: planCode,
-      }), { status: 403, headers: corsHeaders })
+    // ─── Resolve Action Handler ───
+    const handler = actions[actionType]
+    if (!handler) {
+      return new Response(JSON.stringify({ error: `Unknown action_type: ${actionType}` }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
-    // Enforce monthly credit quota
-    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-    const { data: monthlyUsage } = await supabaseClient
-      .from('credit_ledger')
-      .select('amount')
-      .eq('workspace_id', workspace_id)
-      .eq('entry_type', 'consume')
-      .gte('created_at', monthStart)
-
-    const totalConsumedThisMonth = monthlyUsage
-      ? monthlyUsage.reduce((acc: number, row: any) => acc + row.amount, 0)
-      : 0
-
-    if (totalConsumedThisMonth >= monthlyQuota) {
-      return new Response(JSON.stringify({
-        error: `Monthly credit quota of ${monthlyQuota} credits reached for your ${planCode} plan. Please upgrade or purchase additional credits.`,
-        quota: monthlyQuota,
-        consumed: totalConsumedThisMonth,
-        plan_required: planCode === 'free' ? 'pro' : null,
-      }), { status: 402, headers: corsHeaders })
+    // ─── Action-Specific Validation ───
+    const validationError = handler.validate(request)
+    if (validationError) {
+      return new Response(JSON.stringify({ error: validationError }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
+    // ─── Determine if system-initiated ───
+    // System actions: embedding, reranking, extraction (no user interaction)
+    // User actions: chat, classification (user-initiated)
+    const systemActions = ['embedding', 'reranking', 'extraction']
+    const isSystemInitiated = systemActions.includes(actionType)
 
-    // ==========================================
-    // SECURITY 1: Prompt Injection Check
-    // ==========================================
-    const injectionRegex = /(ignore\s+(all\s+)?(previous\s+)?instructions|system\s+prompt|system\s+override|forget\s+(all\s+)?previous)/i;
-    if (injectionRegex.test(prompt)) {
-      // Log Security Event
-      await supabaseClient.from('security_events').insert({
-        workspace_id,
-        user_id: user.id,
-        event_type: 'prompt_injection',
-        severity: 'HIGH',
-        signal: prompt.substring(0, 200), // Log snippet for audit
-        metadata: { action_type }
-      });
-      return new Response(JSON.stringify({ error: 'Malicious prompt detected and blocked.' }), { status: 400, headers: corsHeaders });
+    // ─── Build Action Context ───
+    const context: ActionContext = {
+      supabase,
+      workspaceId: request.workspace_id,
+      documentId: request.document_id,
+      userId: user.id,
+      jobId: request.job_id,
+      isSystemInitiated,
     }
 
-    // ==========================================
-    // SECURITY 2: Rate Limiting (Fixed Window)
-    // ==========================================
-    // 50 actions per hour
-    const ACTION_LIMIT = 50;
-    const now = new Date();
-    // Get start of the current hour
-    const windowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0, 0).toISOString();
-    
-    // Fallback if RPC isn't created yet (for prototyping, we do upsert in TS, though prone to race conditions)
-    // Actually, we can just do a standard select + insert/update or rely on unique constraint
-    let currentCount = 0;
-    const { data: existingLimit } = await supabaseClient
-      .from('rate_limit_counters')
-      .select('id, count')
-      .eq('scope_type', 'workspace')
-      .eq('scope_id', workspace_id)
-      .eq('metric', 'actions_per_hour')
-      .eq('window_start', windowStart)
-      .single();
+    // ─── Shared Security Pipeline ───
+    // Rate limiting (all actions)
+    const rateLimit = await checkRateLimit(supabase, request.workspace_id, user.id)
+    if (!rateLimit.allowed) return rateLimit.error!
 
-    if (existingLimit) {
-      currentCount = existingLimit.count + 1;
-      await supabaseClient.from('rate_limit_counters').update({ count: currentCount }).eq('id', existingLimit.id);
-    } else {
-      currentCount = 1;
-      await supabaseClient.from('rate_limit_counters').insert({
-        scope_type: 'workspace',
-        scope_id: workspace_id,
-        metric: 'actions_per_hour',
-        window_start: windowStart,
-        count: currentCount
-      });
+    // Circuit breaker (all actions)
+    const circuitBreaker = await checkCircuitBreaker(supabase, request.workspace_id, user.id)
+    if (!circuitBreaker.allowed) return circuitBreaker.error!
+
+    // Prompt injection (only for actions with prompts)
+    if (request.prompt) {
+      const injectionCheck = await checkPromptInjection(
+        request.prompt, request.workspace_id, user.id, actionType, supabase,
+      )
+      if (!injectionCheck.safe) return injectionCheck.error!
     }
 
-    if (currentCount > ACTION_LIMIT) {
-      await supabaseClient.from('security_events').insert({
-        workspace_id,
-        user_id: user.id,
-        event_type: 'rate_limit',
-        severity: 'MEDIUM',
-        metadata: { limit: ACTION_LIMIT, metric: 'actions_per_hour' }
-      });
-      return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }), { status: 429, headers: corsHeaders });
-    }
+    // ─── Execute Action ───
+    const result = await handler.execute(request, context)
 
-    // ==========================================
-    // SECURITY 3: Circuit Breaker (Daily Cap)
-    // ==========================================
-    const DAILY_CREDIT_CAP = 10000;
-    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
-
-    const { data: dailyUsage } = await supabaseClient
-      .from('credit_ledger')
-      .select('amount')
-      .eq('workspace_id', workspace_id)
-      .eq('entry_type', 'consume')
-      .gte('created_at', dayStart);
-
-    const totalConsumedToday = dailyUsage ? dailyUsage.reduce((acc, row) => acc + row.amount, 0) : 0;
-
-    if (totalConsumedToday > DAILY_CREDIT_CAP) {
-      await supabaseClient.from('security_events').insert({
-        workspace_id,
-        user_id: user.id,
-        event_type: 'circuit_breaker',
-        severity: 'HIGH',
-        metadata: { cap: DAILY_CREDIT_CAP, consumed: totalConsumedToday }
-      });
-      return new Response(JSON.stringify({ error: 'Daily credit cap reached. Circuit breaker tripped.' }), { status: 403, headers: corsHeaders });
-    }
-
-    // ==========================================
-    // ROUTING & EXECUTION
-    // ==========================================
-    const chain = fallback_models || [model_code, 'gemini-1.5-flash']
-
-    const { result, usedModel } = await router.routeWithFallback(
-      chain,
-      prompt,
-      async (currentModelCode: string, provider: AIProvider) => {
-        const { data: modelData, error: modelError } = await supabaseClient
-          .from('provider_models')
-          .select('id, provider_id, max_output_tokens, provider_pricing(input_price_per_1k, output_price_per_1k, credit_conversion_rate)')
-          .eq('code', currentModelCode)
-          .eq('is_active', true)
-          .single()
-
-        if (modelError || !modelData || !modelData.provider_pricing || modelData.provider_pricing.length === 0) {
-          throw new Error(`Model ${currentModelCode} not found or inactive`)
-        }
-
-        const pricing = modelData.provider_pricing[0]
-        
-        const estimatedInputTokens = Math.max(10, Math.ceil(prompt.length / 4))
-        const estimatedOutputTokens = 1000 
-
-        const estimatedInputCostUsd = (estimatedInputTokens / 1000) * pricing.input_price_per_1k
-        const estimatedOutputCostUsd = (estimatedOutputTokens / 1000) * pricing.output_price_per_1k
-        const totalEstimatedUsd = estimatedInputCostUsd + estimatedOutputCostUsd
-        
-        const reservedCredits = Math.max(1, Math.ceil(totalEstimatedUsd * pricing.credit_conversion_rate))
-
-        const { data: accountData } = await supabaseClient
-          .from('credit_accounts')
-          .select('available, reserved')
-          .eq('workspace_id', workspace_id)
-          .single()
-
-        if (!accountData || accountData.available < reservedCredits) {
-          const insufficientErr = new Error('Insufficient credits')
-          ;(insufficientErr as any).status = 402
-          ;(insufficientErr as any).required = reservedCredits
-          ;(insufficientErr as any).available = accountData?.available || 0
-          throw insufficientErr
-        }
-
-        const { data: usageJob, error: jobError } = await supabaseClient
-          .from('usage_jobs')
-          .insert({
-            workspace_id,
-            document_id,
-            action_type,
-            model_id: modelData.id,
-            status: 'pending'
-          })
-          .select('id')
-          .single()
-
-        if (jobError) throw new Error('Failed to create usage job')
-
-        // Optimistic lock: only deduct if available hasn't changed since we read it
-        const { error: deductError } = await supabaseClient.from('credit_accounts').update({
-          available: accountData.available - reservedCredits,
-          reserved: accountData.reserved + reservedCredits
-        }).eq('workspace_id', workspace_id).eq('available', accountData.available)
-
-        if (deductError) {
-          throw Object.assign(new Error('Credit deduction failed due to concurrent modification'), { status: 409 })
-        }
-
-        let providerResult;
-        try {
-          providerResult = await provider.generate(currentModelCode, prompt)
-        } catch (llmError: any) {
-          await supabaseClient.from('credit_accounts').update({
-            available: accountData.available,
-            reserved: accountData.reserved
-          }).eq('workspace_id', workspace_id)
-
-          await supabaseClient.from('usage_jobs').update({
-            status: 'failed',
-            error_details: llmError.message,
-            completed_at: new Date().toISOString()
-          }).eq('id', usageJob.id)
-
-          throw llmError
-        }
-
-        const inputTokens = providerResult.usage.inputTokens
-        const outputTokens = providerResult.usage.outputTokens
-        const actualInputCostUsd = (inputTokens / 1000) * pricing.input_price_per_1k
-        const actualOutputCostUsd = (outputTokens / 1000) * pricing.output_price_per_1k
-        const totalActualUsd = actualInputCostUsd + actualOutputCostUsd
-        
-        const actualCostCredits = Math.max(1, Math.ceil(totalActualUsd * pricing.credit_conversion_rate))
-
-        await supabaseClient.from('usage_jobs').update({
-          status: 'success',
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          total_cost_credits: actualCostCredits,
-          completed_at: new Date().toISOString()
-        }).eq('id', usageJob.id)
-
-        await supabaseClient.from('credit_ledger').insert({
-          workspace_id,
-          entry_type: 'consume',
-          amount: actualCostCredits,
-          direction: -1,
-          job_id: usageJob.id
-        })
-
-        const { data: finalAccount } = await supabaseClient
-          .from('credit_accounts')
-          .select('available, reserved, consumed')
-          .eq('workspace_id', workspace_id)
-          .single()
-
-        if (finalAccount) {
-          await supabaseClient.from('credit_accounts').update({
-            reserved: Math.max(0, finalAccount.reserved - reservedCredits),
-            available: finalAccount.available + (reservedCredits - actualCostCredits),
-            consumed: finalAccount.consumed + actualCostCredits
-          }).eq('workspace_id', workspace_id)
-        }
-
-        return {
-          text: providerResult.text,
-          usage: { inputTokens, outputTokens, costCredits: actualCostCredits }
-        }
-      }
-    )
-
-    return new Response(JSON.stringify({ 
-      text: result.text,
-      usage: result.usage,
-      usedModel
-    }), {
+    // ─── Return Response ───
+    return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
+      status: result.success ? 200 : 400,
     })
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('AI Gateway error:', err)
-    
-    if (err.status === 402) {
-      return new Response(JSON.stringify({ 
-        error: err.message, 
-        required: err.required, 
-        available: err.available 
-      }), { status: 402, headers: corsHeaders })
-    }
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    const status = (err as Record<string, unknown>).status as number ?? 500
 
-    return new Response(JSON.stringify({ error: err.message }), { status: err.status || 500, headers: corsHeaders })
+    return new Response(JSON.stringify({ error: message }), {
+      status,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
   }
 })
