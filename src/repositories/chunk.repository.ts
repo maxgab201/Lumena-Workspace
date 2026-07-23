@@ -11,6 +11,21 @@ import { supabase } from '../lib/supabase';
 import type { TextChunk } from '../lib/processing/TextChunker';
 import { getStrategyWeights, type HybridStrategy } from '../lib/processing/embedding/HybridSearchConfig';
 
+/**
+ * Compute cosine similarity between two vectors.
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
 export const ChunkRepository = {
   /**
    * Upsert a single chunk. Safe to call multiple times (idempotent).
@@ -158,10 +173,11 @@ export const ChunkRepository = {
 
   /**
    * Pure vector similarity search.
+   * Fetches chunks with embeddings and computes cosine similarity in JS.
    */
   async searchByEmbedding(
     documentId: string,
-    _queryEmbedding: number[],
+    queryEmbedding: number[],
     topK: number = 10,
   ): Promise<Array<{
     id: string;
@@ -169,37 +185,29 @@ export const ChunkRepository = {
     content: string;
     similarity: number;
   }>> {
+    // Fetch all chunks with embeddings for this document
     const { data, error } = await supabase
       .from('document_chunks')
-      .select('id, page_number, content')
+      .select('id, page_number, content, embedding')
       .eq('document_id', documentId)
-      .not('embedding', 'is', null)
-      .order('embedding', {
-        referencedTable: 'embedding' as unknown as string,
-        ascending: false,
-      })
-      .limit(topK);
+      .not('embedding', 'is', null);
 
-    // Fallback: if order by embedding fails, return FTS results
-    if (error || !data) {
-      const ftsResults = await this.searchChunks(documentId, '', topK);
-      return ftsResults.map(r => ({
-        id: r.id,
-        page_number: r.page_number,
-        content: r.content,
-        similarity: 0.5,
-      }));
-    }
+    if (error || !data || data.length === 0) return [];
 
-    // Calculate cosine similarity in JS as fallback (pgvector order may not work via JS client)
-    const results = data.map(row => ({
-      id: row.id,
-      page_number: row.page_number,
-      content: row.content,
-      similarity: 0.5, // placeholder — actual similarity computed by hybrid search
-    }));
+    // Compute cosine similarity for each chunk
+    const scored = data.map(row => {
+      const chunkEmbedding = row.embedding as unknown as number[];
+      return {
+        id: row.id,
+        page_number: row.page_number,
+        content: row.content,
+        similarity: cosineSimilarity(queryEmbedding, chunkEmbedding),
+      };
+    });
 
-    return results;
+    // Sort by similarity descending, take top K
+    scored.sort((a, b) => b.similarity - a.similarity);
+    return scored.slice(0, topK);
   },
 
   /**

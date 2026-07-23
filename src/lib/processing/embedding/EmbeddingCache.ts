@@ -47,20 +47,19 @@ export class EmbeddingCache {
   static async get(contentHash: string): Promise<CacheEntry | null> {
     const { data, error } = await supabase
       .from('embedding_cache')
-      .select('embedding, provider, model, model_version')
+      .select('embedding, provider, model, model_version, use_count')
       .eq('content_hash', contentHash)
       .single();
 
     if (error || !data) return null;
 
     // Update usage stats (fire-and-forget)
+    const currentCount = (data as Record<string, unknown>).use_count as number ?? 0;
     supabase
       .from('embedding_cache')
       .update({
         last_used_at: new Date().toISOString(),
-        use_count: (data as Record<string, unknown>).use_count
-          ? ((data as Record<string, unknown>).use_count as number) + 1
-          : 1,
+        use_count: currentCount + 1,
       })
       .eq('content_hash', contentHash)
       .then(() => {}); // intentionally ignored
@@ -103,18 +102,26 @@ export class EmbeddingCache {
 
   /**
    * Get cache hit rate metrics.
+   * Uses COUNT aggregate to avoid loading entire table into memory.
    */
   static async getStats(): Promise<{ totalEntries: number; avgUseCount: number }> {
+    const { count } = await supabase
+      .from('embedding_cache')
+      .select('id', { count: 'exact', head: true });
+
+    const totalEntries = count ?? 0;
+    if (totalEntries === 0) return { totalEntries: 0, avgUseCount: 0 };
+
+    // Get average use_count via a small sample (not full table scan)
     const { data } = await supabase
       .from('embedding_cache')
-      .select('use_count');
+      .select('use_count')
+      .limit(100);
 
-    if (!data || data.length === 0) return { totalEntries: 0, avgUseCount: 0 };
+    const avgUseCount = data && data.length > 0
+      ? data.reduce((sum, row) => sum + ((row as Record<string, unknown>).use_count as number || 0), 0) / data.length
+      : 0;
 
-    const totalUseCount = data.reduce((sum, row) => sum + ((row as Record<string, unknown>).use_count as number || 0), 0);
-    return {
-      totalEntries: data.length,
-      avgUseCount: totalUseCount / data.length,
-    };
+    return { totalEntries, avgUseCount };
   }
 }
