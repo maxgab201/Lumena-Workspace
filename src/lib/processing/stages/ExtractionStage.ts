@@ -138,6 +138,8 @@ export class ExtractionStage {
       if (!context) throw new Error('Failed to get canvas 2d context');
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // pdfjs-dist RenderParameters requires 'canvas' property we don't use
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const renderContext: any = { canvasContext: context, viewport };
       await page.render(renderContext).promise;
 

@@ -3,6 +3,7 @@ import { TesseractOCRProvider } from './tesseract/TesseractOCRProvider';
 import { MockLayoutProvider } from './layout/MockLayoutProvider';
 import { MockVisionProvider } from './vision/MockVisionProvider';
 import { MockAIProvider } from './ai/MockAIProvider';
+import { OpenAIEmbeddingProvider } from './openai/OpenAIEmbeddingProvider';
 import { providerConfig } from './provider.config';
 
 export function initializeProviders() {
@@ -21,6 +22,10 @@ export function initializeProviders() {
   // Register AI Providers
   const mockAi = new MockAIProvider();
   ProviderRegistry.register(mockAi);
+
+  // Register Embedding Providers
+  const openaiEmbedding = new OpenAIEmbeddingProvider();
+  ProviderRegistry.register(openaiEmbedding);
 
   // Apply overrides from config
   for (const [id, config] of Object.entries(providerConfig.overrides)) {

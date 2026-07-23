@@ -17,11 +17,14 @@
 
 import { ExtractionStage } from './stages/ExtractionStage';
 import { InspectionStage } from './stages/InspectionStage';
+import { TextChunker } from './TextChunker';
+import { supabase } from '../supabase';
 import { ProviderFallback } from '../providers/ProviderFallback';
 import { providerConfig } from '../providers/provider.config';
 import { usePageRegistryStore } from '../../stores/pageRegistryStore';
 import { EventBus } from './EventBus';
 import { DocumentRepository } from '../../repositories/document.repository';
+import { ChunkRepository } from '../../repositories/chunk.repository';
 import { PROCESSING_LIMITS } from './constants';
 import type { OCRProvider, OCRData } from '../providers/interfaces/OCRProvider';
 import type { DocumentProfile, ProviderResult } from '../providers/types';
@@ -129,6 +132,19 @@ export class DocumentProcessingService {
           jobId: this.documentId,
           data: { totalPages },
         });
+
+        // Trigger embedding generation for new chunks
+        const { count: chunkCount } = await supabase
+          .from('document_chunks')
+          .select('id', { count: 'exact', head: true })
+          .eq('document_id', this.documentId);
+
+        if (chunkCount && chunkCount > 0) {
+          EventBus.emit('chunks_created', {
+            documentId: this.documentId,
+            chunkCount,
+          });
+        }
       } else if (!this.abortController.signal.aborted) {
         // Some pages failed but we didn't abort — mark partial completion
         // Document stays as 'needs_client_ocr' so next open will retry
@@ -240,6 +256,15 @@ export class DocumentProcessingService {
       ocr_provider: result.providerId,
       confidence: result.confidence,
     });
+
+    // Chunk the extracted text and persist chunks for full-text search
+    if (result.data.text.trim().length > 0) {
+      const chunker = new TextChunker(512);
+      const chunks = chunker.chunk(this.documentId, pageIndex, result.data.text);
+      if (chunks.length > 0) {
+        await ChunkRepository.upsertBatch(chunks);
+      }
+    }
 
     // Update UI: completed
     usePageRegistryStore.getState().updatePage(pageIndex, {

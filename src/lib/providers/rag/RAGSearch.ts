@@ -1,14 +1,13 @@
 /**
- * RAGSearch - Text search using Supabase full-text search
+ * RAGSearch — Hybrid search combining FTS and vector similarity.
  *
- * NOTE: This is a PARTIAL implementation.
- * Current: Uses Supabase textSearch for basic text matching.
- * Future: Will use vector embeddings for semantic similarity search.
- *
- * TODO: Implement real embeddings with OpenAI/other providers
- * TODO: Add document_chunks table with vector column
- * TODO: Implement cosine similarity search
+ * Uses configurable strategy (balanced, semantic_first, lexical_first, etc.)
+ * Falls back gracefully: vector unavailable → FTS only.
  */
+
+import { ChunkRepository } from '../../../repositories/chunk.repository';
+import { EmbeddingRouter } from '../../providers/EmbeddingRouter';
+import type { HybridStrategy } from '../../processing/embedding/HybridSearchConfig';
 
 export interface SearchResult {
   chunkId: string;
@@ -19,26 +18,67 @@ export interface SearchResult {
 
 export class RAGSearch {
   /**
-   * Search for relevant text chunks.
+   * Hybrid search: combines FTS + vector similarity.
    *
-   * PARTIAL IMPLEMENTATION:
-   * Currently uses Supabase textSearch which does basic text matching,
-   * not semantic similarity. Real RAG requires vector embeddings.
+   * Strategy controls the balance:
+   * - balanced: 30% FTS + 70% vector (default)
+   * - semantic_first: 10% FTS + 90% vector
+   * - lexical_first: 70% FTS + 30% vector
+   * - semantic_only: 100% vector
+   * - lexical_only: 100% FTS (no embeddings needed)
    *
-   * TODO: This needs document_chunks table which doesn't exist yet.
-   * For now, returns empty results as a placeholder.
+   * Graceful degradation: if vector search fails or embeddings don't exist,
+   * automatically falls back to FTS.
    */
   static async searchRelevantChunks(
-    _query: string,
-    _documentId: string,
-    _topK: number = 5
+    query: string,
+    documentId: string,
+    topK: number = 5,
+    strategy: HybridStrategy = 'balanced',
   ): Promise<SearchResult[]> {
-    // TODO: Implement when document_chunks table is created
-    // Currently, this is a placeholder that returns empty results
-    // Real implementation requires:
-    // 1. Create document_chunks table with vector column
-    // 2. Implement embedding generation
-    // 3. Use pgvector for similarity search
-    return [];
+    if (!query.trim() || !documentId) return [];
+
+    try {
+      // Generate query embedding (if available)
+      let queryEmbedding: number[] | null = null;
+      try {
+        const result = await EmbeddingRouter.embedSingle(query);
+        queryEmbedding = result.data;
+      } catch {
+        // Embedding unavailable — will fall back to FTS via strategy
+        console.warn('[RAGSearch] Embedding unavailable, falling back to FTS');
+      }
+
+      // Hybrid search
+      const results = await ChunkRepository.hybridSearch(
+        documentId,
+        query,
+        queryEmbedding,
+        topK,
+        strategy,
+      );
+
+      return results.map(r => ({
+        chunkId: r.id,
+        content: r.content,
+        pageNumber: r.page_number,
+        similarity: r.score,
+      }));
+    } catch (error) {
+      console.error('[RAGSearch] Search failed:', error);
+
+      // Fallback: try pure FTS
+      try {
+        const ftsResults = await ChunkRepository.searchChunks(documentId, query, topK);
+        return ftsResults.map(r => ({
+          chunkId: r.id,
+          content: r.content,
+          pageNumber: r.page_number,
+          similarity: 0.5,
+        }));
+      } catch {
+        return [];
+      }
+    }
   }
 }

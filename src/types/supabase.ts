@@ -427,6 +427,71 @@ export type Database = {
           },
         ]
       }
+      document_chunks: {
+        Row: {
+          chunk_type: string
+          content: string
+          content_hash: string | null
+          created_at: string
+          document_id: string
+          embedded_at: string | null
+          embedding: string | null
+          embedding_model: string | null
+          embedding_provider: string | null
+          embedding_version: string | null
+          end_offset: number
+          id: string
+          page_number: number
+          search_vector: unknown
+          start_offset: number
+          token_count: number
+        }
+        Insert: {
+          chunk_type?: string
+          content: string
+          content_hash?: string | null
+          created_at?: string
+          document_id: string
+          embedded_at?: string | null
+          embedding?: string | null
+          embedding_model?: string | null
+          embedding_provider?: string | null
+          embedding_version?: string | null
+          end_offset?: number
+          id: string
+          page_number: number
+          search_vector?: unknown
+          start_offset?: number
+          token_count?: number
+        }
+        Update: {
+          chunk_type?: string
+          content?: string
+          content_hash?: string | null
+          created_at?: string
+          document_id?: string
+          embedded_at?: string | null
+          embedding?: string | null
+          embedding_model?: string | null
+          embedding_provider?: string | null
+          embedding_version?: string | null
+          end_offset?: number
+          id?: string
+          page_number?: number
+          search_vector?: unknown
+          start_offset?: number
+          token_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_pages: {
         Row: {
           confidence: number | null
@@ -517,6 +582,132 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "documents_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      embedding_cache: {
+        Row: {
+          content_hash: string
+          created_at: string | null
+          dimensions: number
+          embedding: string
+          id: string
+          last_used_at: string | null
+          model: string
+          model_version: string
+          provider: string
+          use_count: number | null
+        }
+        Insert: {
+          content_hash: string
+          created_at?: string | null
+          dimensions: number
+          embedding: string
+          id?: string
+          last_used_at?: string | null
+          model: string
+          model_version: string
+          provider: string
+          use_count?: number | null
+        }
+        Update: {
+          content_hash?: string
+          created_at?: string | null
+          dimensions?: number
+          embedding?: string
+          id?: string
+          last_used_at?: string | null
+          model?: string
+          model_version?: string
+          provider?: string
+          use_count?: number | null
+        }
+        Relationships: []
+      }
+      embedding_jobs: {
+        Row: {
+          attempt: number
+          completed_at: string | null
+          cost_usd: number | null
+          created_at: string | null
+          document_id: string
+          embedded_chunks: number
+          error_message: string | null
+          failed_chunks: number
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          model: string | null
+          next_retry_at: string | null
+          provider: string | null
+          started_at: string | null
+          status: string
+          total_chunks: number
+          total_tokens: number | null
+          updated_at: string | null
+          workspace_id: string
+        }
+        Insert: {
+          attempt?: number
+          completed_at?: string | null
+          cost_usd?: number | null
+          created_at?: string | null
+          document_id: string
+          embedded_chunks?: number
+          error_message?: string | null
+          failed_chunks?: number
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          model?: string | null
+          next_retry_at?: string | null
+          provider?: string | null
+          started_at?: string | null
+          status?: string
+          total_chunks?: number
+          total_tokens?: number | null
+          updated_at?: string | null
+          workspace_id: string
+        }
+        Update: {
+          attempt?: number
+          completed_at?: string | null
+          cost_usd?: number | null
+          created_at?: string | null
+          document_id?: string
+          embedded_chunks?: number
+          error_message?: string | null
+          failed_chunks?: number
+          id?: string
+          locked_at?: string | null
+          locked_by?: string | null
+          max_attempts?: number
+          model?: string | null
+          next_retry_at?: string | null
+          provider?: string | null
+          started_at?: string | null
+          status?: string
+          total_chunks?: number
+          total_tokens?: number | null
+          updated_at?: string | null
+          workspace_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "embedding_jobs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "embedding_jobs_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -1666,6 +1857,38 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_embedding_job: {
+        Args: { p_worker_id: string }
+        Returns: {
+          attempt: number
+          completed_at: string | null
+          cost_usd: number | null
+          created_at: string | null
+          document_id: string
+          embedded_chunks: number
+          error_message: string | null
+          failed_chunks: number
+          id: string
+          locked_at: string | null
+          locked_by: string | null
+          max_attempts: number
+          model: string | null
+          next_retry_at: string | null
+          provider: string | null
+          started_at: string | null
+          status: string
+          total_chunks: number
+          total_tokens: number | null
+          updated_at: string | null
+          workspace_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "embedding_jobs"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       consume_credits: {
         Args: { p_amount: number; p_description: string; p_user_id: string }
         Returns: boolean

@@ -3,12 +3,15 @@ import type { ProcessingJob, JobStatus } from '../../types/processing';
 export type EventMap = {
   DocumentUploaded: { documentId: string; workspaceId: string; file: File };
   JobStatusChanged: { jobId: string; status: JobStatus; job: ProcessingJob };
-  InspectionCompleted: { jobId: string; metadata: any };
-  ExtractionCompleted: { jobId: string; data: any };
-  OCRCompleted: { jobId: string; data: any };
-  LayoutCompleted: { jobId: string; data: any };
+  InspectionCompleted: { jobId: string; metadata: Record<string, unknown> };
+  ExtractionCompleted: { jobId: string; data: Record<string, unknown> };
+  OCRCompleted: { jobId: string; data: Record<string, unknown> };
+  LayoutCompleted: { jobId: string; data: Record<string, unknown> };
   JobFailed: { jobId: string; error: string };
   JobCancelled: { jobId: string };
+  chunks_created: { documentId: string; chunkCount: number };
+  embedding_job_completed: { jobId: string; documentId: string };
+  embedding_job_failed: { jobId: string; documentId: string; error: string };
 };
 
 type EventKey = keyof EventMap;
