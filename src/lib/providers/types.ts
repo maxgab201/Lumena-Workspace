@@ -1,4 +1,4 @@
-export type ProviderType = 'ocr' | 'layout' | 'vision' | 'extraction' | 'inspection' | 'ai';
+export type ProviderType = 'ocr' | 'layout' | 'vision' | 'extraction' | 'inspection' | 'ai' | 'embedding';
 
 export interface ProviderMetadata {
   id: string;

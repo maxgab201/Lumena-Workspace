@@ -26,6 +26,10 @@ export const providerConfig = {
     ],
     ai: [
       'mock-ai'
+    ],
+    embedding: [
+      'openai-embedding',    // Primary (text-embedding-3-small)
+      // Future: 'google-embedding', 'ollama-embedding'
     ]
   },
   

@@ -18,6 +18,7 @@
 import { ExtractionStage } from './stages/ExtractionStage';
 import { InspectionStage } from './stages/InspectionStage';
 import { TextChunker } from './TextChunker';
+import { supabase } from '../supabase';
 import { ProviderFallback } from '../providers/ProviderFallback';
 import { providerConfig } from '../providers/provider.config';
 import { usePageRegistryStore } from '../../stores/pageRegistryStore';
@@ -131,6 +132,19 @@ export class DocumentProcessingService {
           jobId: this.documentId,
           data: { totalPages },
         });
+
+        // Trigger embedding generation for new chunks
+        const { count: chunkCount } = await supabase
+          .from('document_chunks')
+          .select('id', { count: 'exact', head: true })
+          .eq('document_id', this.documentId);
+
+        if (chunkCount && chunkCount > 0) {
+          EventBus.emit('chunks_created', {
+            documentId: this.documentId,
+            chunkCount,
+          });
+        }
       } else if (!this.abortController.signal.aborted) {
         // Some pages failed but we didn't abort — mark partial completion
         // Document stays as 'needs_client_ocr' so next open will retry
