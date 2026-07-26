@@ -36,5 +36,7 @@ export function initializeProviders() {
     }
   }
 
-  console.log('Provider Framework initialized.', ProviderRegistry.listProviders().map(p => p.getMetadata().id));
+  if (import.meta.env.DEV) {
+    console.log('Provider Framework initialized.', ProviderRegistry.listProviders().map(p => p.getMetadata().id));
+  }
 }

@@ -62,6 +62,11 @@ Start with a title slide (index 1), include content slides, and end with a summa
 Do not include any explanatory text, markdown, or code fences. Only the raw JSON array.`,
 }
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -132,7 +137,22 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Insufficient credits for knowledge generation.' }), { status: 402, headers: corsHeaders })
     }
 
-    // Route through ai-gateway instead of direct SDK call
+    // Reserve credits using the new atomic RPC
+    const { data: reservation, error: reserveError } = await supabaseClient
+      .rpc('reserve_credits_simple', {
+        p_workspace_id: workspace_id,
+        p_amount: 10,
+        p_job_id: null,
+        p_ttl_seconds: 300,
+        p_idempotency_key: `knowledge:${document_id}:${action_type}`,
+      })
+
+    if (reserveError) {
+      return new Response(JSON.stringify({ error: 'Failed to reserve credits: ' + reserveError.message }), { status: 402, headers: corsHeaders })
+    }
+
+    const reservationId = reservation
+
     const promptFn = PROMPTS[action_type]
     const prompt = promptFn(doc.name, excerpt)
 
@@ -143,7 +163,7 @@ serve(async (req) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY') ?? ''}`,
           'apikey': Deno.env.get('SUPABASE_ANON_KEY') ?? '',
         },
         body: JSON.stringify({
@@ -158,6 +178,8 @@ serve(async (req) => {
 
     if (!aiGatewayResponse.ok) {
       const errorData = await aiGatewayResponse.json()
+      // Release the reservation on AI failure
+      await supabaseClient.rpc('release_credits_simple', { p_reservation_id: reservationId })
       return new Response(JSON.stringify({ error: errorData.error || 'AI generation failed' }), { status: aiGatewayResponse.status, headers: corsHeaders })
     }
 
@@ -171,6 +193,7 @@ serve(async (req) => {
       if (!Array.isArray(parsed)) throw new Error('Expected JSON array')
     } catch (_) {
       console.error('Failed to parse AI response:', responseText)
+      await supabaseClient.rpc('release_credits_simple', { p_reservation_id: reservationId })
       return new Response(JSON.stringify({ error: 'AI returned malformed JSON. Please try again.' }), { status: 500, headers: corsHeaders })
     }
 
@@ -284,17 +307,11 @@ serve(async (req) => {
       inserted = [data]
     }
 
+    // Settle the reservation with actual cost (10 credits fixed for knowledge generation)
     const GENERATION_COST = 10
-    await supabaseClient.from('credit_accounts').update({
-      available: account.available - GENERATION_COST,
-      consumed: account.consumed + GENERATION_COST,
-    }).eq('workspace_id', workspace_id)
-
-    await supabaseClient.from('credit_ledger').insert({
-      workspace_id,
-      entry_type: 'consume',
-      amount: GENERATION_COST,
-      direction: -1,
+    await supabaseClient.rpc('settle_credits_simple', {
+      p_reservation_id: reservationId,
+      p_actual_amount: GENERATION_COST,
     })
 
     return new Response(JSON.stringify({ items: inserted, count: inserted.length }), {

@@ -3,8 +3,23 @@ import { SettingsRepository } from '../repositories/settings.repository';
 import { supabase } from '../lib/supabase';
 import { getLanguage, setLanguage, type Language } from '../i18n';
 
+type Theme = 'light' | 'dark' | 'system';
+
+function applyThemeToDOM(theme: Theme): void {
+  const root = window.document.documentElement;
+  root.classList.remove('light', 'dark');
+  if (theme === 'system') {
+    const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+    root.classList.add(systemTheme);
+  } else {
+    root.classList.add(theme);
+  }
+}
+
 interface UiStore {
-  theme: 'light' | 'dark' | 'system';
+  theme: Theme;
   lang: Language;
   viewMode: 'grid' | 'list';
   sortBy: 'date' | 'name' | 'size';
@@ -13,7 +28,7 @@ interface UiStore {
   mobileSidebarOpen: boolean;
   commandPaletteOpen: boolean;
   activeRightPanel: 'chat' | 'activity' | 'knowledge' | 'none' | null;
-  setTheme: (theme: 'light' | 'dark' | 'system') => Promise<void>;
+  setTheme: (theme: Theme) => Promise<void>;
   setLang: (lang: Language) => Promise<void>;
   setViewMode: (mode: 'grid' | 'list') => Promise<void>;
   setSortBy: (sort: 'date' | 'name' | 'size') => Promise<void>;
@@ -32,7 +47,7 @@ async function persistSettingsIfAuthenticated(
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.user) return;
   try {
-    await SettingsRepository.updateSettings(updates as any);
+    await SettingsRepository.updateSettings(updates);
   } catch (err) {
     // Non-fatal: local state already updated. Log and continue.
     console.error('[UiStore] Failed to sync settings to DB:', err);
@@ -52,19 +67,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
 
   setTheme: async (theme) => {
     set({ theme });
-
-    // Apply theme to DOM
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light';
-      root.classList.add(systemTheme);
-    } else {
-      root.classList.add(theme);
-    }
-
+    applyThemeToDOM(theme);
     await persistSettingsIfAuthenticated({ theme });
   },
 
@@ -102,23 +105,12 @@ export const useUiStore = create<UiStore>((set, get) => ({
       try {
         const settings = await SettingsRepository.getSettings();
         if (settings) {
-          const theme = (settings.theme as 'light' | 'dark' | 'system') ?? 'system';
+          const theme = (settings.theme as Theme) ?? 'system';
           const viewMode = (settings.view_mode as 'grid' | 'list') ?? 'grid';
           const sortBy = (settings.sort_by as 'date' | 'name' | 'size') ?? 'date';
           const sortOrder = (settings.sort_order as 'asc' | 'desc') ?? 'desc';
 
-          // Apply theme to DOM
-          const root = window.document.documentElement;
-          root.classList.remove('light', 'dark');
-          if (theme === 'system') {
-            const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
-              ? 'dark'
-              : 'light';
-            root.classList.add(systemTheme);
-          } else {
-            root.classList.add(theme);
-          }
-
+          applyThemeToDOM(theme);
           set({ theme, viewMode, sortBy, sortOrder });
           return;
         }
@@ -128,7 +120,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
     }
 
     // Fallback: localStorage
-    const cachedTheme = (localStorage.getItem('theme') as 'light' | 'dark' | 'system') ?? 'system';
+    const cachedTheme = (localStorage.getItem('theme') as Theme) ?? 'system';
     await get().setTheme(cachedTheme);
   },
 }));

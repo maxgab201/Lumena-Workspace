@@ -34,13 +34,14 @@ interface ViewerStoreState {
 const ZOOM_STEP = 0.25;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 5.0;
+const DEFAULT_FIT_MODE: ViewerFitMode = 'fit-page';
 
 export const useViewerStore = create<ViewerStoreState>((set, get) => ({
   documentId: null,
   totalPages: 0,
   currentPage: 1,
   scale: 1.0,
-  fitMode: 'fit-page',
+  fitMode: DEFAULT_FIT_MODE,
   rotation: 0,
   isLoading: true,
   showOverlays: true,
@@ -101,7 +102,7 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
       totalPages: 0,
       currentPage: 1,
       scale: 1.0,
-      fitMode: 'fit-width',
+      fitMode: DEFAULT_FIT_MODE,
       rotation: 0,
       isLoading: true,
     });

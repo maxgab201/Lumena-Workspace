@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { WorkspaceRepository } from '../repositories/workspace.repository';
 import { DocumentRepository } from '../repositories/document.repository';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 interface Workspace {
   id: string;
@@ -28,6 +29,7 @@ interface WorkspaceStore {
   loading: boolean;
   uploadProgress: number;
   error: string | null;
+  _subscription: RealtimeChannel | null;
   fetchWorkspaces: () => Promise<void>;
   createWorkspace: (name: string) => Promise<void>;
   renameWorkspace: (id: string, name: string) => Promise<void>;
@@ -48,16 +50,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   loading: false,
   uploadProgress: 0,
   error: null,
-  _subscription: null as any,
+  _subscription: null,
 
   fetchWorkspaces: async () => {
     set({ loading: true, error: null });
     try {
       const data = await WorkspaceRepository.listWorkspaces();
-      const workspaces: Workspace[] = data.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        created_at: item.created_at,
+      const workspaces: Workspace[] = data.map((item: Record<string, unknown>) => ({
+        id: item.id as string,
+        name: item.name as string,
+        created_at: item.created_at as string,
       }));
       set({ workspaces, loading: false });
 
@@ -65,8 +67,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (workspaces.length > 0 && !get().activeWorkspace) {
         get().setActiveWorkspace(workspaces[0]);
       }
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), loading: false });
     }
   },
 
@@ -79,8 +81,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         loading: false,
       }));
       get().setActiveWorkspace(newWorkspace);
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), loading: false });
       throw err;
     }
   },
@@ -94,8 +96,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         activeWorkspace: state.activeWorkspace?.id === id ? updated : state.activeWorkspace,
         loading: false,
       }));
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), loading: false });
       throw err;
     }
   },
@@ -112,8 +114,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           loading: false,
         };
       });
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), loading: false });
       throw err;
     }
   },
@@ -137,8 +139,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     try {
       const documents = await DocumentRepository.listDocuments(workspaceId);
       set({ documents, loading: false });
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), loading: false });
     }
   },
 
@@ -174,8 +176,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         loading: false,
         uploadProgress: 0,
       }));
-    } catch (err: any) {
-      set({ error: err.message, loading: false, uploadProgress: 0 });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), loading: false, uploadProgress: 0 });
       throw err;
     }
   },
@@ -189,8 +191,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         documents: state.documents.map((d) => (d.id === id ? { ...d, name } : d)),
         loading: false,
       }));
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), loading: false });
       throw err;
     }
   },
@@ -208,8 +210,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         documents: state.documents.filter((d) => d.id !== documentId),
         loading: false,
       }));
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
+    } catch (err: unknown) {
+      set({ error: err instanceof Error ? err.message : String(err), loading: false });
     }
   },
 
@@ -229,14 +231,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         return { documents };
       });
     });
-    set({ _subscription: sub } as any);
+    set({ _subscription: sub });
   },
 
   cleanupSubscriptions: () => {
-    const state = get() as any;
-    if (state._subscription) {
-      state._subscription.unsubscribe();
-      set({ _subscription: null } as any);
+    const { _subscription } = get();
+    if (_subscription) {
+      _subscription.unsubscribe();
+      set({ _subscription: null });
     }
   },
 }));

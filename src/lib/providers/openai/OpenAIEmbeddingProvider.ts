@@ -18,7 +18,7 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
     id: 'openai-embedding',
     displayName: 'OpenAI text-embedding-3-small',
     version: '1.0.0',
-    providerType: 'ai',
+    providerType: 'embedding',
     supportsOffline: false,
     supportsGPU: false,
     supportsCPU: true,

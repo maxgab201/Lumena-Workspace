@@ -138,6 +138,11 @@ serve(async (req) => {
     const workspaceId = job.workspace_id as string
     const startTime = Date.now()
 
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
     // ==========================================
     // RATE LIMITING: Max 10 processing jobs per workspace per hour
     // ==========================================
@@ -187,81 +192,29 @@ serve(async (req) => {
     const pageCount = docData?.page_count || 1;
     const estimatedCost = Math.max(pageCount * 5, 20);
 
-    // Credit reservation with optimistic locking.
-    // NOTE: Supabase JS doesn't support `column = column - value` expressions,
-    // so we cannot do a fully atomic UPDATE in one step.
-    // We use optimistic locking: read the current value, then update only if unchanged.
-    // Race condition window is very small (microseconds between read and write).
-    // TODO: Create a PostgreSQL RPC function `reserve_credits(p_workspace_id, p_amount)`
-    //       for fully atomic deduction when the credit system is production-ready.
+    // Reserve credits using the new atomic RPC
+    const { data: reservation, error: reservationError } = await supabaseClient
+      .rpc('reserve_credits_simple', {
+        p_workspace_id: workspaceId,
+        p_amount: estimatedCost,
+        p_idempotency_key: `process-doc:${jobId}`,
+        p_job_id: jobId,
+        p_ttl_seconds: 3600, // 1 hour TTL for processing
+      })
 
-    const { data: accountData } = await supabaseClient
-      .from('credit_accounts')
-      .select('available, reserved')
-      .eq('workspace_id', workspaceId)
-      .single()
-
-    if (!accountData || accountData.available < estimatedCost) {
-      console.error(`Job ${jobId} failed: Insufficient credits`)
+    if (reservationError) {
+      console.error(`Job ${jobId}: Failed to reserve credits`, reservationError)
       await supabaseClient
         .from('processing_jobs')
-        .update({
-          status: 'failed',
-          error_message: `Insufficient credits. Required: ${estimatedCost}, Available: ${accountData?.available || 0}`
-        })
+        .update({ status: 'failed', error_message: `Credit reservation failed: ${reservationError.message}` })
         .eq('id', jobId)
-
-      return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
+      return new Response(JSON.stringify({ error: 'Insufficient credits or reservation failed' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 402,
       })
     }
 
-    const { data: reservation, error: reservationInsertError } = await supabaseClient
-      .from('credit_reservations')
-      .insert({
-        workspace_id: workspaceId,
-        job_id: jobId,
-        requested_amount: estimatedCost,
-        reserved_amount: estimatedCost,
-        expires_at: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
-        status: 'pending'
-      })
-      .select('id')
-      .single()
-
-    if (reservationInsertError) throw new Error('Failed to reserve credits: ' + reservationInsertError.message)
-    const reservationId = reservation.id;
-
-    // Optimistic lock: only deduct if the available balance hasn't changed since we read it
-    const { error: deductError } = await supabaseClient
-      .from('credit_accounts')
-      .update({
-        available: accountData.available - estimatedCost,
-        reserved: (accountData.reserved || 0) + estimatedCost
-      })
-      .eq('workspace_id', workspaceId)
-      .eq('available', accountData.available)
-
-    if (deductError) {
-      // If optimistic lock failed (race condition), release the reservation
-      await supabaseClient
-        .from('credit_reservations')
-        .update({ status: 'released' })
-        .eq('id', reservationId)
-      throw new Error('Credit deduction failed due to concurrent modification. Please retry.')
-    }
-
-    await supabaseClient
-      .from('credit_ledger')
-      .insert({
-        workspace_id: workspaceId,
-        entry_type: 'reserve',
-        amount: estimatedCost,
-        direction: -1,
-        reservation_id: reservationId,
-        job_id: jobId
-      })
+    const reservationId = reservation
 
     // ==========================================
     // 2. PROCESS DOCUMENT
@@ -387,12 +340,10 @@ serve(async (req) => {
     const actualCost = estimatedCost;
 
     await supabaseClient
-      .from('credit_reservations')
-      .update({
-        status: 'confirmed',
-        settled_amount: actualCost
+      .rpc('settle_credits_simple', {
+        p_reservation_id: reservationId,
+        p_actual_amount: actualCost,
       })
-      .eq('id', reservationId)
 
     await supabaseClient
       .from('credit_ledger')
@@ -402,24 +353,8 @@ serve(async (req) => {
         amount: actualCost,
         direction: -1,
         reservation_id: reservationId,
-        job_id: jobId
+        job_id: jobId,
       })
-
-    const { data: finalAccount } = await supabaseClient
-      .from('credit_accounts')
-      .select('reserved, consumed')
-      .eq('workspace_id', workspaceId)
-      .single()
-
-    if (finalAccount) {
-      await supabaseClient
-        .from('credit_accounts')
-        .update({
-          reserved: Math.max(0, (finalAccount.reserved || 0) - estimatedCost),
-          consumed: (finalAccount.consumed || 0) + actualCost
-        })
-        .eq('workspace_id', workspaceId)
-    }
 
     await supabaseClient
       .from('processing_jobs')
@@ -449,6 +384,9 @@ serve(async (req) => {
           Deno.env.get('SUPABASE_URL') ?? '',
           Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
+        // Release the reservation on failure
+        await supabaseClient
+          .rpc('release_credits_simple', { p_reservation_id: reservationId })
         await supabaseClient
           .from('processing_jobs')
           .update({

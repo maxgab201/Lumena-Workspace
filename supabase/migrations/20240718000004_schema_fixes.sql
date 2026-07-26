@@ -25,7 +25,8 @@ ALTER TABLE public.user_settings
   ADD COLUMN IF NOT EXISTS sort_order  TEXT NOT NULL DEFAULT 'desc';
 
 -- 4. Subscriptions INSERT policy (required for the signup trigger)
-CREATE POLICY IF NOT EXISTS "System can insert subscriptions"
+DROP POLICY IF EXISTS "System can insert subscriptions" ON public.subscriptions;
+CREATE POLICY "System can insert subscriptions"
   ON public.subscriptions FOR INSERT
   WITH CHECK ( true );
 

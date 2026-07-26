@@ -22,6 +22,48 @@ CREATE TABLE document_pages (
   UNIQUE(document_id, page_number)
 );
 
+-- RLS for document_pages (moved from 20240722000001_document_pages_rls.sql)
+ALTER TABLE document_pages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "document_pages_select_policy"
+  ON document_pages FOR SELECT
+  TO authenticated
+  USING (
+    document_id IN (
+      SELECT d.id FROM documents d
+      JOIN workspace_members wm ON wm.workspace_id = d.workspace_id
+      WHERE wm.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "document_pages_insert_policy"
+  ON document_pages FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    document_id IN (
+      SELECT d.id FROM documents d
+      JOIN workspace_members wm ON wm.workspace_id = d.workspace_id
+      WHERE wm.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "document_pages_update_policy"
+  ON document_pages FOR UPDATE
+  TO authenticated
+  USING (
+    document_id IN (
+      SELECT d.id FROM documents d
+      JOIN workspace_members wm ON wm.workspace_id = d.workspace_id
+      WHERE wm.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "document_pages_service_role_policy"
+  ON document_pages FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
 -- Analysis tasks with dependencies
 CREATE TABLE processing_tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
