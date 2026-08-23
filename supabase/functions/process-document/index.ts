@@ -1,10 +1,105 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import { extractText, getDocumentProxy } from "npm:unpdf@1.6.2"
+import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.2.1"
+import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@1.3.2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// ==========================================
+// CHUNKING UTILITY (embedded in Edge Function)
+// ==========================================
+function chunkText(
+  pages: string[],
+  options: { maxTokens?: number; overlapSentences?: number } = {}
+) {
+  const maxTokens = options.maxTokens || 512;
+  const overlapSentences = options.overlapSentences ?? 1;
+
+  const chunks: { text: string; tokenCount: number; pageNumbers: number[] }[] = [];
+
+  for (let pageIdx = 0; pageIdx < pages.length; pageIdx++) {
+    const pageNumber = pageIdx + 1;
+    const sentences = pages[pageIdx]
+      .split(/(?<=[.!?])\s+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+
+    let currentSentences: string[] = [];
+    let currentTokens = 0;
+
+    const flush = () => {
+      if (currentSentences.length === 0) return;
+      const text = currentSentences.join(' ');
+      chunks.push({
+        text,
+        tokenCount: Math.ceil(text.length / 4),
+        pageNumbers: [pageNumber],
+      });
+      // Carry overlap sentences into the next chunk of this page
+      currentSentences = currentSentences.slice(-overlapSentences);
+      const overlapText = currentSentences.join(' ');
+      currentTokens = Math.ceil(overlapText.length / 4);
+    };
+
+    for (const sentence of sentences) {
+      const sentenceTokens = Math.ceil(sentence.length / 4);
+      if (currentTokens + sentenceTokens > maxTokens && currentSentences.length > overlapSentences) {
+        flush();
+      }
+      currentSentences.push(sentence);
+      currentTokens += sentenceTokens;
+    }
+    flush();
+  }
+
+  return chunks;
+}
+
+// ==========================================
+// GENERATE EMBEDDINGS USING GEMINI
+// ==========================================
+async function generateEmbeddings(texts: string[], apiKey: string): Promise<number[][]> {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: 'embedding-001' });
+
+  const embeddings: number[][] = [];
+
+  for (const text of texts) {
+    try {
+      // Truncate if too long (Gemini embedding-001 has 2048 token limit)
+      const truncatedText = text.slice(0, 8000);
+      const result = await model.embedContent(truncatedText);
+      embeddings.push(result.embedding.values);
+    } catch (error) {
+      console.error('Failed to generate embedding for text:', error);
+      // Return zero vector as fallback
+      embeddings.push(new Array(768).fill(0));
+    }
+  }
+
+  return embeddings;
+}
+
+// ==========================================
+// EXTRACT TEXT PER PAGE (real extraction via unpdf/pdf.js)
+// ==========================================
+async function extractPdfText(pdfBytes: Uint8Array): Promise<{
+  pages: string[];
+  totalPages: number;
+}> {
+  const pdf = await getDocumentProxy(new Uint8Array(pdfBytes));
+  const result = await extractText(pdf, { mergePages: false });
+  let pages: string[] = Array.isArray(result.text) ? result.text : [result.text];
+  pages = pages.map(p => (p || '').trim());
+  return { pages, totalPages: result.totalPages ?? pages.length };
+}
+
+// Heuristic: a scanned page has almost no extractable text.
+function isScannedPage(pageText: string): boolean {
+  return pageText.replace(/\s+/g, '').length < 32;
 }
 
 serve(async (req) => {
@@ -13,208 +108,100 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  // Hoist jobId so the catch block can access it without re-reading the body
-  let jobId: string | null = null
-
   try {
-    // ==========================================
-    // AUTHENTICATION: Verify request comes from our pg_net webhook
-    // ==========================================
-    // The PostgreSQL trigger sends Authorization: Bearer <SUPABASE_ANON_KEY>.
-    // We verify this matches our expected anon key to reject unauthorized requests.
-    const authHeader = req.headers.get('authorization')
-    const expectedAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.error(`[SECURITY] Rejected request: missing or malformed Authorization header. IP: ${req.headers.get('x-forwarded-for') || 'unknown'}`)
-      return new Response(JSON.stringify({ error: 'Unauthorized: missing Authorization header' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 401,
-      })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    if (token !== expectedAnonKey) {
-      console.error(`[SECURITY] Rejected request: invalid Bearer token. IP: ${req.headers.get('x-forwarded-for') || 'unknown'}`)
-      return new Response(JSON.stringify({ error: 'Unauthorized: invalid token' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 401,
-      })
-    }
-
-    // ==========================================
-    // SCHEMA VALIDATION: Strict payload structure check
-    // ==========================================
-    const contentType = req.headers.get('content-type')
-    if (!contentType?.includes('application/json')) {
-      console.error(`[SECURITY] Rejected request: invalid content-type: ${contentType}`)
-      return new Response(JSON.stringify({ error: 'Invalid content type' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      })
-    }
-
-    // Limit request body size (prevent DoS via large payloads)
-    const contentLength = parseInt(req.headers.get('content-length') || '0', 10)
-    if (contentLength > 10240) { // 10KB max for job payloads
-      console.error(`[SECURITY] Rejected request: payload too large (${contentLength} bytes)`)
-      return new Response(JSON.stringify({ error: 'Payload too large' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 413,
-      })
-    }
-
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    let payload: Record<string, unknown>
-    try {
-      payload = await req.json()
-    } catch {
-      console.error(`[SECURITY] Rejected request: invalid JSON body`)
-      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+    const payload = await req.json()
+    const job = payload.record
+
+    if (!job || !job.id || job.status !== 'queued') {
+      return new Response(JSON.stringify({ error: 'Invalid or missing job record' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       })
     }
 
-    // Strict schema: must have exactly { record: { id, document_id, workspace_id, status, ... } }
-    const job = payload.record as Record<string, unknown> | undefined
-    if (!job || typeof job !== 'object' || Array.isArray(job)) {
-      console.error(`[SECURITY] Rejected request: missing or invalid "record" field`)
-      return new Response(JSON.stringify({ error: 'Invalid payload: missing or invalid "record"' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      })
-    }
-
-    // Required fields with type checks
-    const requiredFields = ['id', 'document_id', 'workspace_id', 'status']
-    for (const field of requiredFields) {
-      if (typeof job[field] !== 'string' || !job[field]) {
-        console.error(`[SECURITY] Rejected request: missing or non-string field "${field}"`)
-        return new Response(JSON.stringify({ error: `Invalid job: "${field}" must be a non-empty string` }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        })
-      }
-    }
-
-    // UUID format validation
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (!uuidRegex.test(job.id as string) || !uuidRegex.test(job.document_id as string) || !uuidRegex.test(job.workspace_id as string)) {
-      console.error(`[SECURITY] Rejected request: invalid UUID format`)
-      return new Response(JSON.stringify({ error: 'Invalid UUID format in job fields' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      })
-    }
-
-    // Status must be exactly 'queued'
-    if (job.status !== 'queued') {
-      console.error(`[SECURITY] Rejected request: unexpected job status "${job.status}"`)
-      return new Response(JSON.stringify({ error: `Invalid job status: ${job.status} (expected: queued)` }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400,
-      })
-    }
-
-    // Reject unknown top-level fields (strict schema)
-    const knownFields = ['record']
-    for (const key of Object.keys(payload)) {
-      if (!knownFields.includes(key)) {
-        console.error(`[SECURITY] Rejected request: unexpected field "${key}" in payload`)
-        return new Response(JSON.stringify({ error: `Unexpected field: ${key}` }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        })
-      }
-    }
-
-    jobId = job.id as string
-    const documentId = job.document_id as string
-    const workspaceId = job.workspace_id as string
+    const jobId = job.id
+    const documentId = job.document_id
+    const workspaceId = job.workspace_id
     const startTime = Date.now()
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    console.log(`Starting processing for job ${jobId} (Document: ${documentId})`)
 
     // ==========================================
-    // RATE LIMITING: Max 10 processing jobs per workspace per hour
-    // ==========================================
-    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-    const { count: recentJobs } = await supabaseClient
-      .from('processing_jobs')
-      .select('id', { count: 'exact', head: true })
-      .eq('workspace_id', workspaceId)
-      .gte('created_at', oneHourAgo)
-
-    if (recentJobs && recentJobs >= 10) {
-      console.error(`[RATE-LIMIT] Rejected job ${jobId}: workspace ${workspaceId} has ${recentJobs} jobs in the last hour`)
-      await supabaseClient
-        .from('processing_jobs')
-        .update({ status: 'failed', error_message: 'Rate limit exceeded: max 10 processing jobs per hour' })
-        .eq('id', jobId)
-      return new Response(JSON.stringify({ error: 'Rate limit exceeded' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 429,
-      })
-    }
-
-    console.log(`[AUTH] Validated request for job ${jobId} (Document: ${documentId}, Workspace: ${workspaceId})`)
-
-    // ==========================================
-    // 1. VERIFY DOCUMENT & ESTIMATE CREDITS
+    // 1. ESTIMATE & RESERVE CREDITS
     // ==========================================
     const { data: docData } = await supabaseClient
       .from('documents')
-      .select('page_count, workspace_id')
+      .select('page_count')
       .eq('id', documentId)
       .single()
-
-    // Verify document exists and belongs to the claimed workspace
-    if (!docData || docData.workspace_id !== workspaceId) {
-      console.error(`Job ${jobId}: Document ${documentId} not found or workspace mismatch`)
-      await supabaseClient
-        .from('processing_jobs')
-        .update({ status: 'failed', error_message: 'Document not found or workspace mismatch' })
-        .eq('id', jobId)
-      return new Response(JSON.stringify({ error: 'Document not found or workspace mismatch' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 404,
-      })
-    }
 
     const pageCount = docData?.page_count || 1;
     const estimatedCost = Math.max(pageCount * 5, 20);
 
-    // Reserve credits using the new atomic RPC
-    const { data: reservation, error: reservationError } = await supabaseClient
-      .rpc('reserve_credits_simple', {
-        p_workspace_id: workspaceId,
-        p_amount: estimatedCost,
-        p_idempotency_key: `process-doc:${jobId}`,
-        p_job_id: jobId,
-        p_ttl_seconds: 3600, // 1 hour TTL for processing
-      })
+    const { data: accountData } = await supabaseClient
+      .from('credit_accounts')
+      .select('available')
+      .eq('workspace_id', workspaceId)
+      .single()
 
-    if (reservationError) {
-      console.error(`Job ${jobId}: Failed to reserve credits`, reservationError)
+    if (!accountData || accountData.available < estimatedCost) {
+      console.error(`Job ${jobId} failed: Insufficient credits (Requires ${estimatedCost}, Available ${accountData?.available || 0})`)
       await supabaseClient
         .from('processing_jobs')
-        .update({ status: 'failed', error_message: `Credit reservation failed: ${reservationError.message}` })
+        .update({
+          status: 'failed',
+          error_message: `Insufficient credits. Required: ${estimatedCost}, Available: ${accountData?.available || 0}`
+        })
         .eq('id', jobId)
-      return new Response(JSON.stringify({ error: 'Insufficient credits or reservation failed' }), {
+
+      return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 402,
       })
     }
 
-    const reservationId = reservation
+    // Create reservation
+    const { data: reservation, error: reserveError } = await supabaseClient
+      .from('credit_reservations')
+      .insert({
+        workspace_id: workspaceId,
+        job_id: jobId,
+        requested_amount: estimatedCost,
+        reserved_amount: estimatedCost,
+        expires_at: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
+        status: 'pending'
+      })
+      .select('id')
+      .single()
+
+    if (reserveError) throw new Error('Failed to reserve credits: ' + reserveError.message)
+    const reservationId = reservation.id;
+
+    // Deduct reserved amount from available, add to reserved
+    await supabaseClient
+      .from('credit_accounts')
+      .update({
+        available: accountData.available - estimatedCost,
+        reserved: (accountData.reserved || 0) + estimatedCost
+      })
+      .eq('workspace_id', workspaceId)
+
+    // Write to ledger
+    await supabaseClient
+      .from('credit_ledger')
+      .insert({
+        workspace_id: workspaceId,
+        entry_type: 'reserve',
+        amount: estimatedCost,
+        direction: -1,
+        reservation_id: reservationId,
+        job_id: jobId
+      })
 
     // ==========================================
     // 2. PROCESS DOCUMENT
@@ -227,179 +214,292 @@ serve(async (req) => {
       })
       .eq('id', jobId)
 
-    const { data: docFull } = await supabaseClient
+    // Fetch document file from storage
+    const { data: docInfo } = await supabaseClient
       .from('documents')
-      .select('id, name, file_path, workspace_id, page_count')
+      .select('file_path, name')
       .eq('id', documentId)
       .single()
 
-    if (!docFull || !docFull.file_path) {
-      throw new Error('Document or file path not found')
+    if (!docInfo?.file_path) {
+      throw new Error('Document file path not found')
     }
 
-    console.log(`Job ${jobId}: Downloading PDF...`)
-    await supabaseClient
-      .from('processing_jobs')
-      .update({ progress: 10 })
-      .eq('id', jobId)
-
-    const { data: pdfData, error: downloadError } = await supabaseClient
-      .storage
+    // Download PDF from storage
+    const { data: pdfBlob, error: downloadError } = await supabaseClient.storage
       .from('workspace_documents')
-      .download(docFull.file_path)
+      .download(docInfo.file_path)
 
-    if (downloadError) {
-      throw new Error(`Failed to download PDF: ${downloadError.message}`)
+    if (downloadError || !pdfBlob) {
+      throw new Error('Failed to download PDF from storage')
     }
 
     // ==========================================
-    // Extract native text with unpdf
+    // EXTRACT TEXT PER PAGE (real extraction)
     // ==========================================
-    console.log(`Job ${jobId}: Extracting native text...`)
-    await supabaseClient
-      .from('processing_jobs')
-      .update({ progress: 30 })
-      .eq('id', jobId)
-
-    const pdfBytes = new Uint8Array(await pdfData.arrayBuffer())
-    const pdf = await getDocumentProxy(pdfBytes)
-
-    let pageTexts: string[] = []
-    let totalPages = 0
+    const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer())
+    let pages: string[]
     try {
-      const result = await extractText(pdf, { mergePages: false })
-      pageTexts = result.text
-      totalPages = pdf.numPages
-    } finally {
-      // Always clean up the PDF document proxy to free memory
-      pdf.destroy()
+      const extraction = await extractPdfText(pdfBytes)
+      pages = extraction.pages
+
+      // Update page count from the real document
+      await supabaseClient
+        .from('documents')
+        .update({ page_count: extraction.totalPages })
+        .eq('id', documentId)
+
+      console.log(`Extracted text from ${extraction.totalPages} pages`)
+    } catch (extractError: any) {
+      throw new Error('PDF text extraction failed: ' + (extractError?.message || 'unknown error'))
     }
 
-    // Determine if PDF has native text (digital) or is scanned
-    const hasNativeText = pageTexts.some((t: string) => t.trim().length > 0)
+    const scannedPages = pages.filter(isScannedPage).length
+    if (scannedPages > 0) {
+      console.warn(`${scannedPages}/${pages.length} pages appear to be scanned (no text layer). OCR support required for full coverage.`)
+    }
 
+    const extractedText = pages
+      .map((pageText, idx) => `---PAGE ${idx + 1}---\n${pageText}`)
+      .join('\n\n')
+
+    if (extractedText.replace(/\s+/g, '').length < 32) {
+      throw new Error('No extractable text found in PDF. The document appears to be fully scanned; OCR processing is required.')
+    }
+
+    // Update document with extracted text
     await supabaseClient
-      .from('processing_jobs')
-      .update({ progress: 60 })
-      .eq('id', jobId)
-
-    if (hasNativeText) {
-      // Digital PDF: save extracted text to document_pages
-      console.log(`Job ${jobId}: Digital PDF detected. Saving ${totalPages} pages of text...`)
-
-      for (let i = 0; i < totalPages; i++) {
-        const pageText = (pageTexts[i] || '').trim()
-        if (pageText.length > 0) {
-          await supabaseClient
-            .from('document_pages')
-            .upsert({
-              document_id: documentId,
-              page_number: i,
-              raw_text: pageText,
-              ocr_provider: 'native',
-              confidence: 1.0,
-            }, { onConflict: 'document_id,page_number' })
-        }
-      }
-
-      await supabaseClient
-        .from('processing_jobs')
-        .update({ progress: 90 })
-        .eq('id', jobId)
-
-      await supabaseClient
-        .from('documents')
-        .update({
-          ocr_status: 'completed',
-          page_count: totalPages,
-          status: 'ready',
-        })
-        .eq('id', documentId)
-
-      console.log(`Job ${jobId}: Text extraction complete (${totalPages} pages)`)
-    } else {
-      // Scanned PDF: delegate to client-side OCR
-      console.log(`Job ${jobId}: Scanned PDF detected. Marking for client-side OCR (${totalPages} pages)...`)
-
-      await supabaseClient
-        .from('documents')
-        .update({
-          ocr_status: 'needs_client_ocr',
-          page_count: totalPages,
-          status: 'ready',
-        })
-        .eq('id', documentId)
-    }
-
-    const endTime = Date.now()
-    const processingTime = Math.round((endTime - startTime) / 1000)
+      .from('documents')
+      .update({
+        extracted_text: extractedText,
+        text_extracted_at: new Date().toISOString(),
+        status: 'processing'
+      })
+      .eq('id', documentId)
 
     // ==========================================
-    // 3. SETTLE CREDITS
+    // 3. CHUNK TEXT (page-aware)
+    // ==========================================
+    const chunks = chunkText(pages, { maxTokens: 512, overlapSentences: 1 });
+    console.log(`Created ${chunks.length} chunks for document ${documentId}`);
+
+    // ==========================================
+    // 4. GENERATE EMBEDDINGS
+    // ==========================================
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    if (!geminiApiKey) {
+      throw new Error('GEMINI_API_KEY not configured');
+    }
+
+    const chunkTexts = chunks.map(c => c.text);
+    const embeddings = await generateEmbeddings(chunkTexts, geminiApiKey);
+
+    // ==========================================
+    // 5. STORE EMBEDDINGS AND CHUNKS
+    // ==========================================
+    const embeddingRows = chunks.map((chunk, i) => ({
+      workspace_id: workspaceId,
+      document_id: documentId,
+      chunk_index: i,
+      chunk_text: chunk.text,
+      chunk_tokens: chunk.tokenCount,
+      embedding: embeddings[i],
+      metadata: {
+        page_numbers: chunk.pageNumbers,
+      }
+    }));
+
+    const { error: embeddingError } = await supabaseClient
+      .from('document_embeddings')
+      .upsert(embeddingRows, { onConflict: 'document_id,chunk_index' });
+
+    if (embeddingError) {
+      console.error('Failed to insert embeddings:', embeddingError);
+      throw new Error('Failed to store embeddings: ' + embeddingError.message);
+    }
+
+    // Store document chunks metadata
+    const chunkRows = chunks.map((chunk, i) => ({
+      workspace_id: workspaceId,
+      document_id: documentId,
+      chunk_index: i,
+      chunk_text: chunk.text,
+      token_count: chunk.tokenCount,
+      page_numbers: chunk.pageNumbers, // Real page mapping from extraction
+      chunk_type: 'paragraph',
+      metadata: {}
+    }));
+
+    const { error: chunkError } = await supabaseClient
+      .from('document_chunks')
+      .upsert(chunkRows, { onConflict: 'document_id,chunk_index' });
+
+    if (chunkError) {
+      console.error('Failed to insert chunks:', chunkError);
+      throw new Error('Failed to store chunks: ' + chunkError.message);
+    }
+
+    // Update document with embedding info
+    await supabaseClient
+      .from('documents')
+      .update({
+        chunk_count: chunks.length,
+        embedding_status: 'completed',
+        status: 'ready'
+      })
+      .eq('id', documentId)
+
+    // Thumbnails are rendered client-side by the PDF viewer (no canvas in this runtime).
+
+    // ==========================================
+    // 6. SETTLE CREDITS
     // ==========================================
     const actualCost = estimatedCost;
 
-    await supabaseClient
-      .rpc('settle_credits_simple', {
-        p_reservation_id: reservationId,
-        p_actual_amount: actualCost,
-      })
+    try {
+      // Settle reservation
+      await supabaseClient
+        .from('credit_reservations')
+        .update({
+          status: 'confirmed',
+          settled_amount: actualCost
+        })
+        .eq('id', reservationId)
 
-    await supabaseClient
-      .from('credit_ledger')
-      .insert({
-        workspace_id: workspaceId,
-        entry_type: 'consume',
-        amount: actualCost,
-        direction: -1,
-        reservation_id: reservationId,
-        job_id: jobId,
-      })
+      // Ledger consume entry
+      await supabaseClient
+        .from('credit_ledger')
+        .insert({
+          workspace_id: workspaceId,
+          entry_type: 'consume',
+          amount: actualCost,
+          direction: -1,
+          reservation_id: reservationId,
+          job_id: jobId
+        })
 
+      // Update account
+      const { data: finalAccount } = await supabaseClient
+        .from('credit_accounts')
+        .select('reserved, consumed, available')
+        .eq('workspace_id', workspaceId)
+        .single()
+
+      if (finalAccount) {
+        const refundAmount = Math.max(0, estimatedCost - actualCost);
+        await supabaseClient
+          .from('credit_accounts')
+          .update({
+            reserved: Math.max(0, (finalAccount.reserved || 0) - estimatedCost),
+            consumed: (finalAccount.consumed || 0) + actualCost,
+            available: (finalAccount.available || 0) + refundAmount
+          })
+          .eq('workspace_id', workspaceId)
+      }
+
+      // If there was a refund, log it to ledger
+      const refundAmount = Math.max(0, estimatedCost - actualCost);
+      if (refundAmount > 0) {
+        await supabaseClient.from('credit_ledger').insert({
+          workspace_id: workspaceId,
+          entry_type: 'refund',
+          amount: refundAmount,
+          direction: 1,
+          reservation_id: reservationId,
+          job_id: jobId
+        })
+      }
+    } catch (settleError: any) {
+      console.error('Failed to settle credits:', settleError)
+    }
+
+    // Complete Job
     await supabaseClient
       .from('processing_jobs')
       .update({
         status: 'completed',
         progress: 100,
-        completed_at: new Date(endTime).toISOString(),
-        processing_time: processingTime,
+        completed_at: new Date().toISOString(),
+        processing_time: Math.round((Date.now() - startTime) / 1000),
       })
       .eq('id', jobId)
 
-    console.log(`Job ${jobId} completed successfully in ${processingTime}s. Cost: ${actualCost} credits.`)
+    console.log(`Job ${jobId} completed successfully in ${Math.round((Date.now() - startTime) / 1000)}s. Cost: ${actualCost} credits.`)
 
     return new Response(JSON.stringify({ success: true, jobId, cost: actualCost }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     })
 
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown processing error'
+  } catch (error: any) {
     console.error('Processing job failed:', error)
 
-    // Use the hoisted jobId — don't re-read the consumed request body
-    if (jobId) {
-      try {
+    // Attempt to refund reserved credits on failure
+    try {
+      const payload = await req.json().catch(() => ({}))
+      const jobId = payload?.record?.id
+      if (jobId) {
         const supabaseClient = createClient(
           Deno.env.get('SUPABASE_URL') ?? '',
           Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
-        // Release the reservation on failure
-        await supabaseClient
-          .rpc('release_credits_simple', { p_reservation_id: reservationId })
+
+        // Find and update the reservation
+        const { data: reservation } = await supabaseClient
+          .from('credit_reservations')
+          .select('id, reserved_amount, workspace_id')
+          .eq('job_id', jobId)
+          .eq('status', 'pending')
+          .single()
+
+        if (reservation) {
+          // Mark reservation as cancelled/refunded
+          await supabaseClient
+            .from('credit_reservations')
+            .update({ status: 'cancelled' })
+            .eq('id', reservation.id)
+
+          // Refund the reserved amount
+          const { data: account } = await supabaseClient
+            .from('credit_accounts')
+            .select('available, reserved')
+            .eq('workspace_id', reservation.workspace_id)
+            .single()
+
+          if (account) {
+            await supabaseClient
+              .from('credit_accounts')
+              .update({
+                available: (account.available || 0) + reservation.reserved_amount,
+                reserved: Math.max(0, (account.reserved || 0) - reservation.reserved_amount)
+              })
+              .eq('workspace_id', reservation.workspace_id)
+          }
+
+          // Log refund to ledger
+          await supabaseClient.from('credit_ledger').insert({
+            workspace_id: reservation.workspace_id,
+            entry_type: 'refund',
+            amount: reservation.reserved_amount,
+            direction: 1,
+            reservation_id: reservation.id,
+            job_id: jobId
+          })
+        }
+
         await supabaseClient
           .from('processing_jobs')
           .update({
             status: 'failed',
-            error_message: errorMessage
+            error_message: error.message || 'Unknown processing error'
           })
           .eq('id', jobId)
-      } catch {
-        // Ignore inner catch errors
       }
+    } catch (refundError) {
+      console.error('Failed to process refund on job failure:', refundError)
     }
 
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
     })

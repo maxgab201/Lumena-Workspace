@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       billing_customers: {
@@ -386,156 +361,6 @@ export type Database = {
           },
         ]
       }
-      document_analysis: {
-        Row: {
-          analysis_type: Database["public"]["Enums"]["analysis_task_type"]
-          created_at: string | null
-          document_id: string | null
-          id: string
-          model: string | null
-          provider: string | null
-          result: Json
-          version: number | null
-        }
-        Insert: {
-          analysis_type: Database["public"]["Enums"]["analysis_task_type"]
-          created_at?: string | null
-          document_id?: string | null
-          id?: string
-          model?: string | null
-          provider?: string | null
-          result: Json
-          version?: number | null
-        }
-        Update: {
-          analysis_type?: Database["public"]["Enums"]["analysis_task_type"]
-          created_at?: string | null
-          document_id?: string | null
-          id?: string
-          model?: string | null
-          provider?: string | null
-          result?: Json
-          version?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "document_analysis_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "documents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      document_chunks: {
-        Row: {
-          chunk_type: string
-          content: string
-          content_hash: string | null
-          created_at: string
-          document_id: string
-          embedded_at: string | null
-          embedding: string | null
-          embedding_model: string | null
-          embedding_provider: string | null
-          embedding_version: string | null
-          end_offset: number
-          id: string
-          page_number: number
-          search_vector: unknown
-          start_offset: number
-          token_count: number
-        }
-        Insert: {
-          chunk_type?: string
-          content: string
-          content_hash?: string | null
-          created_at?: string
-          document_id: string
-          embedded_at?: string | null
-          embedding?: string | null
-          embedding_model?: string | null
-          embedding_provider?: string | null
-          embedding_version?: string | null
-          end_offset?: number
-          id: string
-          page_number: number
-          search_vector?: unknown
-          start_offset?: number
-          token_count?: number
-        }
-        Update: {
-          chunk_type?: string
-          content?: string
-          content_hash?: string | null
-          created_at?: string
-          document_id?: string
-          embedded_at?: string | null
-          embedding?: string | null
-          embedding_model?: string | null
-          embedding_provider?: string | null
-          embedding_version?: string | null
-          end_offset?: number
-          id?: string
-          page_number?: number
-          search_vector?: unknown
-          start_offset?: number
-          token_count?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "document_chunks_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "documents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      document_pages: {
-        Row: {
-          confidence: number | null
-          created_at: string | null
-          document_id: string | null
-          embedding_status: string | null
-          id: string
-          layout_json: Json | null
-          ocr_provider: string | null
-          page_number: number
-          raw_text: string | null
-        }
-        Insert: {
-          confidence?: number | null
-          created_at?: string | null
-          document_id?: string | null
-          embedding_status?: string | null
-          id?: string
-          layout_json?: Json | null
-          ocr_provider?: string | null
-          page_number: number
-          raw_text?: string | null
-        }
-        Update: {
-          confidence?: number | null
-          created_at?: string | null
-          document_id?: string | null
-          embedding_status?: string | null
-          id?: string
-          layout_json?: Json | null
-          ocr_provider?: string | null
-          page_number?: number
-          raw_text?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "document_pages_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "documents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       documents: {
         Row: {
           created_at: string
@@ -544,12 +369,13 @@ export type Database = {
           id: string
           mime_type: string | null
           name: string
-          ocr_status: string | null
           page_count: number | null
           size_bytes: number
           status: Database["public"]["Enums"]["document_status"]
           updated_at: string
           workspace_id: string
+          thumbnail_path: string | null
+          thumbnail_generated_at: string | null
         }
         Insert: {
           created_at?: string
@@ -558,12 +384,13 @@ export type Database = {
           id?: string
           mime_type?: string | null
           name: string
-          ocr_status?: string | null
           page_count?: number | null
           size_bytes: number
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
           workspace_id: string
+          thumbnail_path?: string | null
+          thumbnail_generated_at?: string | null
         }
         Update: {
           created_at?: string
@@ -572,142 +399,17 @@ export type Database = {
           id?: string
           mime_type?: string | null
           name?: string
-          ocr_status?: string | null
           page_count?: number | null
           size_bytes?: number
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
           workspace_id?: string
+          thumbnail_path?: string | null
+          thumbnail_generated_at?: string | null
         }
         Relationships: [
           {
             foreignKeyName: "documents_workspace_id_fkey"
-            columns: ["workspace_id"]
-            isOneToOne: false
-            referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      embedding_cache: {
-        Row: {
-          content_hash: string
-          created_at: string | null
-          dimensions: number
-          embedding: string
-          id: string
-          last_used_at: string | null
-          model: string
-          model_version: string
-          provider: string
-          use_count: number | null
-        }
-        Insert: {
-          content_hash: string
-          created_at?: string | null
-          dimensions: number
-          embedding: string
-          id?: string
-          last_used_at?: string | null
-          model: string
-          model_version: string
-          provider: string
-          use_count?: number | null
-        }
-        Update: {
-          content_hash?: string
-          created_at?: string | null
-          dimensions?: number
-          embedding?: string
-          id?: string
-          last_used_at?: string | null
-          model?: string
-          model_version?: string
-          provider?: string
-          use_count?: number | null
-        }
-        Relationships: []
-      }
-      embedding_jobs: {
-        Row: {
-          attempt: number
-          completed_at: string | null
-          cost_usd: number | null
-          created_at: string | null
-          document_id: string
-          embedded_chunks: number
-          error_message: string | null
-          failed_chunks: number
-          id: string
-          locked_at: string | null
-          locked_by: string | null
-          max_attempts: number
-          model: string | null
-          next_retry_at: string | null
-          provider: string | null
-          started_at: string | null
-          status: string
-          total_chunks: number
-          total_tokens: number | null
-          updated_at: string | null
-          workspace_id: string
-        }
-        Insert: {
-          attempt?: number
-          completed_at?: string | null
-          cost_usd?: number | null
-          created_at?: string | null
-          document_id: string
-          embedded_chunks?: number
-          error_message?: string | null
-          failed_chunks?: number
-          id?: string
-          locked_at?: string | null
-          locked_by?: string | null
-          max_attempts?: number
-          model?: string | null
-          next_retry_at?: string | null
-          provider?: string | null
-          started_at?: string | null
-          status?: string
-          total_chunks?: number
-          total_tokens?: number | null
-          updated_at?: string | null
-          workspace_id: string
-        }
-        Update: {
-          attempt?: number
-          completed_at?: string | null
-          cost_usd?: number | null
-          created_at?: string | null
-          document_id?: string
-          embedded_chunks?: number
-          error_message?: string | null
-          failed_chunks?: number
-          id?: string
-          locked_at?: string | null
-          locked_by?: string | null
-          max_attempts?: number
-          model?: string | null
-          next_retry_at?: string | null
-          provider?: string | null
-          started_at?: string | null
-          status?: string
-          total_chunks?: number
-          total_tokens?: number | null
-          updated_at?: string | null
-          workspace_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "embedding_jobs_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "documents"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "embedding_jobs_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
@@ -725,6 +427,12 @@ export type Database = {
           page_number: number | null
           updated_at: string
           workspace_id: string
+          ease_factor: number
+          repetitions: number
+          interval_days: number
+          next_review_at: string | null
+          last_reviewed_at: string | null
+          last_grade: number | null
         }
         Insert: {
           back: string
@@ -735,6 +443,12 @@ export type Database = {
           page_number?: number | null
           updated_at?: string
           workspace_id: string
+          ease_factor?: number
+          repetitions?: number
+          interval_days?: number
+          next_review_at?: string | null
+          last_reviewed_at?: string | null
+          last_grade?: number | null
         }
         Update: {
           back?: string
@@ -745,6 +459,12 @@ export type Database = {
           page_number?: number | null
           updated_at?: string
           workspace_id?: string
+          ease_factor?: number
+          repetitions?: number
+          interval_days?: number
+          next_review_at?: string | null
+          last_reviewed_at?: string | null
+          last_grade?: number | null
         }
         Relationships: [
           {
@@ -807,47 +527,6 @@ export type Database = {
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      highlight_bboxes: {
-        Row: {
-          cached_at: string | null
-          height: number | null
-          highlight_id: string | null
-          id: string
-          page_number: number
-          width: number | null
-          x: number | null
-          y: number | null
-        }
-        Insert: {
-          cached_at?: string | null
-          height?: number | null
-          highlight_id?: string | null
-          id?: string
-          page_number: number
-          width?: number | null
-          x?: number | null
-          y?: number | null
-        }
-        Update: {
-          cached_at?: string | null
-          height?: number | null
-          highlight_id?: string | null
-          id?: string
-          page_number?: number
-          width?: number | null
-          x?: number | null
-          y?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "highlight_bboxes_highlight_id_fkey"
-            columns: ["highlight_id"]
-            isOneToOne: false
-            referencedRelation: "highlights"
             referencedColumns: ["id"]
           },
         ]
@@ -1219,75 +898,6 @@ export type Database = {
           },
         ]
       }
-      processing_tasks: {
-        Row: {
-          created_at: string | null
-          depends_on: Database["public"]["Enums"]["analysis_task_type"][] | null
-          document_id: string | null
-          error: string | null
-          finished_at: string | null
-          id: string
-          metadata: Json | null
-          model: string | null
-          prompt_version: string | null
-          provider: string | null
-          provider_version: string | null
-          schema_version: string | null
-          started_at: string | null
-          status: string | null
-          task: Database["public"]["Enums"]["analysis_task_type"]
-          version: number | null
-        }
-        Insert: {
-          created_at?: string | null
-          depends_on?:
-            | Database["public"]["Enums"]["analysis_task_type"][]
-            | null
-          document_id?: string | null
-          error?: string | null
-          finished_at?: string | null
-          id?: string
-          metadata?: Json | null
-          model?: string | null
-          prompt_version?: string | null
-          provider?: string | null
-          provider_version?: string | null
-          schema_version?: string | null
-          started_at?: string | null
-          status?: string | null
-          task: Database["public"]["Enums"]["analysis_task_type"]
-          version?: number | null
-        }
-        Update: {
-          created_at?: string | null
-          depends_on?:
-            | Database["public"]["Enums"]["analysis_task_type"][]
-            | null
-          document_id?: string | null
-          error?: string | null
-          finished_at?: string | null
-          id?: string
-          metadata?: Json | null
-          model?: string | null
-          prompt_version?: string | null
-          provider?: string | null
-          provider_version?: string | null
-          schema_version?: string | null
-          started_at?: string | null
-          status?: string | null
-          task?: Database["public"]["Enums"]["analysis_task_type"]
-          version?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "processing_tasks_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "documents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -1648,6 +1258,51 @@ export type Database = {
           },
         ]
       }
+      presentations: {
+        Row: {
+          id: string
+          document_id: string
+          workspace_id: string
+          title: string
+          slides: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          document_id: string
+          workspace_id: string
+          title: string
+          slides: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          document_id?: string
+          workspace_id?: string
+          title?: string
+          slides?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentations_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentations_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           amount: number
@@ -1857,38 +1512,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      claim_embedding_job: {
-        Args: { p_worker_id: string }
-        Returns: {
-          attempt: number
-          completed_at: string | null
-          cost_usd: number | null
-          created_at: string | null
-          document_id: string
-          embedded_chunks: number
-          error_message: string | null
-          failed_chunks: number
-          id: string
-          locked_at: string | null
-          locked_by: string | null
-          max_attempts: number
-          model: string | null
-          next_retry_at: string | null
-          provider: string | null
-          started_at: string | null
-          status: string
-          total_chunks: number
-          total_tokens: number | null
-          updated_at: string | null
-          workspace_id: string
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "embedding_jobs"
-          isOneToOne: false
-          isSetofReturn: true
-        }
-      }
       consume_credits: {
         Args: { p_amount: number; p_description: string; p_user_id: string }
         Returns: boolean
@@ -1897,19 +1520,6 @@ export type Database = {
       get_user_workspace_ids: { Args: never; Returns: string[] }
     }
     Enums: {
-      analysis_task_type:
-        | "ocr"
-        | "layout"
-        | "chunking"
-        | "embeddings"
-        | "highlights"
-        | "summary"
-        | "glossary"
-        | "timeline"
-        | "flashcards"
-        | "mindmap"
-        | "podcast"
-        | "presentation"
       chat_role: "user" | "assistant" | "system"
       document_status: "uploading" | "processing" | "ready" | "error"
       job_status:
@@ -2081,25 +1691,8 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
-      analysis_task_type: [
-        "ocr",
-        "layout",
-        "chunking",
-        "embeddings",
-        "highlights",
-        "summary",
-        "glossary",
-        "timeline",
-        "flashcards",
-        "mindmap",
-        "podcast",
-        "presentation",
-      ],
       chat_role: ["user", "assistant", "system"],
       document_status: ["uploading", "processing", "ready", "error"],
       job_status: [
@@ -2153,3 +1746,4 @@ export const Constants = {
     },
   },
 } as const
+

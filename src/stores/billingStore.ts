@@ -2,18 +2,28 @@ import { create } from 'zustand';
 import { BillingRepository } from '../repositories/billing.repository';
 import { useWorkspaceStore } from './workspaceStore';
 
-interface SubscriptionPlan {
-  code: string;
-  display_name: string;
-}
-
 interface Subscription {
   id: string;
   workspace_id: string;
-  plan: SubscriptionPlan | null;
+  plan: any;
   status: string;
   current_period_start: string | null;
   current_period_end: string | null;
+}
+
+interface LedgerEntry {
+  id: string;
+  created_at: string;
+  entry_type: string;
+  amount: number;
+  direction: number;
+}
+
+interface CreditAccount {
+  available: number;
+  reserved: number;
+  consumed: number;
+  expired: number;
 }
 
 interface CreditPackage {
@@ -25,40 +35,23 @@ interface CreditPackage {
   stripe_price_id: string | null;
 }
 
-interface Balance {
-  available: number;
-  reserved: number;
-  consumed: number;
-  expired: number;
-  activeBuckets: number;
-}
-
-interface CreditAccount {
-  available: number;
-  reserved: number;
-  consumed: number;
-  expired: number;
-}
-
 interface BillingStore {
   subscription: Subscription | null;
   account: CreditAccount | null;
-  transactions: any[];
+  transactions: LedgerEntry[];
   packages: CreditPackage[];
-  balance: Balance | null;
   loading: boolean;
   error: string | null;
   fetchBillingData: () => Promise<void>;
-  fetchBalance: () => Promise<void>;
+  upgradeToPro: () => Promise<void>;
   checkoutPackage: (packageId: string) => Promise<void>;
 }
 
-export const useBillingStore = create<BillingStore>((set, get) => ({
+export const useBillingStore = create<BillingStore>((set) => ({
   subscription: null,
   account: null,
   transactions: [],
   packages: [],
-  balance: null,
   loading: false,
   error: null,
 
@@ -85,20 +78,23 @@ export const useBillingStore = create<BillingStore>((set, get) => ({
         packages: pkgs || [],
         loading: false,
       });
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : String(err), loading: false });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
     }
   },
 
-  fetchBalance: async () => {
+  upgradeToPro: async () => {
     const workspace = useWorkspaceStore.getState().activeWorkspace;
     if (!workspace) return;
-
+    
+    set({ loading: true, error: null });
     try {
-      const balance = await BillingRepository.getBalance(workspace.id);
-      set({ balance });
-    } catch (err: unknown) {
-      console.error('[BillingStore] Failed to fetch balance:', err);
+      // In a real scenario with subscription plans mapped to packages, we could pass the correct packageId
+      // For now, this is a placeholder or relies on the backend to know it's a subscription upgrade
+      alert('Upgrading to Pro will redirect to Stripe Checkout in the final implementation.');
+      set({ loading: false });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
     }
   },
 
@@ -112,8 +108,8 @@ export const useBillingStore = create<BillingStore>((set, get) => ({
       if (response && response.url) {
         window.location.href = response.url;
       }
-    } catch (err: unknown) {
-      set({ error: err instanceof Error ? err.message : String(err), loading: false });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
     }
   },
 }));

@@ -34,10 +34,20 @@ export interface Document {
   updated_at: string;
 }
 
+export interface Highlight {
+  id: string;
+  document_id: string;
+  page_number: number;
+  content: string;
+  note?: string;
+  coordinates: any; // Simplified for now
+  created_at: string;
+}
+
 export interface Subscription {
   id: string;
   user_id: string;
-  plan: 'free' | 'go' | 'pro' | 'max';
+  plan: 'free' | 'pro' | 'enterprise';
   status: 'active' | 'past_due' | 'canceled';
   current_period_end: string;
 }

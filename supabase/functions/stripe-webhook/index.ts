@@ -1,268 +1,220 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
-import Stripe from "https://esm.sh/stripe@14.12.0?target=deno"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
+import Stripe from "https://esm.sh/stripe@14.18.0"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')
+const stripeWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')
+
+if (!stripeSecretKey) {
+  console.warn('STRIPE_SECRET_KEY not set - webhook will not work in production')
+}
+
+if (!stripeWebhookSecret) {
+  console.warn('STRIPE_WEBHOOK_SECRET not set - webhook verification will fail')
+}
+
+const stripe = stripeSecretKey ? new Stripe(stripeSecretKey, {
+  apiVersion: '2023-10-16',
+  httpClient: Stripe.createFetchHttpClient(),
+}) : null
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  try {
-    // Verify Stripe signature
-    const signature = req.headers.get('stripe-signature')
-    if (!signature) {
-      return new Response('No signature provided', { status: 400 })
-    }
-
-    const payload = await req.text()
-    const stripeSecret = Deno.env.get('STRIPE_SECRET_KEY')
-    const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')
-
-    if (!stripeSecret || !webhookSecret) {
-      console.error('Missing Stripe configuration')
-      return new Response('Webhook not configured', { status: 500 })
-    }
-
-    const stripe = new Stripe(stripeSecret, {
-      apiVersion: '2023-10-16',
-      httpClient: Stripe.createFetchHttpClient(),
-    })
-
-    let event: Stripe.Event
-    try {
-      event = stripe.webhooks.constructEvent(payload, signature, webhookSecret)
-    } catch (err: any) {
-      console.error('Webhook signature verification failed:', err.message)
-      return new Response(`Webhook Error: ${err.message}`, { status: 400 })
-    }
-
-    console.log(`Received Stripe Event: ${event.type} [${event.id}]`)
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+  if (!stripe || !stripeWebhookSecret) {
+    return new Response(
+      JSON.stringify({ error: 'Stripe not configured' }),
+      { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
+  }
 
-    // Idempotency: check if we've already processed this event successfully
-    const { data: existingEvent } = await supabase
-      .from('payment_events')
-      .select('id, status')
-      .eq('external_event_id', event.id)
-      .eq('status', 'processed')
-      .maybeSingle()
+  const signature = req.headers.get('stripe-signature')
+  if (!signature) {
+    return new Response(
+      JSON.stringify({ error: 'Missing stripe-signature header' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
 
-    if (existingEvent) {
-      console.log(`Event ${event.id} already processed, skipping`)
-      return new Response(JSON.stringify({ received: true, duplicate: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      })
-    }
+  let event: Stripe.Event
+  const body = await req.text()
 
-    // Log the event
-    await supabase.from('payment_events').insert({
-      provider: 'stripe',
-      external_event_id: event.id,
-      event_type: event.type,
-      payload: event as any,
-      processed_at: new Date().toISOString(),
-      status: 'processing',
-    })
+  try {
+    event = stripe.webhooks.constructEvent(body, signature, stripeWebhookSecret)
+  } catch {
+    console.error('Webhook signature verification failed')
+    return new Response(
+      JSON.stringify({ error: 'Webhook signature verification failed' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
 
-    try {
-      switch (event.type) {
-        case 'checkout.session.completed': {
-          const session = event.data.object as Stripe.Checkout.Session
-          console.log(`Checkout completed for session: ${session.id}`)
+  console.log(`Stripe event: ${event.type}`)
 
-          const workspaceId = session.client_reference_id
-          if (!workspaceId) {
-            console.error('No workspace_id in client_reference_id')
-            break
-          }
-
-          // Grant credits from the credit package
-          const packageId = session.metadata?.package_id
-          if (packageId) {
-            const { data: pkg } = await supabase
-              .from('credit_packages')
-              .select('credits')
-              .eq('id', packageId)
-              .single()
-
-            if (pkg?.credits) {
-              await supabase.rpc('grant_credits_simple', {
-                p_workspace_id: workspaceId,
-                p_amount: pkg.credits,
-                p_source: 'purchase',
-                p_expires_at: null,
-                p_priority: 50,
-                p_idempotency_key: `stripe-purchase:${session.id}`,
-              })
-            }
-          }
-
-          // Update subscription if this was a subscription purchase
-          const subscriptionId = session.subscription
-          if (subscriptionId) {
-            const stripeSubscription = await stripe.subscriptions.retrieve(subscriptionId)
-            const planId = stripeSubscription.items.data[0]?.price?.metadata?.plan_id
-
-            if (planId) {
-              await supabase
-                .from('subscriptions')
-                .upsert({
-                  workspace_id: workspaceId,
-                  plan_id: planId,
-                  status: 'active',
-                  external_subscription_id: subscriptionId,
-                  provider: 'stripe',
-                  current_period_start: new Date(stripeSubscription.current_period_start * 1000).toISOString(),
-                  current_period_end: new Date(stripeSubscription.current_period_end * 1000).toISOString(),
-                  cancel_at_period_end: stripeSubscription.cancel_at_period_end,
-                }, { onConflict: 'workspace_id' })
-            }
-          }
-          break
-        }
-
-        case 'invoice.paid': {
-          const invoice = event.data.object as Stripe.Invoice
-          console.log(`Invoice paid: ${invoice.id}`)
-
-          const subscriptionId = invoice.subscription
-          if (subscriptionId) {
-            // This is a recurring subscription payment
-            const stripeSubscription = await stripe.subscriptions.retrieve(invoice.subscription as string)
-            const workspaceId = stripeSubscription.metadata?.workspace_id
-
-            if (workspaceId) {
-              // Expire old subscription credits
-              await supabase.rpc('expire_credits_simple', { p_workspace_id: workspaceId })
-
-              // Grant new monthly credits
-              const planId = stripeSubscription.items.data[0]?.price?.metadata?.plan_id
-              if (planId) {
-                const { data: plan } = await supabase
-                  .from('plans')
-                  .select('monthly_credits, id')
-                  .eq('id', planId)
-                  .single()
-
-                if (plan?.monthly_credits && plan.monthly_credits > 0) {
-                  await supabase.rpc('grant_credits_simple', {
-                    p_workspace_id: workspaceId,
-                    p_amount: plan.monthly_credits,
-                    p_source: 'subscription',
-                    p_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                    p_priority: 10,
-                    p_idempotency_key: `stripe-renewal:${invoice.id}`,
-                  })
-                }
-
-                // Update subscription period
-                await supabase
-                  .from('subscriptions')
-                  .update({
-                    current_period_start: new Date(stripeSubscription.current_period_start * 1000).toISOString(),
-                    current_period_end: new Date(stripeSubscription.current_period_end * 1000).toISOString(),
-                    status: 'active',
-                  })
-                  .eq('external_subscription_id', subscriptionId)
-              }
-            }
-          }
-          break
-        }
-
-        case 'invoice.payment_failed': {
-          const invoice = event.data.object as Stripe.Invoice
-          console.log(`Invoice payment failed: ${invoice.id}`)
-
-          const subscriptionId = invoice.subscription
-          if (subscriptionId) {
-            const stripeSubscription = await stripe.subscriptions.retrieve(invoice.subscription as string)
-            const workspaceId = stripeSubscription.metadata?.workspace_id
-
-            if (workspaceId) {
-              await supabase
-                .from('subscriptions')
-                .update({ status: 'past_due' })
-                .eq('external_subscription_id', subscriptionId)
-            }
-          }
-          break
-        }
-
-        case 'customer.subscription.deleted': {
-          const subscription = event.data.object as Stripe.Subscription
-          console.log(`Subscription deleted: ${subscription.id}`)
-
-          const workspaceId = subscription.metadata?.workspace_id
-          if (workspaceId) {
-            await supabase
-              .from('subscriptions')
-              .update({ status: 'canceled' })
-              .eq('external_subscription_id', subscription.id)
-
-            // Expire subscription credits
-            await supabase.rpc('expire_credits_simple', { p_workspace_id: workspaceId })
-          }
-          break
-        }
-
-        case 'customer.subscription.updated': {
-          const subscription = event.data.object as Stripe.Subscription
-          console.log(`Subscription updated: ${subscription.id}`)
-
-          const workspaceId = subscription.metadata?.workspace_id
-          if (workspaceId) {
-            await supabase
-              .from('subscriptions')
-              .update({
-                status: subscription.status,
-                cancel_at_period_end: subscription.cancel_at_period_end,
-                current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-                current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-              })
-              .eq('external_subscription_id', subscription.id)
-          }
-          break
-        }
-
-        default:
-          console.log(`Unhandled event type: ${event.type}`)
+  try {
+    switch (event.type) {
+      case 'checkout.session.completed': {
+        const session = event.data.object as Stripe.Checkout.Session
+        await handleCheckoutSessionCompleted(session)
+        break
       }
-
-      // Mark event as processed
-      await supabase
-        .from('payment_events')
-        .update({ status: 'processed' })
-        .eq('external_event_id', event.id)
-
-      return new Response(JSON.stringify({ received: true }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200,
-      })
-
-    } catch (err: any) {
-      console.error('Webhook processing error:', err)
-
-      // Log the error
-      await supabase
-        .from('payment_events')
-        .update({ status: 'failed' })
-        .eq('external_event_id', event.id)
-
-      return new Response(`Webhook Error: ${err.message}`, { status: 500 })
+      case 'checkout.session.expired': {
+        const session = event.data.object as Stripe.Checkout.Session
+        await handleCheckoutSessionExpired(session)
+        break
+      }
+      case 'payment_intent.succeeded': {
+        // Handle direct payment intent success if needed
+        break
+      }
+      case 'payment_intent.payment_failed': {
+        // Handle failed payment intent if needed
+        break
+      }
+      default:
+        console.log(`Unhandled Stripe event: ${event.type}`)
     }
-  } catch (err: any) {
-    console.error('Webhook error:', err)
-    return new Response(`Webhook Error: ${err.message}`, { status: 500 })
+
+    return new Response(
+      JSON.stringify({ received: true }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  } catch {
+    console.error('Webhook handler error')
+    return new Response(
+      JSON.stringify({ error: 'Webhook handler error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 })
+
+async function handleCheckoutSessionCompleted(session: Stripe.Checkout.Session) {
+  console.log(`Processing checkout completed: ${session.id}`)
+
+  // Find the purchase record by stripe_session_id
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  )
+
+  const { data: purchase, error: purchaseError } = await supabase
+    .from('purchases')
+    .select('*')
+    .eq('stripe_session_id', session.id)
+    .single()
+
+  if (purchaseError || !purchase) {
+    console.error('Purchase not found for session:', session.id)
+    // Don't throw - the session might have been created outside our system
+    // Log and return success to avoid Stripe retrying
+    return
+  }
+
+  if (purchase.status === 'completed') {
+    console.log(`Purchase already completed, skipping`)
+    return
+  }
+
+  // Get the credit package to verify credits
+  const { data: pkg, error: pkgError } = await supabase
+    .from('credit_packages')
+    .select('credits')
+    .eq('id', purchase.package_id)
+    .single()
+
+  if (pkgError || !pkg) {
+    console.error('Credit package not found')
+    throw new Error('Credit package not found')
+  }
+
+  const creditsToGrant = pkg.credits
+
+  // Start a transaction-like sequence for credit granting
+  // 1. Update purchase status to completed
+  const { error: updatePurchaseError } = await supabase
+    .from('purchases')
+    .update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      credits_granted: creditsToGrant,
+    })
+    .eq('id', purchase.id)
+
+  if (updatePurchaseError) {
+    console.error('Failed to update purchase status')
+    throw updatePurchaseError
+  }
+
+  // 2. Create credit ledger entry (grant_purchase)
+  const { error: ledgerError } = await supabase
+    .from('credit_ledger')
+    .insert({
+      workspace_id: purchase.workspace_id,
+      entry_type: 'grant_purchase',
+      amount: creditsToGrant,
+      direction: 1,
+      purchase_id: purchase.id,
+      description: `Purchase of ${creditsToGrant} credits via Stripe`,
+    })
+
+  if (ledgerError) {
+    console.error('Failed to insert credit ledger entry')
+    throw ledgerError
+  }
+
+  // 3. Create credit bucket for this purchase
+  const { error: bucketError } = await supabase
+    .from('credit_buckets')
+    .insert({
+      workspace_id: purchase.workspace_id,
+      source_type: 'purchase',
+      source_id: purchase.id,
+      initial_amount: creditsToGrant,
+      remaining_amount: creditsToGrant,
+      priority: 10, // Purchases have high priority (used before monthly grants)
+      expires_at: null, // Purchased credits don't expire
+    })
+
+  if (bucketError) {
+    console.error('Failed to insert credit bucket')
+    throw bucketError
+  }
+
+  // 4. Update credit_accounts (increment available)
+  const { error: accountError } = await supabase.rpc('increment_credit_account', {
+    p_workspace_id: purchase.workspace_id,
+    p_amount: creditsToGrant,
+  })
+
+  if (accountError) {
+    console.error('Failed to increment credit account')
+    throw accountError
+  }
+
+  console.log(`Granted ${creditsToGrant} credits for purchase ${purchase.id}`)
+}
+
+async function handleCheckoutSessionExpired(session: Stripe.Checkout.Session) {
+  console.log(`Checkout session expired: ${session.id}`)
+
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  )
+
+  const { error } = await supabase
+    .from('purchases')
+    .update({ status: 'failed' })
+    .eq('stripe_session_id', session.id)
+
+  if (error) {
+    console.error('Failed to update purchase status to failed')
+  }
+}

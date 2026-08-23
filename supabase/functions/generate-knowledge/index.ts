@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
+import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.2.1"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -60,11 +61,6 @@ Respond ONLY with a valid JSON array of slide objects. Each object must have exa
 
 Start with a title slide (index 1), include content slides, and end with a summary/conclusions slide.
 Do not include any explanatory text, markdown, or code fences. Only the raw JSON array.`,
-}
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 serve(async (req) => {
@@ -137,63 +133,26 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Insufficient credits for knowledge generation.' }), { status: 402, headers: corsHeaders })
     }
 
-    // Reserve credits using the new atomic RPC
-    const { data: reservation, error: reserveError } = await supabaseClient
-      .rpc('reserve_credits_simple', {
-        p_workspace_id: workspace_id,
-        p_amount: 10,
-        p_job_id: null,
-        p_ttl_seconds: 300,
-        p_idempotency_key: `knowledge:${document_id}:${action_type}`,
-      })
-
-    if (reserveError) {
-      return new Response(JSON.stringify({ error: 'Failed to reserve credits: ' + reserveError.message }), { status: 402, headers: corsHeaders })
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured.' }), { status: 500, headers: corsHeaders })
     }
 
-    const reservationId = reservation
-
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
     const promptFn = PROMPTS[action_type]
     const prompt = promptFn(doc.name, excerpt)
 
-    // Call ai-gateway Edge Function for AI generation
-    const aiGatewayResponse = await fetch(
-      `${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-gateway`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY') ?? ''}`,
-          'apikey': Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        },
-        body: JSON.stringify({
-          prompt,
-          workspace_id,
-          action_type: 'knowledge_generation',
-          model_code: '',
-          document_id,
-        }),
-      }
-    )
-
-    if (!aiGatewayResponse.ok) {
-      const errorData = await aiGatewayResponse.json()
-      // Release the reservation on AI failure
-      await supabaseClient.rpc('release_credits_simple', { p_reservation_id: reservationId })
-      return new Response(JSON.stringify({ error: errorData.error || 'AI generation failed' }), { status: aiGatewayResponse.status, headers: corsHeaders })
-    }
-
-    const aiResult = await aiGatewayResponse.json()
-    const responseText = aiResult.text?.trim() || ''
+    const result = await model.generateContent(prompt)
+    const responseText = result.response.text().trim()
 
     let parsed: any[]
     try {
       const cleaned = responseText.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim()
       parsed = JSON.parse(cleaned)
       if (!Array.isArray(parsed)) throw new Error('Expected JSON array')
-    } catch (_) {
+    } catch {
       console.error('Failed to parse AI response:', responseText)
-      await supabaseClient.rpc('release_credits_simple', { p_reservation_id: reservationId })
       return new Response(JSON.stringify({ error: 'AI returned malformed JSON. Please try again.' }), { status: 500, headers: corsHeaders })
     }
 
@@ -307,11 +266,17 @@ serve(async (req) => {
       inserted = [data]
     }
 
-    // Settle the reservation with actual cost (10 credits fixed for knowledge generation)
     const GENERATION_COST = 10
-    await supabaseClient.rpc('settle_credits_simple', {
-      p_reservation_id: reservationId,
-      p_actual_amount: GENERATION_COST,
+    await supabaseClient.from('credit_accounts').update({
+      available: account.available - GENERATION_COST,
+      consumed: account.consumed + GENERATION_COST,
+    }).eq('workspace_id', workspace_id)
+
+    await supabaseClient.from('credit_ledger').insert({
+      workspace_id,
+      entry_type: 'consume',
+      amount: GENERATION_COST,
+      direction: -1,
     })
 
     return new Response(JSON.stringify({ items: inserted, count: inserted.length }), {

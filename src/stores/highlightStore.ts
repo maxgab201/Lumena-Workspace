@@ -35,6 +35,7 @@ interface HighlightStoreState {
 
   // Selectors
   getHighlightsForPage: (documentId: string, pageIndex: number) => Highlight[];
+  getHighlightsForDocument: (documentId: string) => Highlight[];
 }
 
 export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
@@ -128,5 +129,9 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
   getHighlightsForPage: (documentId, pageIndex) => {
     const docHighlights = get().highlights[documentId] ?? [];
     return docHighlights.filter((h) => h.page_index === pageIndex);
+  },
+
+  getHighlightsForDocument: (documentId) => {
+    return get().highlights[documentId] ?? [];
   },
 }));

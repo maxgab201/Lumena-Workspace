@@ -1,12 +1,15 @@
 import { User, Sparkles } from 'lucide-react';
 import type { ChatMessage as IChatMessage } from '../../types/chat';
 import { cn } from '../../lib/utils';
+import { Citations } from './Citations';
 
 interface ChatMessageProps {
   message: IChatMessage;
+  onNavigateToPage?: (pageNumber: number) => void;
+  onOpenDocument?: (documentId: string) => void;
 }
 
-export const ChatMessage = ({ message }: ChatMessageProps) => {
+export const ChatMessage = ({ message, onNavigateToPage, onOpenDocument }: ChatMessageProps) => {
   const isUser = message.role === 'user';
 
   return (
@@ -29,6 +32,13 @@ export const ChatMessage = ({ message }: ChatMessageProps) => {
               </span>
             ))}
           </div>
+        )}
+        {message.citations && message.citations.length > 0 && (
+          <Citations
+            citations={message.citations}
+            onNavigateToPage={onNavigateToPage}
+            onOpenDocument={onOpenDocument}
+          />
         )}
       </div>
     </div>

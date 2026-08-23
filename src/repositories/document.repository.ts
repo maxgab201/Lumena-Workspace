@@ -39,7 +39,6 @@ export const DocumentRepository = {
     size_bytes: number;
     file_path: string;
     mime_type?: string;
-    status?: 'uploading' | 'processing' | 'ready' | 'error';
   }) {
     const { data, error } = await supabase
       .from('documents')
@@ -164,6 +163,26 @@ export const DocumentRepository = {
   },
 
   /**
+   * Update a document's thumbnail path.
+   */
+  async updateDocumentThumbnail(
+    id: string,
+    thumbnailPath: string,
+  ) {
+    const { data, error } = await supabase
+      .from('documents')
+      .update({
+        thumbnail_path: thumbnailPath,
+        thumbnail_generated_at: new Date().toISOString(),
+      })
+      .eq('id', id)
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
+
+  /**
    * Generate a signed URL for temporary access to a private file.
    * Default TTL: 1 hour.
    */
@@ -178,68 +197,99 @@ export const DocumentRepository = {
     return data.signedUrl;
   },
 
-  // ─── OCR / document_pages ───────────────────────────────────
+  /**
+   * Generate signed URLs for multiple files at once. Returns a map of
+   * filePath -> signedUrl for entries that succeeded; failures are omitted.
+   */
+  async getSignedUrls(
+    filePaths: string[],
+    expiresInSeconds: number = 3600,
+  ): Promise<Record<string, string>> {
+    if (filePaths.length === 0) return {};
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrls(filePaths, expiresInSeconds);
+    if (error) throw error;
+    const map: Record<string, string> = {};
+    (data ?? []).forEach(item => {
+      if (item.path && item.signedUrl && item.error == null) {
+        map[item.path] = item.signedUrl;
+      }
+    });
+    return map;
+  },
+/**
+   * Delete multiple documents in bulk.
+   */
+  async deleteDocumentsBulk(ids: string[]) {
+    if (ids.length === 0) return;
+
+    // Get file paths for storage deletion
+    const { data: docs, error: fetchError } = await supabase
+      .from('documents')
+      .select('id, file_path')
+      .in('id', ids);
+    if (fetchError) throw fetchError;
+
+    // Delete from storage
+    const filePaths = docs.map(doc => doc.file_path);
+    const { error: storageError } = await supabase.storage
+      .from(BUCKET)
+      .remove(filePaths);
+    if (storageError && storageError.message !== 'The resource was not found') {
+      throw storageError;
+    }
+
+    // Delete from database
+    const { error: dbError } = await supabase
+      .from('documents')
+      .delete()
+      .in('id', ids);
+    if (dbError) throw dbError;
+  },
 
   /**
-   * Update the ocr_status field on a document record.
+   * Move multiple documents to a different workspace.
    */
-  async updateOCRStatus(
-    id: string,
-    ocrStatus: 'pending' | 'processing' | 'completed' | 'needs_client_ocr' | 'error',
-  ) {
+  async moveDocumentsBulk(ids: string[], targetWorkspaceId: string) {
+    if (ids.length === 0) return;
+
+    const { error } = await supabase
+      .from('documents')
+      .update({ workspace_id: targetWorkspaceId })
+      .in('id', ids);
+    if (error) throw error;
+  },
+
+  /**
+   * Copy documents to a different workspace.
+   */
+  async copyDocumentsBulk(ids: string[], targetWorkspaceId: string) {
+    if (ids.length === 0) return;
+
+    // Get documents to copy
+    const { data: docs, error: fetchError } = await supabase
+      .from('documents')
+      .select('*')
+      .in('id', ids);
+    if (fetchError) throw fetchError;
+
+    // Create copies in target workspace
+    const copies = docs.map(doc => ({
+      workspace_id: targetWorkspaceId,
+      name: doc.name,
+      size_bytes: doc.size_bytes,
+      file_path: doc.file_path,
+      mime_type: doc.mime_type,
+      page_count: doc.page_count,
+      status: doc.status,
+    }));
+
     const { data, error } = await supabase
       .from('documents')
-      .update({ ocr_status: ocrStatus })
-      .eq('id', id)
-      .select()
-      .single();
+      .insert(copies)
+      .select();
     if (error) throw error;
     return data;
-  },
-
-  /**
-   * Get all extracted text entries for a document, ordered by page number.
-   */
-  async getPageTexts(documentId: string) {
-    const { data, error } = await supabase
-      .from('document_pages')
-      .select('*')
-      .eq('document_id', documentId)
-      .order('page_number', { ascending: true });
-    if (error) throw error;
-    return data ?? [];
-  },
-
-  /**
-   * Upsert extracted text for a single page.
-   * Uses onConflict to safely handle re-runs without duplicates.
-   */
-  async upsertPageText(page: {
-    document_id: string;
-    page_number: number;
-    raw_text: string;
-    ocr_provider: string;
-    confidence: number;
-  }) {
-    const { error } = await supabase
-      .from('document_pages')
-      .upsert(page, { onConflict: 'document_id,page_number' });
-    if (error) throw error;
-  },
-
-  /**
-   * Batch upsert extracted text for multiple pages at once.
-   */
-  async upsertPageTextBatch(pages: Array<{
-    document_id: string;
-    page_number: number;
-    raw_text: string;
-    ocr_provider: string;
-    confidence: number;
-  }>) {
-    const { error } = await supabase
-      .from('document_pages')
-      .upsert(pages, { onConflict: 'document_id,page_number' });
-    if (error) throw error;
   },
 };

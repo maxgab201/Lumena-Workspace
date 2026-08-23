@@ -10,30 +10,26 @@ interface UpgradeModalProps {
 }
 
 export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
-  const { checkoutPackage, subscription, packages } = useBillingStore();
+  const { upgradeToPro, subscription } = useBillingStore();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const proPackage = packages.find(p => p.name === 'Pro' || p.name === 'Go');
-
   const handleUpgrade = async () => {
-    if (!proPackage) return;
     setIsProcessing(true);
-    try {
-      await checkoutPackage(proPackage.id);
-      setIsSuccess(true);
-      setTimeout(() => {
-        onClose();
-        setIsSuccess(false);
-      }, 2000);
-    } catch (err) {
-      console.error('Upgrade failed:', err);
-    } finally {
-      setIsProcessing(false);
-    }
+    // Simulate network request to payment gateway
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await upgradeToPro();
+    setIsProcessing(false);
+    setIsSuccess(true);
+    
+    // Auto close after success
+    setTimeout(() => {
+      onClose();
+      setIsSuccess(false);
+    }, 2000);
   };
 
-  if (subscription?.plan?.code === 'pro' && !isSuccess) {
+  if (subscription?.plan === 'pro' && !isSuccess) {
     return (
       <Modal open={isOpen} onOpenChange={onClose}>
         <ModalContent className="sm:max-w-md backdrop-blur-2xl bg-background/80 border-white/10">

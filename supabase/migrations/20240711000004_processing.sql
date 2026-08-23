@@ -1,4 +1,4 @@
--- Create job status enum
+﻿-- Create job status enum
 CREATE TYPE job_status AS ENUM (
   'queued', 
   'inspecting', 

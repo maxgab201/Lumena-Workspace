@@ -12,9 +12,6 @@ interface UserStore {
   signOut: () => Promise<void>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let authSubscription: { unsubscribe: () => void } | null = null;
-
 export const useUserStore = create<UserStore>((set) => ({
   user: null,
   profile: null,
@@ -22,9 +19,6 @@ export const useUserStore = create<UserStore>((set) => ({
   error: null,
 
   initialize: () => {
-    // Prevent multiple subscriptions
-    if (authSubscription) return;
-
     // Get initial session user
     AuthRepository.getUser()
       .then(async (user) => {
@@ -40,31 +34,23 @@ export const useUserStore = create<UserStore>((set) => ({
       });
 
     // Subscribe to auth state changes
-    const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    supabase.auth.onAuthStateChange(async (_event, session) => {
       let profile = null;
       if (session?.user) {
-        const { data: profileData } = await supabase.from('profiles').select('name, avatar_url').eq('id', session.user.id).single();
-        profile = profileData;
+        const { data } = await supabase.from('profiles').select('name, avatar_url').eq('id', session.user.id).single();
+        profile = data;
       }
       set({ user: session?.user ?? null, profile, loading: false });
     });
-
-    authSubscription = data.subscription;
   },
 
   signOut: async () => {
     set({ loading: true, error: null });
     try {
-      // Clean up auth listener before signing out
-      if (authSubscription) {
-        authSubscription.unsubscribe();
-        authSubscription = null;
-      }
       await AuthRepository.signOut();
       set({ user: null, profile: null, loading: false });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      set({ error: message, loading: false });
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
       throw err;
     }
   },

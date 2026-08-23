@@ -130,23 +130,6 @@ const es: Record<TranslationKey, string> = {
   'upgrade.priorityProcessing': 'Procesamiento OCR prioritario',
   'upgrade.cancel': 'Cancelar',
   'upgrade.upgradeNow': 'Mejorar Ahora',
-  'pageSelection.title': 'Seleccionar Páginas a Procesar',
-  'pageSelection.subtitle': '{count} de {total} páginas seleccionadas',
-  'pageSelection.selectAll': 'Seleccionar Todas',
-  'pageSelection.clearAll': 'Limpiar Todas',
-  'pageSelection.cancel': 'Cancelar',
-  'pageSelection.process': 'Procesar',
-  'pageSelection.processing': 'Procesando...',
-  'highlightModel.label': 'Modelo OCR',
-  'highlightModel.noModels': 'No hay modelos disponibles',
-  'highlightModel.placeholder': 'No hay modelos de IA configurados aún',
-  'highlightModel.textOcr': 'OCR de Texto',
-  'highlightModel.textOcrDesc': 'Mejor para PDFs con capas de texto seleccionable',
-  'highlightModel.imageOcr': 'OCR de Imagen',
-  'highlightModel.imageOcrDesc': 'Mejor para documentos escaneados e imágenes',
-  'highlightModel.aiHighlight': 'Resaltado IA',
-  'highlightModel.aiHighlightDesc': 'Resaltado inteligente con IA',
-  'highlightModel.comingSoon': 'Próximamente',
 };
 
 export default es;

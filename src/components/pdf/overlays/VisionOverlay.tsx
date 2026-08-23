@@ -1,14 +1,16 @@
+import React from 'react';
 import { usePageRegistryStore } from '../../../stores/pageRegistryStore';
 import { useViewerStore } from '../../../stores/viewerStore';
+import { useShallow } from 'zustand/react/shallow';
 import { Brain } from 'lucide-react';
 
 interface VisionOverlayProps {
   pageIndex: number;
 }
 
-export const VisionOverlay = ({ pageIndex }: VisionOverlayProps) => {
-  const page = usePageRegistryStore((state) => state.pages[pageIndex]);
-  const showOverlays = useViewerStore((state) => state.showOverlays);
+export const VisionOverlay = React.memo(({ pageIndex }: VisionOverlayProps) => {
+  const page = usePageRegistryStore(useShallow(state => state.pages[pageIndex]));
+  const showOverlays = useViewerStore(useShallow(state => state.showOverlays));
 
   if (!showOverlays || !page || page.aiStatus !== 'completed' || !page.visionData?.data) {
     return null;
@@ -21,7 +23,7 @@ export const VisionOverlay = ({ pageIndex }: VisionOverlayProps) => {
       {/* Render any bounding boxes returned by Vision */}
       {objects && objects.map((obj, idx) => {
         if (!obj.bbox) return null;
-        
+
         const [x0, y0, x1, y1] = obj.bbox;
         const left = `${x0 * 100}%`;
         const top = `${y0 * 100}%`;
@@ -54,4 +56,4 @@ export const VisionOverlay = ({ pageIndex }: VisionOverlayProps) => {
       </div>
     </div>
   );
-};
+});

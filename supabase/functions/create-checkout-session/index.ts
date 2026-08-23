@@ -61,7 +61,7 @@ serve(async (req) => {
 
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')
     if (!stripeKey) {
-      console.warn("STRIPE_SECRET_KEY not found in environment. Mocking checkout success URL for preview environment.")
+      console.warn("STRIPE_SECRET_KEY not found in environment. Mocking checkout success URL for preview environment.");
       // For the preview environment without keys, we mock a redirect to the success URL
       return new Response(JSON.stringify({ 
         url: `${success_url}?session_id=mock_session_id`,

@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures/auth.fixture';
+import { test, expect } from '../fixtures/console-errors.fixture';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -35,7 +35,7 @@ test.describe('Knowledge Tools System', () => {
     await page.route('**/storage/v1/object/sign/**', async (route) => {
       await route.fulfill({
         status: 200,
-        json: { 
+        json: {
           signedURL: '/mock.pdf',
           signedUrl: '/mock.pdf'
         }
@@ -50,7 +50,7 @@ test.describe('Knowledge Tools System', () => {
         body: fs.readFileSync(path.resolve(process.cwd(), 'tests', 'fixtures', 'medium-native.pdf'))
       });
     });
-    
+
     // Mock workspaces like auth.fixture
     await page.route('**/rest/v1/workspaces*', async (route) => {
       await route.fulfill({
@@ -65,11 +65,8 @@ test.describe('Knowledge Tools System', () => {
   });
 
   test('can open knowledge sidebar, add flashcard and glossary term', async ({ page }) => {
-    // Go to the viewer
     await page.goto('/viewer/test-doc-1');
 
-    // Make sure we have enough credits or mock bypass (already mocked in App logic or fallback)
-    
     // Toggle knowledge tools
     const toggleBtn = page.getByTestId('toggle-knowledge-btn');
     await expect(toggleBtn).toBeVisible({ timeout: 15000 });
@@ -91,7 +88,7 @@ test.describe('Knowledge Tools System', () => {
 
     // Toggle Study Mode
     await page.getByTestId('start-study-mode-btn').click();
-    
+
     // Verify study mode overlay
     const overlay = page.getByTestId('study-mode-overlay');
     await expect(overlay).toBeVisible();

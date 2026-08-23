@@ -1,44 +1,80 @@
 import { create } from 'zustand';
 import { KnowledgeRepository } from '../repositories/knowledge.repository';
-import { supabase } from '../lib/supabase';
 import type {
   Flashcard,
   GlossaryTerm,
   MindMapNode,
   TimelineEvent,
+  Presentation,
+  Topic,
+  Concept,
+  Event,
 } from '../types/knowledge';
 
 interface KnowledgeStoreState {
+  // All keyed by document_id
   flashcards: Record<string, Flashcard[]>;
   glossary: Record<string, GlossaryTerm[]>;
   mindMapNodes: Record<string, MindMapNode[]>;
   timelineEvents: Record<string, TimelineEvent[]>;
+  presentations: Record<string, Presentation[]>;
+  topics: Record<string, Topic[]>;
+  concepts: Record<string, Concept[]>;
+  events: Record<string, Event[]>;
+
   isStudyModeActive: boolean;
   isLoading: boolean;
+  isGenerating: boolean;
+  generationError: string | null;
 
+  // Batch load for a document (called by Viewer on open)
   loadKnowledge: (documentId: string) => Promise<void>;
 
+  // Flashcard actions
   addFlashcard: (
     documentId: string,
     workspaceId: string,
     card: Pick<Flashcard, 'front' | 'back' | 'page_number'>,
   ) => Promise<void>;
   deleteFlashcard: (id: string, documentId: string) => Promise<void>;
+  updateFlashcard: (
+    id: string,
+    documentId: string,
+    updates: Partial<Pick<Flashcard, 'front' | 'back' | 'page_number'>>,
+  ) => Promise<void>;
 
+  // SRS actions
+  reviewFlashcard: (id: string, documentId: string, grade: number) => Promise<void>;
+  getDueFlashcards: (documentId: string) => Flashcard[];
+  getAllDueFlashcards: (documentIds: string[]) => Flashcard[];
+
+  // Glossary actions
   addGlossaryTerm: (
     documentId: string,
     workspaceId: string,
     term: Pick<GlossaryTerm, 'term' | 'definition' | 'page_number'>,
   ) => Promise<void>;
   deleteGlossaryTerm: (id: string, documentId: string) => Promise<void>;
+  updateGlossaryTerm: (
+    id: string,
+    documentId: string,
+    updates: Partial<Pick<GlossaryTerm, 'term' | 'definition' | 'page_number'>>,
+  ) => Promise<void>;
 
+  // Mind Map actions
   addMindMapNode: (
     documentId: string,
     workspaceId: string,
     node: Pick<MindMapNode, 'label' | 'parent_id' | 'position_x' | 'position_y'>,
   ) => Promise<void>;
   deleteMindMapNode: (id: string, documentId: string) => Promise<void>;
+  updateMindMapNode: (
+    id: string,
+    documentId: string,
+    updates: Partial<Pick<MindMapNode, 'label' | 'parent_id' | 'position_x' | 'position_y'>>,
+  ) => Promise<void>;
 
+  // Timeline actions
   addTimelineEvent: (
     documentId: string,
     workspaceId: string,
@@ -46,193 +82,64 @@ interface KnowledgeStoreState {
   ) => Promise<void>;
   deleteTimelineEvent: (id: string, documentId: string) => Promise<void>;
 
+  // Presentation actions
+  addPresentation: (
+    documentId: string,
+    workspaceId: string,
+    presentation: Pick<Presentation, 'title' | 'slides'>,
+  ) => Promise<void>;
+  deletePresentation: (id: string, documentId: string) => Promise<void>;
+  updatePresentation: (
+    id: string,
+    documentId: string,
+    updates: Partial<Pick<Presentation, 'title' | 'slides'>>,
+  ) => Promise<void>;
+
   setStudyMode: (active: boolean) => void;
 
-  isGenerating: boolean;
-  generationError: string | null;
+  // AI Generation actions
   generateFlashcards: (documentId: string, workspaceId: string) => Promise<void>;
   generateGlossary: (documentId: string, workspaceId: string) => Promise<void>;
   generateMindMap: (documentId: string, workspaceId: string) => Promise<void>;
+  generateTimeline: (documentId: string, workspaceId: string) => Promise<void>;
+  generatePresentation: (documentId: string, workspaceId: string) => Promise<void>;
 }
 
-async function callAiGateway(
-  supabase: any,
-  reservationId: string,
-  workspaceId: string,
-  prompt: string,
-  documentId: string,
-): Promise<{ text: string }> {
-  const aiGatewayResponse = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL || ''}/functions/v1/ai-gateway`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('sb-access-token') || ''}`,
-        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-      },
-      body: JSON.stringify({
-        prompt,
-        workspace_id: workspaceId,
-        action_type: 'knowledge_generation',
-        model_code: '',
-        document_id: documentId,
-      }),
-    });
+// SM-2 Algorithm implementation
+function sm2Update(card: Flashcard, grade: number): Partial<Flashcard> {
+  // grade: 0-5 (0=complete blackout, 5=perfect)
+  let { ease_factor = 2.5, repetitions = 0, interval_days = 0 } = card;
 
-  if (!aiGatewayResponse.ok) {
-    await supabase.rpc('release_credits_simple', { p_reservation_id: reservationId });
-    const errorData = await aiGatewayResponse.json();
-    throw new Error(errorData.error || 'AI generation failed');
-  }
-
-  const aiResult = await aiGatewayResponse.json();
-  return { text: aiResult.text?.trim() || '' };
-}
-
-function parseAiResponse(responseText: string): any[] {
-  const cleaned = responseText.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim();
-  const parsed = JSON.parse(cleaned);
-  if (!Array.isArray(parsed)) throw new Error('Expected JSON array');
-  return parsed;
-}
-
-async function generateKnowledge(
-  supabase: any,
-  workspaceId: string,
-  documentId: string,
-  actionType: 'flashcards' | 'glossary' | 'mindmap',
-  promptBuilder: (title: string, extract: string) => string,
-  insertFn: (parsed: any[], documentId: string, workspaceId: string) => Promise<any[]>,
-  cost: number,
-): Promise<any[]> {
-  const reservationId = await reserveCredits(supabase, workspaceId, documentId, actionType);
-  
-  try {
-    const { data: doc } = await supabase
-      .from('documents')
-      .select('name, extracted_text')
-      .eq('id', documentId)
-      .single();
-
-    if (!doc || !doc.extracted_text) {
-      throw new Error('Document not found or has no extracted text');
+  if (grade >= 3) {
+    // Correct response
+    if (repetitions === 0) {
+      interval_days = 1;
+    } else if (repetitions === 1) {
+      interval_days = 6;
+    } else {
+      interval_days = Math.round(interval_days * ease_factor);
     }
-
-    const excerpt = doc.extracted_text.substring(0, 8000);
-    const prompt = promptBuilder(doc.name, excerpt);
-
-    const aiResult = await callAiGateway(supabase, reservationId, workspaceId, prompt, documentId);
-    const responseText = aiResult.text?.trim() || '';
-
-    let parsed: any[];
-    try {
-      parsed = parseAiResponse(aiResult.text);
-    } catch {
-      await supabase.rpc('release_credits_simple', { p_reservation_id: reservationId });
-      throw new Error('AI returned malformed JSON. Please try again.');
-    }
-
-    const inserted = await insertFn(parsed, documentId, workspaceId);
-
-    await supabase.rpc('settle_credits_simple', {
-      p_reservation_id: reservationId,
-      p_actual_amount: cost,
-    });
-
-    return inserted;
-  } catch (err: any) {
-    await supabase.rpc('release_credits_simple', { p_reservation_id: reservationId });
-    throw err;
-  }
-}
-
-async function reserveCredits(
-  supabase: any,
-  workspaceId: string,
-  documentId: string,
-  actionType: string,
-): Promise<string> {
-  const { data: reservation, error } = await supabase.rpc('reserve_credits_simple', {
-    p_workspace_id: workspaceId,
-    p_amount: 10,
-    p_idempotency_key: `knowledge:${documentId}:${actionType}`,
-    p_job_id: null,
-    p_ttl_seconds: 300,
-  });
-  if (error) throw new Error('Failed to reserve credits: ' + error.message);
-  return reservation;
-}
-
-async function insertFlashcards(parsed: any[], documentId: string, workspaceId: string): Promise<any[]> {
-  const rows = parsed
-    .map((item: any) => ({
-      document_id: documentId,
-      workspace_id: workspaceId,
-      front: String(item.front ?? '').trim(),
-      back: String(item.back ?? '').trim(),
-    }))
-    .filter((r) => r.front && r.back);
-
-  const { data, error } = await supabase.from('flashcards').insert(rows).select();
-  if (error) throw error;
-  return data ?? [];
-}
-
-async function insertGlossary(parsed: any[], documentId: string, workspaceId: string): Promise<any[]> {
-  const rows = parsed
-    .map((item: any) => ({
-      document_id: documentId,
-      workspace_id: workspaceId,
-      term: String(item.term ?? '').trim(),
-      definition: String(item.definition ?? '').trim(),
-    }))
-    .filter(r => r.term && r.definition);
-
-  const { data, error } = await supabase.from('glossary_terms').insert(rows).select();
-  if (error) throw error;
-  return data ?? [];
-}
-
-async function insertMindmap(parsed: any[], documentId: string, workspaceId: string, supabase: any): Promise<any[]> {
-  const root = parsed.find((n: any) => !n.parent_label);
-  const children = parsed.filter((n: any) => !!n.parent_label);
-
-  if (!root) {
-    throw new Error('Mind map must have a root node with parent_label: null');
+    repetitions += 1;
+  } else {
+    // Incorrect response - reset
+    repetitions = 0;
+    interval_days = 1;
   }
 
-  const { data: rootData, error: rootErr } = await supabase
-    .from('mind_map_nodes')
-    .insert({ document_id: documentId, workspace_id: workspaceId, label: String(root.label).trim(), parent_id: null, position_x: 0, position_y: 0 })
-    .select()
-    .single();
+  // Update ease factor
+  ease_factor = Math.max(1.3, ease_factor + (0.1 - (5 - grade) * (0.08 + (5 - grade) * 0.02)));
 
-  if (rootErr || !rootData) throw rootErr ?? new Error('Failed to insert root node');
+  const nextReviewAt = new Date();
+  nextReviewAt.setDate(nextReviewAt.getDate() + interval_days);
 
-  const inserted = [rootData];
-
-  const childRows = children.map((child: any, i: number) => {
-      return {
-        document_id: documentId,
-        workspace_id: workspaceId,
-        label: String(child.label).trim(),
-        parent_id: rootData.id,
-        position_x: (i % 4) * 220 - 330,
-        position_y: Math.floor(i / 4) * 150 + 150,
-      };
-    });
-
-  if (childRows.length > 0) {
-    const { data: childData, error: childErr } = await supabase
-      .from('mind_map_nodes')
-      .insert(childRows)
-      .select();
-    if (childErr) throw childErr;
-    inserted.push(...(childData ?? []));
-  }
-
-  return inserted;
+  return {
+    ease_factor,
+    repetitions,
+    interval_days,
+    next_review_at: nextReviewAt.toISOString(),
+    last_reviewed_at: new Date().toISOString(),
+    last_grade: grade,
+  };
 }
 
 export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
@@ -240,6 +147,10 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
   glossary: {},
   mindMapNodes: {},
   timelineEvents: {},
+  presentations: {},
+  topics: {},
+  concepts: {},
+  events: {},
   isStudyModeActive: false,
   isLoading: false,
   isGenerating: false,
@@ -248,7 +159,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
   loadKnowledge: async (documentId) => {
     set({ isLoading: true });
     try {
-      const { flashcards, glossaryTerms, mindMapNodes, timelineEvents } =
+      const { flashcards, glossaryTerms, mindMapNodes, timelineEvents, presentations } =
         await KnowledgeRepository.loadAllForDocument(documentId);
 
       set((state) => ({
@@ -256,6 +167,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
         glossary: { ...state.glossary, [documentId]: glossaryTerms },
         mindMapNodes: { ...state.mindMapNodes, [documentId]: mindMapNodes },
         timelineEvents: { ...state.timelineEvents, [documentId]: timelineEvents },
+        presentations: { ...state.presentations, [documentId]: presentations },
         isLoading: false,
       }));
     } catch (err) {
@@ -264,12 +176,18 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
     }
   },
 
+  // --- Flashcards ---
   addFlashcard: async (documentId, workspaceId, cardData) => {
     try {
       const created = await KnowledgeRepository.addFlashcard({
         document_id: documentId,
         workspace_id: workspaceId,
         ...cardData,
+        // Initialize SRS fields
+        ease_factor: 2.5,
+        repetitions: 0,
+        interval_days: 0,
+        next_review_at: new Date().toISOString(),
       });
       set((state) => ({
         flashcards: {
@@ -296,6 +214,56 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
     }
   },
 
+  updateFlashcard: async (id, documentId, updates) => {
+    try {
+      const updated = await KnowledgeRepository.updateFlashcard(id, updates);
+      set((state) => ({
+        flashcards: {
+          ...state.flashcards,
+          [documentId]: (state.flashcards[documentId] ?? []).map((c) =>
+            c.id === id ? { ...c, ...updated } : c
+          ),
+        },
+      }));
+    } catch (err) {
+      console.error('[KnowledgeStore] Failed to update flashcard:', err);
+    }
+  },
+
+  // SRS: Review a flashcard with grade 0-5
+  reviewFlashcard: async (id, documentId, grade) => {
+    const card = get().flashcards[documentId]?.find((c) => c.id === id);
+    if (!card) return;
+
+    const srsUpdates = sm2Update(card, grade);
+    await get().updateFlashcard(id, documentId, srsUpdates);
+  },
+
+  // Get flashcards due for review
+  getDueFlashcards: (documentId) => {
+    const cards = get().flashcards[documentId] || [];
+    const now = new Date();
+    return cards.filter((c) => {
+      if (!c.next_review_at) return true; // New cards are due
+      return new Date(c.next_review_at) <= now;
+    });
+  },
+
+  // Get all due flashcards across multiple documents
+  getAllDueFlashcards: (documentIds) => {
+    const allCards: Flashcard[] = [];
+    for (const docId of documentIds) {
+      allCards.push(...get().getDueFlashcards(docId));
+    }
+    // Sort by next_review_at ascending (most overdue first)
+    return allCards.sort((a, b) => {
+      const aDate = a.next_review_at ? new Date(a.next_review_at).getTime() : 0;
+      const bDate = b.next_review_at ? new Date(b.next_review_at).getTime() : 0;
+      return aDate - bDate;
+    });
+  },
+
+  // --- Glossary ---
   addGlossaryTerm: async (documentId, workspaceId, termData) => {
     try {
       const created = await KnowledgeRepository.addGlossaryTerm({
@@ -328,6 +296,23 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
     }
   },
 
+  updateGlossaryTerm: async (id, documentId, updates) => {
+    try {
+      const updated = await KnowledgeRepository.updateGlossaryTerm(id, updates);
+      set((state) => ({
+        glossary: {
+          ...state.glossary,
+          [documentId]: (state.glossary[documentId] ?? []).map((t) =>
+            t.id === id ? { ...t, ...updated } : t
+          ),
+        },
+      }));
+    } catch (err) {
+      console.error('[KnowledgeStore] Failed to update glossary term:', err);
+    }
+  },
+
+  // --- Mind Map ---
   addMindMapNode: async (documentId, workspaceId, nodeData) => {
     try {
       const created = await KnowledgeRepository.addMindMapNode({
@@ -360,6 +345,23 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
     }
   },
 
+  updateMindMapNode: async (id, documentId, updates) => {
+    try {
+      const updated = await KnowledgeRepository.updateMindMapNode(id, updates);
+      set((state) => ({
+        mindMapNodes: {
+          ...state.mindMapNodes,
+          [documentId]: (state.mindMapNodes[documentId] ?? []).map((n) =>
+            n.id === id ? { ...n, ...updated } : n
+          ),
+        },
+      }));
+    } catch (err) {
+      console.error('[KnowledgeStore] Failed to update mind map node:', err);
+    }
+  },
+
+  // --- Timeline ---
   addTimelineEvent: async (documentId, workspaceId, eventData) => {
     try {
       const created = await KnowledgeRepository.addTimelineEvent({
@@ -392,37 +394,68 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
     }
   },
 
+  // --- Presentations ---
+  addPresentation: async (documentId, workspaceId, presentationData) => {
+    try {
+      const created = await KnowledgeRepository.addPresentation({
+        document_id: documentId,
+        workspace_id: workspaceId,
+        ...presentationData,
+      });
+      set((state) => ({
+        presentations: {
+          ...state.presentations,
+          [documentId]: [...(state.presentations[documentId] ?? []), created],
+        },
+      }));
+    } catch (err) {
+      console.error('[KnowledgeStore] Failed to add presentation:', err);
+    }
+  },
+
+  deletePresentation: async (id, documentId) => {
+    try {
+      await KnowledgeRepository.deletePresentation(id);
+      set((state) => ({
+        presentations: {
+          ...state.presentations,
+          [documentId]: (state.presentations[documentId] ?? []).filter((p) => p.id !== id),
+        },
+      }));
+    } catch (err) {
+      console.error('[KnowledgeStore] Failed to delete presentation:', err);
+    }
+  },
+
+  updatePresentation: async (id, documentId, updates) => {
+    try {
+      const updated = await KnowledgeRepository.updatePresentation(id, updates);
+      set((state) => ({
+        presentations: {
+          ...state.presentations,
+          [documentId]: (state.presentations[documentId] ?? []).map((p) =>
+            p.id === id ? { ...p, ...updated } : p
+          ),
+        },
+      }));
+    } catch (err) {
+      console.error('[KnowledgeStore] Failed to update presentation:', err);
+    }
+  },
+
   setStudyMode: (active) => set({ isStudyModeActive: active }),
 
-  isGenerating: false,
-  generationError: null,
-
-  generateFlashcards: async (documentId: string, workspaceId: string) => {
+  generateFlashcards: async (documentId, workspaceId) => {
     set({ isGenerating: true, generationError: null });
     try {
-      const inserted = await generateKnowledge(
-        supabase,
-        workspaceId,
-        documentId,
-        'flashcards',
-        (title, extract) => `You are an expert educator. Based on the following document excerpt from "${title}", generate 8-10 high-quality flashcards for studying.
-
-DOCUMENT EXCERPT:
-${extract}
-
-Respond ONLY with a valid JSON array of objects. Each object must have exactly:
-{ "front": "question or concept", "back": "answer or explanation" }
-
-Do not include any explanatory text, markdown, or code fences. Only the raw JSON array.`,
-        insertFlashcards,
-        10,
-      );
-
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase.functions.invoke('generate-knowledge', {
+        body: { document_id: documentId, workspace_id: workspaceId, action_type: 'flashcards' }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       set((state) => ({
-        flashcards: {
-          ...state.flashcards,
-          [documentId]: [...(state.flashcards[documentId] ?? []), ...inserted],
-        },
+        flashcards: { ...state.flashcards, [documentId]: [...(state.flashcards[documentId] ?? []), ...(data?.items ?? [])] },
         isGenerating: false,
       }));
     } catch (err: any) {
@@ -431,32 +464,17 @@ Do not include any explanatory text, markdown, or code fences. Only the raw JSON
     }
   },
 
-  generateGlossary: async (documentId: string, workspaceId: string) => {
+  generateGlossary: async (documentId, workspaceId) => {
     set({ isGenerating: true, generationError: null });
     try {
-      const inserted = await generateKnowledge(
-        supabase,
-        workspaceId,
-        documentId,
-        'glossary',
-        (title, extract) => `You are an expert in knowledge extraction. Based on the following document excerpt from "${title}", identify and define the 8-12 most important technical terms, concepts, or specialized vocabulary.
-
-DOCUMENT EXCERPT:
-${extract}
-
-Respond ONLY with a valid JSON array of objects. Each object must have exactly:
-{ "term": "term name", "definition": "clear and concise definition" }
-
-Do not include any explanatory text, markdown, or code fences. Only the raw JSON array.`,
-        insertGlossary,
-        10,
-      );
-
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase.functions.invoke('generate-knowledge', {
+        body: { document_id: documentId, workspace_id: workspaceId, action_type: 'glossary' }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       set((state) => ({
-        glossary: {
-          ...state.glossary,
-          [documentId]: [...(state.glossary[documentId] ?? []), ...inserted],
-        },
+        glossary: { ...state.glossary, [documentId]: [...(state.glossary[documentId] ?? []), ...(data?.items ?? [])] },
         isGenerating: false,
       }));
     } catch (err: any) {
@@ -465,37 +483,55 @@ Do not include any explanatory text, markdown, or code fences. Only the raw JSON
     }
   },
 
-  generateMindMap: async (documentId: string, workspaceId: string) => {
+  generateMindMap: async (documentId, workspaceId) => {
     set({ isGenerating: true, generationError: null });
     try {
-      const inserted = await generateKnowledge(
-        supabase,
-        workspaceId,
-        documentId,
-        'mindmap',
-        (title, extract) => `You are an expert at structuring information. Based on the following document excerpt from "${title}", create a hierarchical mind map.
-
-DOCUMENT EXCERPT:
-${extract}
-
-Respond ONLY with a valid JSON array of nodes. The first node should be the root (central topic).
-Each object must have exactly: { "label": "node label", "parent_label": null or "parent node label" }
-The root node must have parent_label: null. All other nodes reference a parent by its label.
-Limit to 12-15 nodes total.
-
-Do not include any explanatory text, markdown, or code fences. Only the raw JSON array.`,
-        async (parsed, docId, wsId) => {
-          const { supabase: supabaseClient } = await import('../lib/supabase');
-          return insertMindmap(parsed, docId, wsId, supabaseClient);
-        },
-        10,
-      );
-
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase.functions.invoke('generate-knowledge', {
+        body: { document_id: documentId, workspace_id: workspaceId, action_type: 'mindmap' }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
       set((state) => ({
-        mindMapNodes: {
-          ...state.mindMapNodes,
-          [documentId]: [...(state.mindMapNodes[documentId] ?? []), ...inserted],
-        },
+        mindMapNodes: { ...state.mindMapNodes, [documentId]: [...(state.mindMapNodes[documentId] ?? []), ...(data?.items ?? [])] },
+        isGenerating: false,
+      }));
+    } catch (err: any) {
+      set({ isGenerating: false, generationError: err.message });
+      throw err;
+    }
+  },
+
+  generateTimeline: async (documentId, workspaceId) => {
+    set({ isGenerating: true, generationError: null });
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase.functions.invoke('generate-knowledge', {
+        body: { document_id: documentId, workspace_id: workspaceId, action_type: 'timeline' }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      set((state) => ({
+        timelineEvents: { ...state.timelineEvents, [documentId]: [...(state.timelineEvents[documentId] ?? []), ...(data?.items ?? [])] },
+        isGenerating: false,
+      }));
+    } catch (err: any) {
+      set({ isGenerating: false, generationError: err.message });
+      throw err;
+    }
+  },
+
+  generatePresentation: async (documentId, workspaceId) => {
+    set({ isGenerating: true, generationError: null });
+    try {
+      const { supabase } = await import('../lib/supabase');
+      const { data, error } = await supabase.functions.invoke('generate-knowledge', {
+        body: { document_id: documentId, workspace_id: workspaceId, action_type: 'presentation' }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      set((state) => ({
+        presentations: { ...state.presentations, [documentId]: [...(state.presentations[documentId] ?? []), ...(data?.items ?? [])] },
         isGenerating: false,
       }));
     } catch (err: any) {

@@ -19,13 +19,11 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'brave',
+      name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        channel: 'chrome',
-        executablePath: process.env.BRAVE_PATH || 'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
       },
-    }
+    },
   ],
   webServer: {
     command: 'pnpm dev',

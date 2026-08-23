@@ -1,10 +1,11 @@
+import React from 'react';
 import { Page } from 'react-pdf';
 import { useViewerStore } from '../../stores/viewerStore';
+import { useShallow } from 'zustand/react/shallow';
 import { LayoutOverlay } from './overlays/LayoutOverlay';
 import { OCROverlay } from './overlays/OCROverlay';
 import { VisionOverlay } from './overlays/VisionOverlay';
 import { HighlightOverlay } from './overlays/HighlightOverlay';
-import { AutoHighlightOverlay } from './overlays/AutoHighlightOverlay';
 
 interface PDFPageProps {
   pageIndex: number;
@@ -17,8 +18,11 @@ interface PDFPageProps {
  * The Canvas + Text layers are active. Highlight, OCR, Annotation,
  * and AI overlay layers are rendered as empty containers for future use.
  */
-export const PDFPage = ({ pageIndex, width, style }: PDFPageProps) => {
-  const { scale, rotation } = useViewerStore();
+export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) => {
+  const { scale, rotation } = useViewerStore(useShallow(state => ({
+    scale: state.scale,
+    rotation: state.rotation,
+  })));
 
   const pageNumber = pageIndex + 1;
 
@@ -54,7 +58,7 @@ export const PDFPage = ({ pageIndex, width, style }: PDFPageProps) => {
           data-layer="annotation"
           style={{ zIndex: 10 }}
         />
-        
+
         {/* Layer 4: Layout Overlay */}
         <LayoutOverlay pageIndex={pageIndex} />
 
@@ -64,12 +68,13 @@ export const PDFPage = ({ pageIndex, width, style }: PDFPageProps) => {
         {/* Layer 6: Highlight Layer */}
         <HighlightOverlay pageIndex={pageIndex} />
 
-        {/* Layer 7: AI Auto-Highlights */}
-        <AutoHighlightOverlay pageIndex={pageIndex} />
-
-        {/* Layer 8: AI Overlay Layer */}
+        {/* Layer 7: AI Overlay Layer */}
         <VisionOverlay pageIndex={pageIndex} />
       </div>
     </div>
   );
-};
+}, (prev, next) => {
+  return prev.pageIndex === next.pageIndex &&
+         prev.width === next.width &&
+         prev.style === next.style;
+});

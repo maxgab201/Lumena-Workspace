@@ -8,7 +8,7 @@ export class AIGateway {
    * This now routes securely through the Supabase Edge Function 'ai-gateway'
    * to ensure accurate cost metering, credit reservation, and consumption.
    */
-  static async generate(prompt: string, context?: any, modelCode: string = ''): Promise<{ text: string, usage?: any }> {
+  static async generate(prompt: string, context?: any, modelCode: string = 'gemini-1.5-flash'): Promise<{ text: string, usage?: any }> {
     const account = useBillingStore.getState().account;
     const workspaceId = useWorkspaceStore.getState().activeWorkspace?.id;
 
@@ -27,7 +27,8 @@ export class AIGateway {
           workspace_id: workspaceId,
           action_type: 'chat',
           model_code: modelCode,
-          document_id: context?.documentId || null
+          document_id: context?.documentId || null,
+          context: context || null
         }
       });
 
@@ -56,31 +57,102 @@ export class AIGateway {
   }
 
   /**
-   * Stub for streaming. 
-   * In a full implementation, we'd use native fetch to handle the ReadableStream 
-   * returned by the Edge Function, or standard Edge Function streaming responses.
-   * For Phase 16, we default to the synchronous metering call and mock the stream chunks.
+   * Real streaming implementation using fetch with ReadableStream.
+   * Connects to the Edge Function via SSE and yields chunks as they arrive.
    */
   static async generateStream(
-    prompt: string, 
-    context: any | undefined, 
-    modelCode: string = '',
-    onChunk: (chunk: string) => void
-  ): Promise<string> {
-    // For now, we perform the synchronous call to guarantee metering,
-    // and then mock the streaming behavior to the UI.
-    const result = await this.generate(prompt, context, modelCode);
-    
-    // Simulate streaming the result text
-    const text = result.text;
-    const chunkSize = 10;
-    
-    for (let i = 0; i < text.length; i += chunkSize) {
-      onChunk(text.substring(i, i + chunkSize));
-      // Small delay to simulate network streaming
-      await new Promise(resolve => setTimeout(resolve, 20));
+    prompt: string,
+    context: any | undefined,
+    modelCode: string = 'gemini-1.5-flash',
+    onChunk: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<{ text: string; usage?: any }> {
+    const workspaceId = useWorkspaceStore.getState().activeWorkspace?.id;
+
+    if (!workspaceId) {
+      throw new Error('No active workspace selected.');
     }
-    
-    return text;
+
+    const session = supabase.auth.getSession();
+    const { data: { session: currentSession } } = await session;
+
+    if (!currentSession) {
+      throw new Error('No active session');
+    }
+
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-gateway`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${currentSession.access_token}`,
+      },
+      body: JSON.stringify({
+        prompt,
+        workspace_id: workspaceId,
+        action_type: 'chat',
+        model_code: modelCode,
+        document_id: context?.documentId || null,
+        context: context || null,
+        stream: true
+      }),
+      signal
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const error = new Error(errorData.error || `HTTP ${response.status}`);
+      (error as any).status = response.status;
+      if (response.status === 402) {
+        (error as any).status = 402;
+      }
+      throw error;
+    }
+
+    if (!response.body) {
+      throw new Error('No response body');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let accumulatedText = '';
+    let accumulatedUsage: any = null;
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE format
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.chunk) {
+                accumulatedText += data.chunk;
+                onChunk(data.chunk);
+              }
+              if (data.usage) {
+                accumulatedUsage = data.usage;
+              }
+              if (data.done) {
+                return { text: accumulatedText, usage: accumulatedUsage };
+              }
+            } catch {
+              // Ignore parse errors for malformed chunks
+            }
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { text: accumulatedText, usage: accumulatedUsage };
   }
 }

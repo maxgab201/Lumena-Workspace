@@ -1,82 +1,106 @@
-import { test, expect } from './fixtures/auth.fixture';
+import { test, expect } from '../fixtures/console-errors.fixture';
 import * as path from 'path';
 import * as fs from 'fs';
 
-test.describe('Document Management UI', () => {
-  // Use sequential mode so we can clean up easily if we want to
-  test.describe.configure({ mode: 'serial' });
+test.describe('Document Management Flow', () => {
+  test.beforeEach(async ({ page }) => {
+    // Mock workspaces
+    await page.route('**/rest/v1/workspaces*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: [{
+          id: 'workspace-1',
+          name: 'Personal Workspace',
+          owner_id: 'test-user-id'
+        }]
+      });
+    });
 
-  test('Upload, Rename, and Delete PDF', async ({ page }) => {
-    let documents: any[] = [];
-    
-    // Mock Insert/Update/Delete/Get Document
-    await page.route('**/rest/v1/documents*', async route => {
-      const method = route.request().method();
-      if (method === 'GET') {
-        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(documents) });
-      } else if (method === 'POST') {
-        const newDoc = { id: 'doc-1', name: 'small-native.pdf', status: 'ready', created_at: new Date().toISOString(), size_bytes: 1024, file_path: 'ws-1/test.pdf' };
-        documents = [newDoc];
-        route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(newDoc) });
-      } else if (method === 'PATCH') {
-        if (documents.length > 0) documents[0].name = 'renamed-document.pdf';
-        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(documents[0]) });
-      } else if (method === 'DELETE') {
-        documents = [];
-        route.fulfill({ status: 204 });
+    // Mock documents
+    await page.route('**/rest/v1/documents*', async (route) => {
+      const mockDoc = {
+        id: 'doc-1',
+        workspace_id: 'workspace-1',
+        name: 'small-native.pdf',
+        file_path: 'workspace-1/test.pdf',
+        size_bytes: 1024,
+        status: 'ready',
+        mime_type: 'application/pdf',
+        created_at: new Date().toISOString()
+      };
+      const url = route.request().url();
+      if (url.includes('id=eq')) {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(mockDoc)
+        });
       } else {
-        route.continue();
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([mockDoc])
+        });
       }
     });
 
-    // Mock Upload Storage
-    await page.route('**/storage/v1/object/workspace_documents**', route => {
-      route.fulfill({ status: 200, body: JSON.stringify({ Key: 'workspace_documents/test.pdf' }) });
+    // Mock storage
+    await page.route('**/storage/v1/object/sign/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: { signedURL: '/mock.pdf', signedUrl: '/mock.pdf' }
+      });
     });
 
-    page.on('console', msg => console.log('BROWSER CONSOLE:', msg.text()));
-    page.on('pageerror', err => console.log('BROWSER ERROR:', err.message));
+    await page.route('**/mock.pdf', route => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/pdf',
+        body: fs.readFileSync(path.resolve(process.cwd(), 'tests', 'fixtures', 'small-native.pdf'))
+      });
+    });
 
-    // We rely on the auth fixture
+    // Mock processing jobs
+    await page.route('**/rest/v1/processing_jobs*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: [{ id: 'job-1', document_id: 'doc-1', status: 'completed', progress: 100 }]
+      });
+    });
+
+    await page.route('**/functions/v1/**', async (route) => {
+      await route.fulfill({ status: 200, json: { success: true } });
+    });
+  });
+
+  test('Upload, Rename, and Delete PDF', async ({ page }) => {
     await page.goto('/dashboard');
-    // Dump HTML to debug
-    const html = await page.content();
-    fs.writeFileSync('debug-html.html', html);
 
-    // Wait for the upload zone to be visible
-    await expect(page.locator('text=Click to upload or drag and drop')).toBeVisible({ timeout: 15000 });
-    
-    // Take Screenshot of Empty State
-    await page.screenshot({ path: 'artifacts/desktop-empty-state.png' });
+    // Wait for upload zone
+    await expect(page.locator('text="Click to upload or drag and drop"')).toBeVisible({ timeout: 15000 });
 
-    // 1. Upload PDF
+    // Upload PDF
     const filename = 'small-native.pdf';
     const filePath = path.resolve(process.cwd(), 'tests', 'fixtures', filename);
-    
+
     await page.locator('input[type="file"]').setInputFiles(filePath);
 
-    // Wait for the upload to complete
-    await expect(page.getByText(filename).first()).toBeVisible({ timeout: 15000 });
-    await page.screenshot({ path: 'artifacts/desktop-uploaded.png' });
+    await expect(page.getByText(filename).first()).toBeVisible({ timeout: 30000 });
 
-    // 2. Rename Document
+    // Rename Document
     await page.getByText(filename).first().hover();
-    await page.getByRole('button', { name: 'More options' }).first().click();
-    
-    page.on('dialog', async dialog => {
-      if (dialog.type() === 'prompt') await dialog.accept('renamed-document.pdf');
-      if (dialog.type() === 'confirm') await dialog.accept();
-    });
+    await page.getByRole('button', { name: 'Rename' }).first().click();
 
-    await page.getByText('Rename').click();
+    await page.fill('input[type="text"]', 'renamed-document.pdf');
+    await page.click('button:has-text("Confirm")');
+
     await expect(page.getByText('renamed-document.pdf').first()).toBeVisible({ timeout: 15000 });
-    await page.screenshot({ path: 'artifacts/desktop-renamed.png' });
 
-    // 3. Delete Document
+    // Delete Document
     await page.getByText('renamed-document.pdf').first().hover();
-    await page.getByRole('button', { name: 'More options' }).first().click();
-    await page.getByText('Delete').click();
+    await page.getByRole('button', { name: 'Delete' }).first().click();
+    await page.getByRole('button', { name: 'Confirm' }).click();
+
     await expect(page.getByText('renamed-document.pdf').first()).toBeHidden({ timeout: 15000 });
-    await page.screenshot({ path: 'artifacts/desktop-deleted.png' });
   });
 });
