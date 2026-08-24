@@ -213,7 +213,7 @@ BEGIN
       de.document_id,
       de.chunk_index,
       de.chunk_text,
-      (1 - (de.embedding <=> p_query_embedding)) AS similarity,
+      (1 - (de.embedding <=> p_query_embedding))::FLOAT8 AS similarity,
       (de.metadata->>'page_number')::INTEGER AS emb_page
     FROM public.document_embeddings de
     WHERE de.workspace_id = p_workspace_id
@@ -223,11 +223,11 @@ BEGIN
   ),
   scored AS (
     SELECT
-      sr.document_id,
-      sr.chunk_index,
-      sr.chunk_text,
-      sr.similarity,
-      COALESCE(ts_rank_cd(dc.search_vector, plainto_tsquery('simple', p_query_text)), 0) AS keyword_rank,
+      sr.document_id AS scored_document_id,
+      sr.chunk_index AS scored_chunk_index,
+      sr.chunk_text AS scored_chunk_text,
+      sr.similarity AS scored_similarity,
+      COALESCE(ts_rank_cd(dc.search_vector, plainto_tsquery('simple', p_query_text)), 0)::FLOAT8 AS kw_rank,
       COALESCE(dc.page_number, sr.emb_page) AS match_page_number,
       COALESCE(dc.chunk_type, 'paragraph') AS match_chunk_type
     FROM semantic_results sr
@@ -237,16 +237,16 @@ BEGIN
       AND left(dc.content, 120) = left(sr.chunk_text, 120)
   )
   SELECT
-    document_id,
-    chunk_index::TEXT AS chunk_id,
-    chunk_text,
-    similarity,
-    keyword_rank,
-    (p_semantic_weight * similarity + p_keyword_weight * keyword_rank) AS combined_score,
+    scored_document_id AS document_id,
+    scored_chunk_index::TEXT AS chunk_id,
+    scored_chunk_text AS chunk_text,
+    scored_similarity AS similarity,
+    kw_rank AS keyword_rank,
+    (p_semantic_weight * scored_similarity + p_keyword_weight * kw_rank) AS combined_score,
     match_page_number AS page_number,
     match_chunk_type AS chunk_type
   FROM scored
-  WHERE similarity >= p_min_similarity
+  WHERE scored_similarity >= p_min_similarity
   ORDER BY combined_score DESC
   LIMIT p_limit;
 END;
@@ -278,7 +278,7 @@ BEGIN
     de.document_id,
     de.chunk_index,
     de.chunk_text,
-    (1 - (de.embedding <=> p_query_embedding)) AS similarity,
+    (1 - (de.embedding <=> p_query_embedding))::FLOAT8 AS similarity,
     (de.metadata->>'page_number')::INTEGER AS page_number,
     'paragraph'::TEXT AS chunk_type
   FROM public.document_embeddings de
@@ -315,7 +315,7 @@ BEGIN
     dc.document_id,
     dc.id AS chunk_id,
     dc.content AS chunk_text,
-    ts_rank_cd(dc.search_vector, plainto_tsquery('simple', p_query_text)) AS keyword_rank,
+    ts_rank_cd(dc.search_vector, plainto_tsquery('simple', p_query_text))::FLOAT8 AS keyword_rank,
     dc.page_number AS page_number,
     dc.chunk_type
   FROM public.document_chunks dc

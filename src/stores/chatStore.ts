@@ -35,7 +35,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   sessions: {},
   messages: {},
   activeSessionId: null,
-  selectedModel: 'gemini-1.5-flash',
+  selectedModel: 'gemini-flash-latest',
   isGenerating: false,
   isLoadingSession: false,
 
@@ -143,7 +143,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     sessions: {},
     messages: {},
     activeSessionId: null,
-    selectedModel: 'gemini-1.5-flash',
+    selectedModel: 'gemini-flash-latest',
     isGenerating: false,
     isLoadingSession: false,
   }),

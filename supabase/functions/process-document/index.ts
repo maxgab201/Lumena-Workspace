@@ -1,7 +1,9 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.2.1"
 import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@1.3.2"
+
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+const EMBEDDING_MODEL = "gemini-embedding-001" // 768 dims by default
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -61,22 +63,43 @@ function chunkText(
 // ==========================================
 // GENERATE EMBEDDINGS USING GEMINI
 // ==========================================
-async function generateEmbeddings(texts: string[], apiKey: string): Promise<number[][]> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'embedding-001' });
+async function embedOne(text: string, apiKey: string): Promise<number[]> {
+  const res = await fetch(
+    `${GEMINI_API_BASE}/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: `models/${EMBEDDING_MODEL}`,
+        content: { parts: [{ text }] },
+        outputDimensionality: 768,
+      }),
+    },
+  );
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Embedding failed (${res.status}): ${errText.slice(0, 200)}`);
+  }
+  const json = await res.json();
+  return json.embedding?.values ?? [];
+}
 
+async function generateEmbeddings(texts: string[], apiKey: string): Promise<number[][]> {
   const embeddings: number[][] = [];
 
   for (const text of texts) {
     try {
-      // Truncate if too long (Gemini embedding-001 has 2048 token limit)
+      // Truncate if too long (gemini-embedding-001 has a 2048-token input limit)
       const truncatedText = text.slice(0, 8000);
-      const result = await model.embedContent(truncatedText);
-      embeddings.push(result.embedding.values);
+      const values = await embedOne(truncatedText, apiKey);
+      if (values.length !== 768) {
+        throw new Error(`Unexpected embedding dimension: ${values.length}`);
+      }
+      embeddings.push(values);
     } catch (error) {
       console.error('Failed to generate embedding for text:', error);
-      // Return zero vector as fallback
-      embeddings.push(new Array(768).fill(0));
+      // Re-throw: storing zero vectors would poison search results.
+      throw error;
     }
   }
 
@@ -306,6 +329,8 @@ serve(async (req) => {
       embedding: embeddings[i],
       metadata: {
         page_numbers: chunk.pageNumbers,
+        // Scalar for hybrid_search's metadata->>'page_number' lookup
+        page_number: chunk.pageNumbers[0] ?? null,
       }
     }));
 
@@ -318,21 +343,26 @@ serve(async (req) => {
       throw new Error('Failed to store embeddings: ' + embeddingError.message);
     }
 
-    // Store document chunks metadata
-    const chunkRows = chunks.map((chunk, i) => ({
-      workspace_id: workspaceId,
-      document_id: documentId,
-      chunk_index: i,
-      chunk_text: chunk.text,
-      token_count: chunk.tokenCount,
-      page_numbers: chunk.pageNumbers, // Real page mapping from extraction
-      chunk_type: 'paragraph',
-      metadata: {}
-    }));
+    // Store chunks in the real document_chunks schema (id TEXT PK, content, page_number)
+    let chunkCounterByPage: Record<number, number> = {};
+    const chunkRows = chunks.map((chunk) => {
+      const pageNo = chunk.pageNumbers[0] ?? 1;
+      chunkCounterByPage[pageNo] = (chunkCounterByPage[pageNo] ?? 0) + 1;
+      return {
+        id: `${documentId}_p${pageNo}_c${chunkCounterByPage[pageNo]}`,
+        workspace_id: workspaceId,
+        document_id: documentId,
+        page_number: pageNo,
+        content: chunk.text,
+        token_count: chunk.tokenCount,
+        chunk_type: 'paragraph',
+      };
+    });
 
+    // Upsert on the natural key (id encodes doc/page/chunk ordinality)
     const { error: chunkError } = await supabaseClient
       .from('document_chunks')
-      .upsert(chunkRows, { onConflict: 'document_id,chunk_index' });
+      .upsert(chunkRows, { onConflict: 'id' });
 
     if (chunkError) {
       console.error('Failed to insert chunks:', chunkError);

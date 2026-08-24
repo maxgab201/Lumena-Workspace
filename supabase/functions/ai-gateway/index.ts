@@ -104,30 +104,6 @@ async function refundReservation(
   }).eq('id', jobId)
 }
 
-// SSE helper
-function createSSEStream() {
-  let controller: ReadableStreamDefaultController | null = null;
-  const stream = new ReadableStream({
-    start(c) { controller = c; },
-    cancel() { controller = null; }
-  });
-
-  function send(data: object) {
-    if (controller) {
-      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`));
-    }
-  }
-
-  function close() {
-    if (controller) {
-      controller.close();
-      controller = null;
-    }
-  }
-
-  return { stream, send, close };
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -151,7 +127,7 @@ serve(async (req) => {
     }
 
     const payload = await req.json()
-    const { prompt, workspace_id, action_type = 'chat', model_code = 'gemini-1.5-flash', fallback_models, document_id = null, stream = false, context = null } = payload
+    const { prompt, workspace_id, action_type = 'chat', model_code = 'gemini-flash-latest', fallback_models, document_id = null, stream = false, context = null } = payload
 
     if (!prompt || !workspace_id) {
       return new Response(JSON.stringify({ error: 'Missing prompt or workspace_id' }), { status: 400, headers: corsHeaders })
@@ -174,8 +150,8 @@ serve(async (req) => {
 
     // Define plan capabilities
     const PLAN_MODELS: Record<string, string[]> = {
-      free: ['gemini-1.5-flash'],
-      pro: ['gemini-1.5-flash', 'gemini-1.5-pro'],
+      free: ['gemini-flash-latest'],
+      pro: ['gemini-flash-latest', 'gemini-pro-latest'],
     }
     const PLAN_MONTHLY_CREDIT_QUOTA: Record<string, number> = {
       free: 50,
@@ -333,7 +309,7 @@ INSTRUCTIONS:
     // Build enhanced prompt with RAG context if available
     const enhancedPrompt = buildPromptWithRAG(prompt, context);
 
-    const chain = fallback_models || [model_code, 'gemini-1.5-flash']
+    const chain = fallback_models || [model_code, 'gemini-flash-latest']
 
     const { result, usedModel } = await router.routeWithFallback(
       chain,
@@ -401,46 +377,60 @@ INSTRUCTIONS:
           job_id: usageJob.id
         })
 
-        // Streaming path: consume the provider's stream here inside the reservation
-        // context so credits are settled exactly once for the whole generation.
+        // Streaming path: consume the provider's stream inside the SSE stream's own
+        // lifecycle so credits are settled exactly once for the whole generation.
+        // Running everything in start() keeps the work tied to the Response itself,
+        // which survives after the handler returns (unlike detached background tasks).
         if (stream && provider.generateStream) {
-          const sse = createSSEStream();
+          const encoder = new TextEncoder()
+          let clientAborted = false
 
-          (async () => {
-            let accumulatedText = ''
-            let finalUsage: { inputTokens: number; outputTokens: number } | null = null
+          const sseResponse = new Response(new ReadableStream({
+            async start(controller) {
+              let accumulatedText = ''
+              let finalUsage: { inputTokens: number; outputTokens: number } | null = null
 
-            try {
-              sse.send({ type: 'start', model: currentModelCode })
-
-              for await (const chunk of provider.generateStream!(currentModelCode, enhancedPrompt)) {
-                if (chunk.text) {
-                  accumulatedText += chunk.text
-                  sse.send({ chunk: chunk.text })
-                }
-                if (chunk.done && chunk.usage) {
-                  finalUsage = chunk.usage
+              const send = (data: object) => {
+                if (!clientAborted) {
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
                 }
               }
 
-              const inputTokens = finalUsage?.inputTokens ?? estimatedInputTokens
-              const outputTokens = finalUsage?.outputTokens ?? Math.max(1, Math.ceil(accumulatedText.length / 4))
-              const actualCostCredits = await settleCredits(supabaseClient, workspace_id, pricing, reservedCredits, inputTokens, outputTokens, usageJob.id)
+              try {
+                send({ type: 'start', model: currentModelCode })
 
-              sse.send({ usage: { inputTokens, outputTokens, costCredits: actualCostCredits }, done: true })
-              console.log(`Streaming job ${usageJob.id} completed. Cost: ${actualCostCredits} credits.`)
-            } catch (llmError: any) {
-              await refundReservation(supabaseClient, workspace_id, accountData, reservedCredits, usageJob.id, llmError.message)
-              sse.send({ error: llmError.message, done: true })
-            } finally {
-              sse.close()
-            }
-          })()
+                for await (const chunk of provider.generateStream!(currentModelCode, enhancedPrompt)) {
+                  if (chunk.text) {
+                    accumulatedText += chunk.text
+                    send({ chunk: chunk.text })
+                  }
+                  if (chunk.done && chunk.usage) {
+                    finalUsage = chunk.usage
+                  }
+                }
+
+                const inputTokens = finalUsage?.inputTokens ?? estimatedInputTokens
+                const outputTokens = finalUsage?.outputTokens ?? Math.max(1, Math.ceil(accumulatedText.length / 4))
+                const actualCostCredits = await settleCredits(supabaseClient, workspace_id, pricing, reservedCredits, inputTokens, outputTokens, usageJob.id)
+
+                send({ usage: { inputTokens, outputTokens, costCredits: actualCostCredits }, done: true })
+                console.log(`Streaming job ${usageJob.id} completed. Cost: ${actualCostCredits} credits.`)
+              } catch (llmError: any) {
+                await refundReservation(supabaseClient, workspace_id, accountData, reservedCredits, usageJob.id, llmError.message)
+                send({ error: llmError.message, done: true })
+              } finally {
+                try { controller.close() } catch { /* already closed */ }
+              }
+            },
+            cancel() {
+              clientAborted = true
+            },
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }
+          })
 
           return {
-            sseResponse: new Response(sse.stream, {
-              headers: { ...corsHeaders, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' }
-            }),
+            sseResponse,
             text: '',
             usage: { inputTokens: estimatedInputTokens, outputTokens: estimatedOutputTokens },
           } as any

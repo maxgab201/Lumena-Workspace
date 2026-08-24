@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.2.1"
+
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+const GENERATION_MODEL = "gemini-flash-latest"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -138,13 +140,25 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured.' }), { status: 500, headers: corsHeaders })
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
     const promptFn = PROMPTS[action_type]
     const prompt = promptFn(doc.name, excerpt)
 
-    const result = await model.generateContent(prompt)
-    const responseText = result.response.text().trim()
+    const genRes = await fetch(
+      `${GEMINI_API_BASE}/models/${GENERATION_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      },
+    )
+    if (!genRes.ok) {
+      const errText = await genRes.text().catch(() => "")
+      throw new Error(`Gemini generation failed (${genRes.status}): ${errText.slice(0, 300)}`)
+    }
+    const genJson = await genRes.json()
+    const responseText = (
+      genJson.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("") ?? ""
+    ).trim()
 
     let parsed: any[]
     try {

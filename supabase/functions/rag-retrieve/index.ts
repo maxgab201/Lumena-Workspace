@@ -1,6 +1,29 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.2.1"
+
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+const EMBEDDING_MODEL = "gemini-embedding-001" // 768 dims by default
+
+async function embedQuery(text: string, apiKey: string): Promise<number[]> {
+  const res = await fetch(
+    `${GEMINI_API_BASE}/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: `models/${EMBEDDING_MODEL}`,
+        content: { parts: [{ text }] },
+        outputDimensionality: 768,
+      }),
+    },
+  )
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "")
+    throw new Error(`Embedding failed (${res.status}): ${errText.slice(0, 200)}`)
+  }
+  const json = await res.json()
+  return json.embedding?.values ?? []
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -80,13 +103,9 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), { status: 500, headers: corsHeaders })
     }
 
-    const genAI = new GoogleGenerativeAI(geminiApiKey)
-    const model = genAI.getGenerativeModel({ model: 'embedding-001' })
-
     // Truncate query if too long
     const truncatedQuery = query.slice(0, 8000)
-    const embeddingResult = await model.embedContent(truncatedQuery)
-    const queryEmbedding = embeddingResult.embedding.values
+    const queryEmbedding = await embedQuery(truncatedQuery, geminiApiKey)
 
     // ==========================================
     // 2. CALL HYBRID SEARCH FUNCTION
@@ -125,14 +144,18 @@ serve(async (req) => {
     // ==========================================
     // 4. LOG SEARCH QUERY FOR ANALYTICS
     // ==========================================
-    await supabaseClient.from('search_queries').insert({
-      workspace_id,
-      user_id: user.id,
-      query_text: query,
-      search_type: 'hybrid',
-      filters: { document_id: document_id || null, similarity_threshold, semantic_weight, keyword_weight },
-      results_count: results.length,
-    }).catch(() => {}) // Don't fail if logging fails
+    try {
+      await supabaseClient.from('search_queries').insert({
+        workspace_id,
+        user_id: user.id,
+        query_text: query,
+        search_type: 'hybrid',
+        filters: { document_id: document_id || null, similarity_threshold, semantic_weight, keyword_weight },
+        results_count: results.length,
+      })
+    } catch {
+      // Don't fail if logging fails
+    }
 
     // ==========================================
     // 5. RETURN RESULTS WITH CITATION METADATA

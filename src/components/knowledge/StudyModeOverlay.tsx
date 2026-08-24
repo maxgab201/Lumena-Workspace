@@ -198,7 +198,7 @@ Instructions:
           prompt: userMessage,
           workspace_id: (await supabase.auth.getUser()).data.user?.id,
           action_type: 'chat',
-          model_code: 'gemini-1.5-flash',
+          model_code: 'gemini-flash-latest',
           document_id: documentId,
           context: { systemPrompt, ragChunks: [] },
           stream: false,
