@@ -84,7 +84,7 @@ test.describe('PDF Viewer (Mocked API)', () => {
     await page.goto('/viewer/test-doc-1');
 
     await page.screenshot({ path: 'artifacts/viewer-before-timeout.png' });
-    await expect(page.locator('text=Large-Document-500-pages.pdf')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Large-Document-500-pages.pdf').first()).toBeVisible({ timeout: 10000 });
 
     await page.setViewportSize({ width: 1281, height: 721 });
     await page.setViewportSize({ width: 1280, height: 720 });

@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures/console-errors.fixture';
+import { test, expect } from './fixtures/auth.fixture';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -62,6 +62,36 @@ test.describe('Knowledge Tools System', () => {
         }]
       });
     });
+
+    // Mock flashcards
+    await page.route('**/rest/v1/flashcards*', async (route) => {
+      const method = route.request().method();
+      if (method === 'POST') {
+        const postData = route.request().postDataJSON();
+        await route.fulfill({
+          status: 201,
+          json: { id: 'fc-1', ...postData, created_at: new Date().toISOString() }
+        });
+      } else if (method === 'PATCH') {
+        await route.fulfill({ status: 200, json: { id: 'fc-1', ...route.request().postDataJSON() } });
+      } else {
+        await route.fulfill({ status: 200, json: [] });
+      }
+    });
+
+    // Mock glossary terms
+    await page.route('**/rest/v1/glossary_terms*', async (route) => {
+      const method = route.request().method();
+      if (method === 'POST') {
+        const postData = route.request().postDataJSON();
+        await route.fulfill({
+          status: 201,
+          json: { id: 'gt-1', ...postData, created_at: new Date().toISOString() }
+        });
+      } else {
+        await route.fulfill({ status: 200, json: [] });
+      }
+    });
   });
 
   test('can open knowledge sidebar, add flashcard and glossary term', async ({ page }) => {
@@ -92,6 +122,7 @@ test.describe('Knowledge Tools System', () => {
     // Verify study mode overlay
     const overlay = page.getByTestId('study-mode-overlay');
     await expect(overlay).toBeVisible();
+    await page.getByTestId('mode-tab-flashcard').click();
     await expect(overlay.locator('text="What is React?"')).toBeVisible();
 
     // Flip card
@@ -99,7 +130,7 @@ test.describe('Knowledge Tools System', () => {
     await expect(overlay.locator('text="A UI library for building user interfaces."')).toBeVisible();
 
     // Close study mode
-    await page.getByTestId('close-study-mode-btn').click();
+    await page.getByTestId('close-study-mode-btn').first().click();
     await expect(overlay).toBeHidden();
 
     // Switch to Glossary Tab

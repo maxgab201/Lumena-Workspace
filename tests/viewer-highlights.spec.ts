@@ -1,4 +1,6 @@
-import { test, expect } from '../fixtures/console-errors.fixture';
+import { test, expect } from './fixtures/auth.fixture';
+import * as fs from 'fs';
+import * as path from 'path';
 
 test.describe('Highlights System', () => {
   test.beforeEach(async ({ page }) => {

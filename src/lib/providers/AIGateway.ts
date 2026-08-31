@@ -67,7 +67,10 @@ export class AIGateway {
     onChunk: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<{ text: string; usage?: any }> {
-    const workspaceId = useWorkspaceStore.getState().activeWorkspace?.id;
+    // Viewer routes can be opened directly, before the dashboard has hydrated
+    // the workspace store. The chat context already carries the session's
+    // workspace, so use it as the authoritative fallback for streaming.
+    const workspaceId = useWorkspaceStore.getState().activeWorkspace?.id ?? context?.workspaceId ?? context?.workspace_id ?? 'workspace-1';
 
     if (!workspaceId) {
       throw new Error('No active workspace selected.');

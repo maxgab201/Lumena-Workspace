@@ -196,8 +196,12 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
     content: m.content,
   }));
 
-  // Get workspace info
+  // Get workspace info. The viewer can be opened directly (without first
+  // visiting the dashboard), so the active workspace store may not be hydrated
+  // yet; the chat session remains the authoritative fallback in that case.
   const activeWorkspace = workspaceStore.activeWorkspace;
+  const activeSession = activeSessionId ? chatStore.sessions[activeSessionId] : undefined;
+  const workspaceId = activeWorkspace?.id ?? activeSession?.workspace_id;
 
   // Get selected text from viewer
   const selectedText = viewerStore.selectedText ?? '';
@@ -224,9 +228,9 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
     match_type: string;
   }> = [];
 
-  if (userQuery && documentId && activeWorkspace?.id) {
+  if (userQuery && documentId && workspaceId) {
     try {
-      ragChunks = await retrieveRAGChunks(userQuery, activeWorkspace.id, documentId);
+      ragChunks = await retrieveRAGChunks(userQuery, workspaceId, documentId);
     } catch (err) {
       console.error('[ChatStore] RAG retrieval failed:', err);
       // Continue without RAG context - don't break chat
@@ -235,7 +239,7 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
 
   return {
     documentId: documentId ?? undefined,
-    workspaceId: activeWorkspace?.id,
+    workspaceId,
     currentPage,
     activeHighlights,
     recentMessages,

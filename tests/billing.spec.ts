@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures/console-errors.fixture';
+import { test, expect } from './fixtures/auth.fixture';
 
 test.describe('Billing System', () => {
   test.beforeEach(async ({ page }) => {
@@ -42,12 +42,19 @@ test.describe('Billing System', () => {
       });
     });
 
+    await page.route('**/rest/v1/credit_ledger*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: []
+      });
+    });
+
     await page.route('**/rest/v1/credit_packages*', async (route) => {
       await route.fulfill({
         status: 200,
         json: [
-          { id: 'pkg-1', name: 'Starter Pack', credits: 1000, price_usd: 5.00, stripe_price_id: 'price_starter' },
-          { id: 'pkg-2', name: 'Pro Pack', credits: 5000, price_usd: 20.00, stripe_price_id: 'price_pro' }
+          { id: 'pkg-1', name: 'Starter Pack', credits: 1000, price_usd: 5.00, stripe_price_id: 'price_starter', is_active: true },
+          { id: 'pkg-2', name: 'Pro Pack', credits: 5000, price_usd: 20.00, stripe_price_id: 'price_pro', is_active: true }
         ]
       });
     });
@@ -63,14 +70,14 @@ test.describe('Billing System', () => {
   test('billing page displays correctly', async ({ page }) => {
     await page.goto('/billing');
     await page.waitForLoadState('networkidle');
-    await expect(page.getByText('Billing')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Billing & Credits' })).toBeVisible();
   });
 
   test('shows current plan and credits', async ({ page }) => {
     await page.goto('/billing');
     await page.waitForLoadState('networkidle');
-    await expect(page.locator('text="Current Plan"')).toBeVisible();
-    await expect(page.locator('text="Free"')).toBeVisible();
+    await expect(page.getByText('Current Plan')).toBeVisible();
+    await expect(page.getByText('Free').first()).toBeVisible();
   });
 
   test('shows credit progress bar', async ({ page }) => {
@@ -87,7 +94,7 @@ test.describe('Billing System', () => {
     const upgradeBtn = page.getByTestId('upgrade-btn').first();
     if (await upgradeBtn.isVisible({ timeout: 2000 })) {
       await upgradeBtn.click();
-      await expect(page.locator('text="Upgrade to Pro"')).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('heading', { name: 'Upgrade to Pro' })).toBeVisible({ timeout: 5000 });
     }
   });
 

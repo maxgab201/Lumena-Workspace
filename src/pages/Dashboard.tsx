@@ -480,10 +480,12 @@ export const Dashboard = () => {
                             <div className={cn(viewMode === 'grid' ? "" : "ml-4 shrink-0")}>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
                                     className="h-6 w-6 text-muted-foreground hover:text-foreground relative z-20 hover:bg-secondary/50 rounded-md"
+                                    aria-label="Document actions"
+                                    data-testid="doc-actions-btn"
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();

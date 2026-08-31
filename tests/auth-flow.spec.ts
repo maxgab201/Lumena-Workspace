@@ -1,9 +1,55 @@
-import { test, expect } from '../fixtures/console-errors.fixture';
+import { test, expect } from './fixtures/console-errors.fixture';
 
 test.describe('Authentication - Complete E2E', () => {
   test.beforeEach(async ({ page }) => {
     await page.context().clearCookies();
     await page.context().clearPermissions();
+
+    // Mock Supabase Auth endpoints to ensure deterministic and fast E2E tests without rate limits
+    await page.route('**/auth/v1/signup*', async (route) => {
+      const postData = route.request().postDataJSON() || {};
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'mock-user-id',
+          aud: 'authenticated',
+          role: 'authenticated',
+          email: postData.email || 'test@example.com',
+          created_at: new Date().toISOString(),
+          user_metadata: {},
+          identities: [],
+        }),
+      });
+    });
+
+    await page.route('**/auth/v1/recover*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({}),
+      });
+    });
+
+    await page.route('**/auth/v1/token?grant_type=password*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          access_token: 'mock-access-token',
+          token_type: 'bearer',
+          expires_in: 3600,
+          refresh_token: 'mock-refresh-token',
+          user: {
+            id: 'mock-user-id',
+            aud: 'authenticated',
+            role: 'authenticated',
+            email: 'test@example.com',
+            created_at: new Date().toISOString(),
+          },
+        }),
+      });
+    });
   });
 
   test('Signup flow - new user registration', async ({ page }) => {

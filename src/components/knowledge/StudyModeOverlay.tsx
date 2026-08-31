@@ -413,7 +413,7 @@ Instructions:
             size="sm"
             className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10"
             onClick={() => setStudyMode(false)}
-            data-testid="close-study-mode-btn"
+            aria-label="Close study mode"
           >
             <X className="w-4 w-4" />
           </Button>
@@ -573,7 +573,7 @@ Instructions:
               onFlip={handleFlipFlashcard}
               onNext={handleNextFlashcard}
               onPrev={handlePrevFlashcard}
-              onClose={() => setMode('reading')}
+              onClose={() => setStudyMode(false)}
               totalCards={docFlashcards.length}
             />
           )}
@@ -979,22 +979,13 @@ interface FlashcardModeProps {
 }
 
 function FlashcardMode(props: FlashcardModeProps) {
-  const { flashcards, currentIndex, isFlipped, onFlip, onNext, onPrev, onClose, totalCards } = props;
+  const { flashcards, currentIndex, isFlipped, onFlip, onNext, onPrev, totalCards } = props;
   const currentCard = flashcards[currentIndex];
 
   if (!currentCard) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-background/95 backdrop-blur-3xl flex flex-col items-center justify-center" data-testid="study-mode-overlay">
-      <Button
-        variant="ghost"
-        className="absolute top-6 right-6 w-12 h-12 rounded-full bg-white/5 hover:bg-white/10"
-        onClick={onClose}
-        data-testid="close-study-mode-btn"
-      >
-        <X className="w-6 h-6" />
-      </Button>
-
+    <div className="flex-1 flex flex-col items-center justify-center p-8 relative w-full h-full overflow-y-auto" data-testid="flashcard-mode-view">
       <div className="text-center mb-8">
         <h2 className="text-2xl font-heading font-bold mb-2">Flashcards</h2>
         <p className="text-muted-foreground">Card {currentIndex + 1} of {totalCards}</p>

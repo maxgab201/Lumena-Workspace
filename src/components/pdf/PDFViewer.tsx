@@ -233,7 +233,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
         )}
       </div>
 
-      {isStudyModeActive && <StudyModeOverlay documentId={fileUrl} />}
+      {isStudyModeActive && <StudyModeOverlay documentId={documentId ?? fileUrl} />}
     </div>
   );
 };
