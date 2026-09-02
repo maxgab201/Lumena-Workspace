@@ -131,6 +131,10 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  // Hoisted so the error handler can refund/fail the job without re-reading
+  // the request body (a Request body can only be consumed once).
+  let jobId: string | undefined
+
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -147,7 +151,7 @@ serve(async (req) => {
       })
     }
 
-    const jobId = job.id
+    jobId = job.id
     const documentId = job.document_id
     const workspaceId = job.workspace_id
     const startTime = Date.now()
@@ -466,8 +470,6 @@ serve(async (req) => {
 
     // Attempt to refund reserved credits on failure
     try {
-      const payload = await req.json().catch(() => ({}))
-      const jobId = payload?.record?.id
       if (jobId) {
         const supabaseClient = createClient(
           Deno.env.get('SUPABASE_URL') ?? '',
