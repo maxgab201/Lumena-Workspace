@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 
+const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+const GENERATION_MODEL = "gemini-flash-latest"
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -132,44 +135,37 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Insufficient credits for knowledge generation.' }), { status: 402, headers: corsHeaders })
     }
 
-    // Route through ai-gateway instead of direct SDK call
+    const apiKey = Deno.env.get('GEMINI_API_KEY')
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured.' }), { status: 500, headers: corsHeaders })
+    }
+
     const promptFn = PROMPTS[action_type]
     const prompt = promptFn(doc.name, excerpt)
 
-    // Call ai-gateway Edge Function for AI generation
-    const aiGatewayResponse = await fetch(
-      `${Deno.env.get('SUPABASE_URL')}/functions/v1/ai-gateway`,
+    const genRes = await fetch(
+      `${GEMINI_API_BASE}/models/${GENERATION_MODEL}:generateContent?key=${apiKey}`,
       {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-          'apikey': Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        },
-        body: JSON.stringify({
-          prompt,
-          workspace_id,
-          action_type: 'knowledge_generation',
-          model_code: '',
-          document_id,
-        }),
-      }
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      },
     )
-
-    if (!aiGatewayResponse.ok) {
-      const errorData = await aiGatewayResponse.json()
-      return new Response(JSON.stringify({ error: errorData.error || 'AI generation failed' }), { status: aiGatewayResponse.status, headers: corsHeaders })
+    if (!genRes.ok) {
+      const errText = await genRes.text().catch(() => "")
+      throw new Error(`Gemini generation failed (${genRes.status}): ${errText.slice(0, 300)}`)
     }
-
-    const aiResult = await aiGatewayResponse.json()
-    const responseText = aiResult.text?.trim() || ''
+    const genJson = await genRes.json()
+    const responseText = (
+      genJson.candidates?.[0]?.content?.parts?.map((p: any) => p.text ?? "").join("") ?? ""
+    ).trim()
 
     let parsed: any[]
     try {
       const cleaned = responseText.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim()
       parsed = JSON.parse(cleaned)
       if (!Array.isArray(parsed)) throw new Error('Expected JSON array')
-    } catch (_) {
+    } catch {
       console.error('Failed to parse AI response:', responseText)
       return new Response(JSON.stringify({ error: 'AI returned malformed JSON. Please try again.' }), { status: 500, headers: corsHeaders })
     }

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { WorkspaceRepository } from '../repositories/workspace.repository';
 import { DocumentRepository } from '../repositories/document.repository';
+import { toast } from 'sonner';
 
 interface Workspace {
   id: string;
@@ -19,6 +20,8 @@ interface Document {
   page_count?: number | null;
   created_at: string;
   progress?: number;
+  thumbnail_path?: string | null;
+  thumbnail_generated_at?: string | null;
 }
 
 interface WorkspaceStore {
@@ -39,6 +42,10 @@ interface WorkspaceStore {
   deleteDocument: (documentId: string) => Promise<void>;
   setupSubscriptions: (workspaceId: string) => void;
   cleanupSubscriptions: () => void;
+  // Bulk actions
+  deleteDocumentsBulk: (documentIds: string[]) => Promise<void>;
+  moveDocumentsBulk: (documentIds: string[], targetWorkspaceId: string) => Promise<void>;
+  copyDocumentsBulk: (documentIds: string[], targetWorkspaceId: string) => Promise<void>;
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
@@ -156,14 +163,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         set({ uploadProgress: progress });
       });
 
-      // Create document record in database with status 'ready'
+      // Create document record in database
       const newDoc = await DocumentRepository.createDocumentRecord({
         workspace_id: activeWorkspace.id,
         name: file.name,
         size_bytes: file.size,
         file_path: filePath,
         mime_type: file.type || 'application/pdf',
-        status: 'ready',
       });
 
       // Create backend processing job
@@ -213,6 +219,68 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }
   },
 
+  cleanupSubscriptions: () => {
+    const state = get() as any;
+    if (state._subscription) {
+      state._subscription.unsubscribe();
+      set({ _subscription: null } as any);
+    }
+  },
+
+  // Bulk actions
+  deleteDocumentsBulk: async (documentIds: string[]) => {
+    if (documentIds.length === 0) return;
+    set({ loading: true, error: null });
+    try {
+      await DocumentRepository.deleteDocumentsBulk(documentIds);
+      set((state) => ({
+        documents: state.documents.filter((d) => !documentIds.includes(d.id)),
+        loading: false,
+      }));
+      toast.success(`${documentIds.length} document(s) deleted`);
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+      toast.error('Failed to delete documents');
+      throw err;
+    }
+  },
+
+  moveDocumentsBulk: async (documentIds: string[], targetWorkspaceId: string) => {
+    if (documentIds.length === 0) return;
+    set({ loading: true, error: null });
+    try {
+      await DocumentRepository.moveDocumentsBulk(documentIds, targetWorkspaceId);
+      set((state) => ({
+        documents: state.documents.map((d) =>
+          documentIds.includes(d.id) ? { ...d, workspace_id: targetWorkspaceId } : d
+        ),
+        loading: false,
+      }));
+      toast.success(`${documentIds.length} document(s) moved`);
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+      toast.error('Failed to move documents');
+      throw err;
+    }
+  },
+
+  copyDocumentsBulk: async (documentIds: string[], targetWorkspaceId: string) => {
+    if (documentIds.length === 0) return;
+    set({ loading: true, error: null });
+    try {
+      const copies = await DocumentRepository.copyDocumentsBulk(documentIds, targetWorkspaceId);
+      set((state) => ({
+        documents: [...state.documents, ...(copies as Document[])],
+        loading: false,
+      }));
+      toast.success(`${documentIds.length} document(s) copied`);
+    } catch (err: any) {
+      set({ error: err.message, loading: false });
+      toast.error('Failed to copy documents');
+      throw err;
+    }
+  },
+
   setupSubscriptions: (workspaceId) => {
     const sub = DocumentRepository.subscribeToProcessingJobs(workspaceId, (job) => {
       set((state) => {
@@ -230,13 +298,5 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       });
     });
     set({ _subscription: sub } as any);
-  },
-
-  cleanupSubscriptions: () => {
-    const state = get() as any;
-    if (state._subscription) {
-      state._subscription.unsubscribe();
-      set({ _subscription: null } as any);
-    }
   },
 }));

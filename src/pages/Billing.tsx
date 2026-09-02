@@ -66,7 +66,7 @@ export const Billing = () => {
                   <span className="font-semibold text-foreground">{t('billing.creditUsage')}</span>
                   <span className="text-muted-foreground font-mono">{creditsConsumed} / {creditsTotal}</span>
                 </div>
-                <div className="h-3 w-full bg-secondary/40 overflow-hidden rounded-full border border-white/5">
+                <div data-testid="credit-progress-bar" className="h-3 w-full bg-secondary/40 overflow-hidden rounded-full border border-white/5">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${usagePercentage}%` }}
@@ -93,6 +93,7 @@ export const Billing = () => {
           <CardFooter className="pt-2">
             {currentPlan === 'free' ? (
                <Button
+                data-testid="upgrade-btn"
                 className="w-full bg-accent hover:bg-accent/90 text-accent-foreground rounded-full shadow-md shadow-accent/20 h-11 font-semibold"
                 onClick={() => setIsUpgradeModalOpen(true)}
               >

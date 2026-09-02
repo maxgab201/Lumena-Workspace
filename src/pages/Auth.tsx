@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { AuthRepository } from '../repositories/auth.repository';
 import { motion } from 'framer-motion';
@@ -7,8 +7,9 @@ import { Mail, Lock, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 export const Auth = () => {
   const navigate = useNavigate();
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [isForgotPassword, setIsForgotPassword] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [isSignUp, setIsSignUp] = useState(() => searchParams.get('mode') === 'signup');
+  const [isForgotPassword, setIsForgotPassword] = useState(() => searchParams.get('mode') === 'reset' || searchParams.get('mode') === 'forgot');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

@@ -4,7 +4,6 @@ import * as path from 'path';
 
 test.describe('Chat System', () => {
   test.beforeEach(async ({ page }) => {
-    // Mock the documents response
     await page.route('**/rest/v1/documents*', async (route) => {
       const mockDoc = {
         id: 'test-doc-1',
@@ -31,18 +30,13 @@ test.describe('Chat System', () => {
       }
     });
 
-    // Mock the storage signed URL
     await page.route('**/storage/v1/object/sign/**', async (route) => {
       await route.fulfill({
         status: 200,
-        json: { 
-          signedURL: '/mock.pdf',
-          signedUrl: '/mock.pdf'
-        }
+        json: { signedURL: '/mock.pdf', signedUrl: '/mock.pdf' }
       });
     });
 
-    // Mock the actual PDF download
     await page.context().route('**/storage/v1/mock.pdf', route => {
       route.fulfill({
         status: 200,
@@ -50,16 +44,68 @@ test.describe('Chat System', () => {
         body: fs.readFileSync(path.resolve(process.cwd(), 'tests', 'fixtures', 'medium-native.pdf'))
       });
     });
-    
-    // Mock workspaces like auth.fixture
+
     await page.route('**/rest/v1/workspaces*', async (route) => {
       await route.fulfill({
         status: 200,
-        json: [{
-          id: 'workspace-1',
-          name: 'Personal Workspace',
-          owner_id: 'test-user-id'
-        }]
+        json: [{ id: 'workspace-1', name: 'Personal Workspace', owner_id: 'test-user-id' }]
+      });
+    });
+
+    await page.route('**/rest/v1/chat_sessions*', async (route) => {
+      const method = route.request().method();
+      const session = {
+        id: 'session-1', document_id: 'test-doc-1', workspace_id: 'workspace-1',
+        user_id: 'mock-user-id', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      };
+      await route.fulfill({ status: method === 'POST' ? 201 : 200, json: method === 'GET' ? null : session });
+    });
+
+    let nextMessageId = 0;
+    await page.route('**/rest/v1/chat_messages*', async (route) => {
+      const method = route.request().method();
+      if (method === 'POST') {
+        const body = route.request().postDataJSON() || {};
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: `msg-${++nextMessageId}`, session_id: 'session-1', role: body.role, content: body.content, created_at: new Date().toISOString() }),
+        });
+      } else if (method === 'PATCH') {
+        await route.fulfill({ status: 204, body: '' });
+      } else {
+        await route.fulfill({ status: 200, json: [] });
+      }
+    });
+
+    await page.route('**/functions/v1/rag-retrieve', async (route) => {
+      await route.fulfill({ status: 200, json: { results: [] } });
+    });
+
+    await page.route('**/functions/v1/**', async (route) => {
+      const url = route.request().url();
+      if (url.includes('ai-gateway')) {
+        const body = 'data: {"chunk":"Lumena Workspace is a knowledge management platform..."}\n\ndata: {"done":true}\n\n';
+        await route.fulfill({ status: 200, contentType: 'text/event-stream', body });
+      } else if (url.includes('rag-retrieve')) {
+        await route.fulfill({ status: 200, json: { results: [] } });
+      } else {
+        await route.fulfill({ status: 200, json: {} });
+      }
+    });
+
+    await page.route('**/functions/v1/ai-gateway', async (route) => {
+      const body = [
+        'data: {"chunk":"Lumena Workspace is a knowledge management platform..."}\n\n',
+        'data: {"done":true}\n\n',
+      ].join('');
+      await route.fulfill({ status: 200, contentType: 'text/event-stream', body });
+    });
+
+    await page.route('**/rest/v1/workspaces*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: [{ id: 'workspace-1', name: 'Personal Workspace', owner_id: 'test-user-id' }]
       });
     });
   });
@@ -67,37 +113,29 @@ test.describe('Chat System', () => {
   test('can open chat, send a message and receive streaming response', async ({ page }) => {
     await page.goto('/viewer/test-doc-1');
 
-    // Wait for the document title to appear in the toolbar
     await expect(page.locator('text="Medium-Document.pdf"').first()).toBeVisible({ timeout: 15000 });
 
-    // Open chat sidebar via toolbar button
     const chatBtn = page.getByTestId('toggle-chat-btn');
     await expect(chatBtn).toBeVisible();
     await chatBtn.click();
 
-    // Verify sidebar is visible
     const sidebar = page.getByTestId('chat-sidebar');
     await expect(sidebar).toBeVisible();
 
-    // Type a message
     const input = page.getByTestId('chat-input');
     await input.fill('Write a summary of this document');
-    
-    // Send it
-    await page.getByTestId('chat-send').click();
 
-    // Verify user message appears
+    await page.getByTestId('chat-send').click();
+    await page.waitForTimeout(250);
+
     const userMsg = page.getByTestId('chat-msg-user').first();
     await expect(userMsg).toContainText('Write a summary of this document');
 
-    // Verify AI response starts streaming
     const assistantMsg = page.getByTestId('chat-msg-assistant').first();
     await expect(assistantMsg).toBeVisible();
-    
-    // Wait for the simulated stream to finish
+
     await expect(assistantMsg).toContainText('Lumena Workspace', { timeout: 10000 });
 
-    // Close the chat
     await page.getByTestId('chat-close').click();
     await expect(sidebar).toBeHidden();
   });

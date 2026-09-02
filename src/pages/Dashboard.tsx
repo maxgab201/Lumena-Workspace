@@ -1,8 +1,10 @@
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { useUiStore } from '../stores/uiStore';
 import { useUserStore } from '../stores/userStore';
+import { useShallow } from 'zustand/react/shallow';
 import { UploadCloud, MessageSquare, Clock, Search, FileText, Calendar, MoreVertical, Pencil, Trash, LayoutGrid, List, ArrowDown, ArrowUp, HardDrive, Loader2, Play } from 'lucide-react';
 import { ProcessingCenter } from '../components/processing/ProcessingCenter';
+import { DocumentRepository } from '../repositories/document.repository';
 import { Button } from '../components/ui/Button';
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -23,18 +25,98 @@ import {
 } from '../components/ui/DropdownMenu';
 
 export const Dashboard = () => {
-  const { activeWorkspace, documents, uploadDocument, deleteDocument, renameDocument, fetchWorkspaces } = useWorkspaceStore();
-  const { viewMode, setViewMode, sortBy, setSortBy, sortOrder, toggleSortOrder } = useUiStore();
-  const { user } = useUserStore();
+  const { activeWorkspace, workspaces, documents, deleteDocument, renameDocument, fetchWorkspaces, uploadDocument, deleteDocumentsBulk, moveDocumentsBulk, copyDocumentsBulk } = useWorkspaceStore(useShallow(state => ({
+    activeWorkspace: state.activeWorkspace,
+    workspaces: state.workspaces,
+    documents: state.documents,
+    deleteDocument: state.deleteDocument,
+    renameDocument: state.renameDocument,
+    fetchWorkspaces: state.fetchWorkspaces,
+    uploadDocument: state.uploadDocument,
+    deleteDocumentsBulk: state.deleteDocumentsBulk,
+    moveDocumentsBulk: state.moveDocumentsBulk,
+    copyDocumentsBulk: state.copyDocumentsBulk,
+  })));
+  const { viewMode, setViewMode, sortBy, setSortBy, sortOrder, toggleSortOrder } = useUiStore(useShallow(state => ({
+    viewMode: state.viewMode,
+    setViewMode: state.setViewMode,
+    sortBy: state.sortBy,
+    setSortBy: state.setSortBy,
+    sortOrder: state.sortOrder,
+    toggleSortOrder: state.toggleSortOrder,
+  })));
+  const { user } = useUserStore(useShallow(state => ({ user: state.user })));
   const navigate = useNavigate();
   useLanguage(); // subscribe to language changes for re-render
   const [isDragging, setIsDragging] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [uploadQueue, setUploadQueue] = useState<Array<{
+    id: string;
+    file: File;
+    progress: number;
+    status: 'pending' | 'uploading' | 'completed' | 'error';
+    error?: string;
+  }>>([]);
+
+  // Selection state for bulk actions
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const targetWorkspaces = workspaces.filter(w => w.id !== activeWorkspace?.id);
+
+  const deleteSelected = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} document(s)?`)) return;
+    await deleteDocumentsBulk(ids).catch(() => {});
+    clearSelection();
+  };
+
+  const moveSelected = async (targetWorkspaceId: string) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    await moveDocumentsBulk(ids, targetWorkspaceId).catch(() => {});
+    clearSelection();
+  };
+
+  const copySelected = async (targetWorkspaceId: string) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    await copyDocumentsBulk(ids, targetWorkspaceId).catch(() => {});
+    clearSelection();
+  };
 
   useEffect(() => {
     fetchWorkspaces();
   }, [fetchWorkspaces]);
+
+  // Resolve thumbnail storage paths to signed URLs
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
+  const thumbnailDocs = documents.filter(d => d.thumbnail_path);
+  const thumbnailKey = thumbnailDocs.map(d => d.id).join(',');
+  useEffect(() => {
+    if (thumbnailDocs.length === 0) return;
+    let cancelled = false;
+    DocumentRepository.getSignedUrls(thumbnailDocs.map(d => d.thumbnail_path!))
+      .then(map => {
+        if (!cancelled) setThumbnailUrls(prev => ({ ...prev, ...map }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thumbnailKey]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -46,41 +128,59 @@ export const Dashboard = () => {
     setIsDragging(false);
   };
 
-  const processUpload = async (file: File) => {
-    if (file.type !== 'application/pdf') {
-      toast.error('Invalid file type', { description: 'Only PDF files are supported.' });
-      return;
-    }
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('File too large', { description: 'File exceeds the 50MB limit.' });
-      return;
+  const addFilesToQueue = async (files: FileList) => {
+    const validFiles: File[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type !== 'application/pdf') {
+        toast.error('Invalid file type', { description: `${file.name}: Only PDF files are supported.` });
+        continue;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        toast.error('File too large', { description: `${file.name}: File exceeds the 50MB limit.` });
+        continue;
+      }
+      validFiles.push(file);
     }
 
-    try {
-      setIsUploading(true);
-      await uploadDocument(file);
-      toast.success('Document uploaded successfully');
-    } catch (error: any) {
-      console.error('Failed to upload document', error);
-      const msg = error?.message || error?.error?.message || 'Error desconocido al subir el archivo.';
-      toast.error('Upload failed', { description: msg });
-    } finally {
-      setIsUploading(false);
+    if (validFiles.length > 0) {
+      const newItems = validFiles.map(file => ({
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        file,
+        progress: 0,
+        status: 'pending' as const,
+      }));
+      setUploadQueue(prev => [...prev, ...newItems]);
+
+      for (const item of newItems) {
+        try {
+          await uploadDocument(item.file);
+          setUploadQueue(prev => {
+            const rest = prev.filter(i => i.id !== item.id);
+            return rest;
+          });
+          toast.success(`${item.file.name} uploaded`);
+        } catch {
+          setUploadQueue(prev =>
+            prev.map(i => i.id === item.id ? { ...i, status: 'error' as const, error: 'Upload failed' } : i)
+          );
+        }
+      }
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processUpload(e.dataTransfer.files[0]);
+      addFilesToQueue(e.dataTransfer.files);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      processUpload(e.target.files[0]);
+      addFilesToQueue(e.target.files);
     }
   };
 
@@ -141,7 +241,7 @@ export const Dashboard = () => {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-         {isUploading ? (
+         {uploadQueue.length > 0 ? (
            <div className="flex flex-col items-center justify-center space-y-4">
              <Loader2 className="w-10 h-10 text-accent animate-spin" />
              <p className="text-sm font-medium animate-pulse text-foreground">{t('dashboard.processing')}</p>
@@ -156,19 +256,12 @@ export const Dashboard = () => {
                <p className="text-base font-medium text-foreground">{t('dashboard.clickToUpload')}</p>
                <p className="text-xs text-muted-foreground">{t('dashboard.supportedFiles')}</p>
              </div>
-             <div className="relative">
-               <input
-                 type="file"
-                 id="file-upload"
-                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                 accept=".pdf"
-                 onChange={handleFileSelect}
-                 disabled={isUploading}
-               />
-               <span className="inline-flex items-center justify-center rounded-full px-6 py-2 bg-secondary/60 backdrop-blur-md text-secondary-foreground hover:bg-secondary/80 transition-all duration-300 active:scale-[0.97] text-sm font-medium border border-white/5 pointer-events-none">
+             <label className="cursor-pointer pointer-events-auto mt-2">
+               <Button variant="secondary" className="relative z-10 rounded-full px-6 bg-background/50 hover:bg-background border-white/5">
                  {t('dashboard.browseFiles')}
-               </span>
-             </div>
+               </Button>
+               <input type="file" className="hidden" accept=".pdf" onChange={handleFileSelect} disabled={uploadQueue.some(i => i.status === 'uploading')} multiple />
+             </label>
            </div>
          )}
       </div>
@@ -262,7 +355,44 @@ export const Dashboard = () => {
               </div>
 
               {renderUploadZone()}
-              
+
+              {selectedIds.size > 0 && (
+                <div className="mb-4 flex flex-wrap items-center gap-2 bg-accent/10 border border-accent/30 rounded-2xl px-4 py-2.5 relative z-20">
+                  <span className="text-sm font-medium mr-1">{selectedIds.size} selected</span>
+                  <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={clearSelection}>Clear</Button>
+                  <div className="flex-1" />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary" size="sm" className="h-8 text-xs">Move to...</Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {targetWorkspaces.length === 0 ? (
+                        <DropdownMenuItem disabled>No other workspaces</DropdownMenuItem>
+                      ) : (
+                        targetWorkspaces.map(w => (
+                          <DropdownMenuItem key={w.id} onClick={() => moveSelected(w.id)}>{w.name}</DropdownMenuItem>
+                        ))
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary" size="sm" className="h-8 text-xs">Copy to...</Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {targetWorkspaces.length === 0 ? (
+                        <DropdownMenuItem disabled>No other workspaces</DropdownMenuItem>
+                      ) : (
+                        targetWorkspaces.map(w => (
+                          <DropdownMenuItem key={w.id} onClick={() => copySelected(w.id)}>{w.name}</DropdownMenuItem>
+                        ))
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button variant="secondary" size="sm" className="h-8 text-xs text-red-500 hover:text-red-500" onClick={deleteSelected}>Delete</Button>
+                </div>
+              )}
+
               {processedDocuments.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground">
                   <Search className="w-8 h-8 mx-auto mb-3 opacity-20" />
@@ -299,8 +429,36 @@ export const Dashboard = () => {
                           viewMode === 'grid' ? "h-28 w-full border-b border-white/5" : "h-16 w-16 rounded-xl border border-white/5 ml-1 mr-4"
                         )}>
                            <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-accent/50 to-transparent" />
-                           <FileText className={cn("text-muted-foreground/30", viewMode === 'grid' ? "w-10 h-10" : "w-6 h-6")} />
-                           
+                           {doc.thumbnail_path && thumbnailUrls[doc.thumbnail_path] ? (
+                             <img
+                               src={thumbnailUrls[doc.thumbnail_path]}
+                               alt=""
+                               className={cn(
+                                 "w-full h-full object-cover",
+                                 viewMode === 'grid' ? "w-full h-full" : "w-full h-full rounded-lg"
+                               )}
+                               loading="lazy"
+                             />
+                           ) : (
+                             <>
+                               <div className="absolute inset-0 opacity-10 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-accent/50 to-transparent" />
+                               <FileText className={cn("text-muted-foreground/30", viewMode === 'grid' ? "w-10 h-10" : "w-6 h-6")} />
+                             </>
+                           )}
+
+                          {/* Selection checkbox */}
+                          <label
+                            className="absolute top-2 left-2 z-30 cursor-pointer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 rounded border-white/20 bg-background/80 accent-[var(--accent)]"
+                              checked={selectedIds.has(doc.id)}
+                              onChange={() => toggleSelected(doc.id)}
+                            />
+                          </label>
+
                            {/* Hover overlay for grid */}
                            {viewMode === 'grid' && (
                              <div className="absolute inset-0 bg-background/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -322,10 +480,12 @@ export const Dashboard = () => {
                             <div className={cn(viewMode === 'grid' ? "" : "ml-4 shrink-0")}>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="icon" 
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
                                     className="h-6 w-6 text-muted-foreground hover:text-foreground relative z-20 hover:bg-secondary/50 rounded-md"
+                                    aria-label="Document actions"
+                                    data-testid="doc-actions-btn"
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();

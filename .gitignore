@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Environment files
+.env
+.env.local
+.env.*.local
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -24,3 +29,7 @@ dist-ssr
 *.sw?
 
 .vercel
+artifacts/
+playwright-report/
+test-results/
+e2e-results.json

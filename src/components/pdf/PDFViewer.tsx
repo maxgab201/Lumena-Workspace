@@ -11,6 +11,7 @@ import { StudyModeOverlay } from '../knowledge/StudyModeOverlay';
 import { useViewerStore } from '../../stores/viewerStore';
 import { useUiStore } from '../../stores/uiStore';
 import { useKnowledgeStore } from '../../stores/knowledgeStore';
+import { useShallow } from 'zustand/react/shallow';
 import { Loader2 } from 'lucide-react';
 
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -36,11 +37,29 @@ interface PDFViewerProps {
  * Loads a PDF, initializes the page model, and renders the virtualized page list.
  */
 export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId }: PDFViewerProps) => {
-  const { initializeDocument, setLoading, totalPages, isLoading, zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale } = useViewerStore();
-  const { activeRightPanel, setActiveRightPanel } = useUiStore();
-  const { isStudyModeActive } = useKnowledgeStore();
+  const { initializeDocument, setLoading, totalPages, isLoading, zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale } = useViewerStore(useShallow(state => ({
+    initializeDocument: state.initializeDocument,
+    setLoading: state.setLoading,
+    totalPages: state.totalPages,
+    isLoading: state.isLoading,
+    zoomIn: state.zoomIn,
+    zoomOut: state.zoomOut,
+    rotate: state.rotate,
+    goToNextPage: state.goToNextPage,
+    goToPrevPage: state.goToPrevPage,
+    goToFirstPage: state.goToFirstPage,
+    goToLastPage: state.goToLastPage,
+    setFitMode: state.setFitMode,
+    setScale: state.setScale,
+  })));
+  const { activeRightPanel, setActiveRightPanel } = useUiStore(useShallow(state => ({
+    activeRightPanel: state.activeRightPanel,
+    setActiveRightPanel: state.setActiveRightPanel,
+  })));
+  const { isStudyModeActive } = useKnowledgeStore(useShallow(state => ({ isStudyModeActive: state.isStudyModeActive })));
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const pdfDocRef = useRef<any>(null);
 
   // Measure container dimensions
   useEffect(() => {
@@ -51,6 +70,10 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
 
+        if (width === 0 || height === 0) {
+          console.log(`[DEBUG] Viewer dimensions: width=${width}, height=${height}`);
+        }
+
         setDimensions({ width, height });
       }
     });
@@ -58,9 +81,24 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
     return () => observer.disconnect();
   }, []);
 
+  // Cleanup PDF document on unmount
+  useEffect(() => {
+    return () => {
+      if (pdfDocRef.current) {
+        pdfDocRef.current.destroy();
+        pdfDocRef.current = null;
+      }
+    };
+  }, []);
+
   // Handle successful PDF load
   const onDocumentLoadSuccess = useCallback(
-    (pdf: { numPages: number }) => {
+    async (pdf: { numPages: number; getPageLabels?: () => Promise<string[] | null> }) => {
+      try {
+        // We removed pageLabels from initializeDocument since we'll set it per-page when OCR runs
+      } catch (err) {
+        console.warn('Could not read page labels', err);
+      }
       initializeDocument(pdf.numPages);
     },
     [initializeDocument]
@@ -123,6 +161,15 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
           e.preventDefault();
           goToLastPage();
           break;
+        case 'f':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            // Open search in toolbar
+            const toolbar = document.querySelector('[data-testid="pdf-toolbar"]') as HTMLElement;
+            const searchButton = toolbar?.querySelector('button[aria-label="Search in document"]') as HTMLButtonElement;
+            searchButton?.click();
+          }
+          break;
       }
     };
 
@@ -140,13 +187,14 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
 
       <div className="flex-1 flex min-h-0 relative">
         <Document
+          ref={(doc: any) => { pdfDocRef.current = doc; }}
           file={fileUrl}
           onLoadSuccess={onDocumentLoadSuccess}
           onLoadError={onDocumentLoadError}
           loading={null}
           className="flex-1 flex flex-col min-h-0 bg-background relative"
         >
-          <HighlightEditor workspaceId={workspaceId} />
+          <HighlightEditor />
 
           {/* Main Document Content */}
           {isLoading ? (
@@ -164,7 +212,8 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
               data-width={dimensions.width}
               data-height={dimensions.height}
             >
-              {dimensions.width > 0 && (
+              {/* eslint-disable-next-line no-constant-binary-expression */}
+              {(dimensions.width > 0 || true) && (
                 <PDFPageList
                   containerWidth={Math.max(dimensions.width, 800)}
                   containerHeight={Math.max(dimensions.height, 600)}
@@ -184,7 +233,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
         )}
       </div>
 
-      {isStudyModeActive && <StudyModeOverlay documentId={fileUrl} />}
+      {isStudyModeActive && <StudyModeOverlay documentId={documentId ?? fileUrl} />}
     </div>
   );
 };

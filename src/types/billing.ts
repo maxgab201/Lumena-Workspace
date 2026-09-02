@@ -29,18 +29,21 @@ export const PLANS: Record<PlanType, SubscriptionPlan> = {
     name: 'Free',
     price: 0,
     monthlyCredits: 50,
-    allowedModels: [],
-    features: ['50 AI Queries / month', '3 Workspaces', 'Standard Processing']
+    allowedModels: ['gemini-flash-latest'],
+    features: ['50 AI Queries / month', '3 Workspaces', 'Standard Processing', 'Gemini 1.5 Flash only']
   },
   pro: {
     id: 'pro',
     name: 'Pro',
     price: 15,
     monthlyCredits: 1000,
-    allowedModels: [],
-    features: ['1000 AI Queries / month', 'Unlimited Workspaces', 'Priority Processing', 'Early Access Features']
+    allowedModels: ['gemini-flash-latest', 'gemini-pro-latest'],
+    features: ['1000 AI Queries / month', 'Unlimited Workspaces', 'Priority Processing', 'Early Access Features', 'Gemini 1.5 Pro access']
   }
 };
 
-export const AVAILABLE_MODELS: { code: string; name: string; requiredPlan: PlanType }[] = [];
+export const AVAILABLE_MODELS: { code: string; name: string; requiredPlan: PlanType }[] = [
+  { code: 'gemini-flash-latest', name: 'Gemini Flash (Fast)', requiredPlan: 'free' },
+  { code: 'gemini-pro-latest', name: 'Gemini Pro (Advanced)', requiredPlan: 'pro' },
+];
 
