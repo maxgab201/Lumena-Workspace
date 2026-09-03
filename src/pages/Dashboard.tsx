@@ -84,6 +84,7 @@ export const Dashboard = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadControllers = useRef(new Map<string, AbortController>());
   const queuedFileKeys = useRef(new Set<string>());
   const uploadChain = useRef(Promise.resolve());
@@ -345,12 +346,23 @@ export const Dashboard = () => {
                  <p className="text-sm font-semibold text-foreground">{t('upload.queueTitle')}</p>
                  <p className="text-xs text-muted-foreground">{t('upload.queueDescription')}</p>
                </div>
-               <label className="cursor-pointer">
-                 <span className="inline-flex h-8 items-center rounded-full border border-white/10 bg-background/60 px-3 text-xs font-medium hover:bg-background">
-                   {t('upload.addMore')}
-                 </span>
-                 <input type="file" className="hidden" accept="application/pdf,.pdf" onChange={handleFileSelect} multiple />
-               </label>
+               <Button
+                 type="button"
+                 variant="secondary"
+                 size="sm"
+                 className="h-8 rounded-full text-xs"
+                 onClick={() => fileInputRef.current?.click()}
+               >
+                 {t('upload.addMore')}
+               </Button>
+               <input
+                 ref={fileInputRef}
+                 type="file"
+                 className="hidden"
+                 accept="application/pdf,.pdf"
+                 onChange={handleFileSelect}
+                 multiple
+               />
              </div>
 
              <div className="space-y-2" aria-live="polite">
@@ -418,12 +430,22 @@ export const Dashboard = () => {
                <p className="text-base font-medium text-foreground">{t('dashboard.clickToUpload')}</p>
                <p className="text-xs text-muted-foreground">{t('dashboard.supportedFiles')}</p>
              </div>
-             <label className="cursor-pointer pointer-events-auto mt-2">
-               <Button variant="secondary" className="relative z-10 rounded-full px-6 bg-background/50 hover:bg-background border-white/5">
-                 {t('dashboard.browseFiles')}
-               </Button>
-               <input type="file" className="hidden" accept="application/pdf,.pdf" onChange={handleFileSelect} multiple />
-             </label>
+             <Button
+               type="button"
+               variant="secondary"
+               className="relative z-10 mt-2 rounded-full border-white/5 bg-background/50 px-6 hover:bg-background"
+               onClick={() => fileInputRef.current?.click()}
+             >
+               {t('dashboard.browseFiles')}
+             </Button>
+             <input
+               ref={fileInputRef}
+               type="file"
+               className="hidden"
+               accept="application/pdf,.pdf"
+               onChange={handleFileSelect}
+               multiple
+             />
            </div>
          )}
       </div>

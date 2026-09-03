@@ -13,6 +13,19 @@ type MockDocument = {
 };
 
 test.describe('PDF upload status lifecycle', () => {
+  test('opens the file picker from the visible Browse Files control', async ({ page }) => {
+    await page.route('**/rest/v1/documents*', route => route.fulfill({ status: 200, json: [] }));
+    await page.route('**/rest/v1/processing_jobs*', route => route.fulfill({ status: 200, json: [] }));
+
+    await page.goto('/dashboard');
+    const browseFiles = page.getByText('Browse Files', { exact: true });
+    await expect(browseFiles).toBeVisible();
+
+    const fileChooser = page.waitForEvent('filechooser', { timeout: 3_000 });
+    await browseFiles.click();
+    await fileChooser;
+  });
+
   test('reconciles an active upload with the completed backend job', async ({ page }) => {
     let document: MockDocument | null = null;
     let jobStatus: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' = 'queued';
