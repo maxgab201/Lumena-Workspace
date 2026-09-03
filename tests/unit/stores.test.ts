@@ -16,10 +16,12 @@ vi.mock('../../src/repositories/workspace.repository', () => ({
 vi.mock('../../src/repositories/document.repository', () => ({
   DocumentRepository: {
     listDocuments: vi.fn().mockResolvedValue([]),
+    listProcessingJobs: vi.fn().mockResolvedValue([]),
     uploadFile: vi.fn().mockResolvedValue({}),
     createDocumentRecord: vi.fn().mockResolvedValue({ id: 'doc-1', name: 'test.pdf', size_bytes: 1024, file_path: 'ws-1/test.pdf', mime_type: 'application/pdf', created_at: new Date().toISOString() }),
     createProcessingJob: vi.fn().mockResolvedValue({ id: 'job-1', workspace_id: 'ws-1', document_id: 'doc-1', status: 'queued', progress: 0 }),
     subscribeToProcessingJobs: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }),
+    subscribeToDocuments: vi.fn().mockReturnValue({ unsubscribe: vi.fn() }),
   },
 }));
 

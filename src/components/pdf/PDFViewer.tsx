@@ -12,7 +12,7 @@ import { useViewerStore } from '../../stores/viewerStore';
 import { useUiStore } from '../../stores/uiStore';
 import { useKnowledgeStore } from '../../stores/knowledgeStore';
 import { useShallow } from 'zustand/react/shallow';
-import { Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -59,7 +59,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
   const { isStudyModeActive } = useKnowledgeStore(useShallow(state => ({ isStudyModeActive: state.isStudyModeActive })));
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const pdfDocRef = useRef<any>(null);
+  const pdfDocRef = useRef<{ destroy: () => Promise<void> } | null>(null);
 
   // Measure container dimensions
   useEffect(() => {
@@ -70,16 +70,12 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
 
-        if (width === 0 || height === 0) {
-          console.log(`[DEBUG] Viewer dimensions: width=${width}, height=${height}`);
-        }
-
         setDimensions({ width, height });
       }
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [isLoading]);
 
   // Cleanup PDF document on unmount
   useEffect(() => {
@@ -93,12 +89,8 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
 
   // Handle successful PDF load
   const onDocumentLoadSuccess = useCallback(
-    async (pdf: { numPages: number; getPageLabels?: () => Promise<string[] | null> }) => {
-      try {
-        // We removed pageLabels from initializeDocument since we'll set it per-page when OCR runs
-      } catch (err) {
-        console.warn('Could not read page labels', err);
-      }
+    (pdf: { numPages: number; destroy: () => Promise<void> }) => {
+      pdfDocRef.current = pdf;
       initializeDocument(pdf.numPages);
     },
     [initializeDocument]
@@ -161,15 +153,6 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
           e.preventDefault();
           goToLastPage();
           break;
-        case 'f':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            // Open search in toolbar
-            const toolbar = document.querySelector('[data-testid="pdf-toolbar"]') as HTMLElement;
-            const searchButton = toolbar?.querySelector('button[aria-label="Search in document"]') as HTMLButtonElement;
-            searchButton?.click();
-          }
-          break;
       }
     };
 
@@ -187,11 +170,19 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
 
       <div className="flex-1 flex min-h-0 relative">
         <Document
-          ref={(doc: any) => { pdfDocRef.current = doc; }}
           file={fileUrl}
           onLoadSuccess={onDocumentLoadSuccess}
           onLoadError={onDocumentLoadError}
           loading={null}
+          error={(
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+              <AlertCircle className="h-8 w-8 text-rose-400" />
+              <p className="font-medium">This PDF could not be opened.</p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                The file may be damaged or temporarily unavailable. Return to Documents and try again.
+              </p>
+            </div>
+          )}
           className="flex-1 flex flex-col min-h-0 bg-background relative"
         >
           <HighlightEditor />
@@ -212,12 +203,15 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
               data-width={dimensions.width}
               data-height={dimensions.height}
             >
-              {/* eslint-disable-next-line no-constant-binary-expression */}
-              {(dimensions.width > 0 || true) && (
+              {dimensions.width > 0 && dimensions.height > 0 ? (
                 <PDFPageList
-                  containerWidth={Math.max(dimensions.width, 800)}
-                  containerHeight={Math.max(dimensions.height, 600)}
+                  containerWidth={dimensions.width}
+                  containerHeight={dimensions.height}
                 />
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                </div>
               )}
             </div>
           )}

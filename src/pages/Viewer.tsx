@@ -54,6 +54,14 @@ export const Viewer = () => {
       const doc = await DocumentRepository.getDocument(documentId) as DocumentMeta;
       setDocument(doc);
 
+      if (doc.status !== 'ready') {
+        throw new Error(
+          doc.status === 'error'
+            ? 'Document processing failed. Return to Documents to retry it.'
+            : 'This document is still being processed. It will open when it is ready.'
+        );
+      }
+
       // 2. Get a signed URL for the PDF file (valid for 1 hour)
       const signedUrl = await DocumentRepository.getSignedUrl(doc.file_path);
       setFileUrl(signedUrl);
@@ -111,9 +119,9 @@ export const Viewer = () => {
           <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
             <AlertCircle className="w-10 h-10 text-red-400" />
           </div>
-          <h2 className="text-2xl font-heading font-bold mb-3">Document Not Found</h2>
+          <h2 className="text-2xl font-heading font-bold mb-3">Unable to open document</h2>
           <p className="text-sm text-muted-foreground mb-8 leading-relaxed max-w-[280px] mx-auto">
-            {error}. The file might have been deleted or you don&apos;t have access to it.
+            {error}
           </p>
           <Button
             variant="secondary"

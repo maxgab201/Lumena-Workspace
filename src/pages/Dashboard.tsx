@@ -2,17 +2,18 @@ import { useWorkspaceStore } from '../stores/workspaceStore';
 import { useUiStore } from '../stores/uiStore';
 import { useUserStore } from '../stores/userStore';
 import { useShallow } from 'zustand/react/shallow';
-import { UploadCloud, MessageSquare, Clock, Search, FileText, Calendar, MoreVertical, Pencil, Trash, LayoutGrid, List, ArrowDown, ArrowUp, HardDrive, Loader2, Play } from 'lucide-react';
+import { UploadCloud, Clock, Search, FileText, Calendar, MoreVertical, Pencil, Trash, LayoutGrid, List, ArrowDown, ArrowUp, HardDrive, Loader2, Play, RotateCcw, X } from 'lucide-react';
 import { ProcessingCenter } from '../components/processing/ProcessingCenter';
 import { DocumentRepository } from '../repositories/document.repository';
 import { Button } from '../components/ui/Button';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { t } from '../i18n';
 import { useLanguage } from '../hooks/useLanguage';
+import { getDocumentStage, isDocumentReady, type DocumentStage } from '../types/documents';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -24,13 +25,45 @@ import {
   DropdownMenuRadioItem,
 } from '../components/ui/DropdownMenu';
 
+interface UploadQueueItem {
+  id: string;
+  file: File;
+  progress: number;
+  status: 'pending' | 'uploading' | 'error';
+  error?: string;
+}
+
+function getStageLabel(stage: DocumentStage): string {
+  switch (stage) {
+    case 'uploading': return t('document.status.uploading');
+    case 'uploaded': return t('document.status.uploaded');
+    case 'processing': return t('document.status.processing');
+    case 'ocr': return t('document.status.ocr');
+    case 'analyzing': return t('document.status.analyzing');
+    case 'ready': return t('document.status.ready');
+    case 'failed': return t('document.status.failed');
+  }
+}
+
+function getStageStyles(stage: DocumentStage): string {
+  switch (stage) {
+    case 'ready': return 'bg-emerald-500/10 text-emerald-500';
+    case 'failed': return 'bg-rose-500/10 text-rose-500';
+    case 'ocr': return 'bg-violet-500/10 text-violet-400';
+    case 'analyzing': return 'bg-cyan-500/10 text-cyan-400';
+    case 'processing': return 'bg-amber-500/10 text-amber-500';
+    default: return 'bg-blue-500/10 text-blue-500';
+  }
+}
+
 export const Dashboard = () => {
-  const { activeWorkspace, workspaces, documents, deleteDocument, renameDocument, fetchWorkspaces, uploadDocument, deleteDocumentsBulk, moveDocumentsBulk, copyDocumentsBulk } = useWorkspaceStore(useShallow(state => ({
+  const { activeWorkspace, workspaces, documents, deleteDocument, renameDocument, retryDocument, fetchWorkspaces, uploadDocument, deleteDocumentsBulk, moveDocumentsBulk, copyDocumentsBulk } = useWorkspaceStore(useShallow(state => ({
     activeWorkspace: state.activeWorkspace,
     workspaces: state.workspaces,
     documents: state.documents,
     deleteDocument: state.deleteDocument,
     renameDocument: state.renameDocument,
+    retryDocument: state.retryDocument,
     fetchWorkspaces: state.fetchWorkspaces,
     uploadDocument: state.uploadDocument,
     deleteDocumentsBulk: state.deleteDocumentsBulk,
@@ -50,13 +83,10 @@ export const Dashboard = () => {
   useLanguage(); // subscribe to language changes for re-render
   const [isDragging, setIsDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [uploadQueue, setUploadQueue] = useState<Array<{
-    id: string;
-    file: File;
-    progress: number;
-    status: 'pending' | 'uploading' | 'completed' | 'error';
-    error?: string;
-  }>>([]);
+  const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
+  const uploadControllers = useRef(new Map<string, AbortController>());
+  const queuedFileKeys = useRef(new Set<string>());
+  const uploadChain = useRef(Promise.resolve());
 
   // Selection state for bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -128,45 +158,111 @@ export const Dashboard = () => {
     setIsDragging(false);
   };
 
+  const runQueuedUpload = async (item: UploadQueueItem) => {
+    const fileKey = `${item.file.name}:${item.file.size}:${item.file.lastModified}`;
+    if (!queuedFileKeys.current.has(fileKey)) return;
+
+    const controller = new AbortController();
+    uploadControllers.current.set(item.id, controller);
+    setUploadQueue(previous => previous.map(queueItem =>
+      queueItem.id === item.id
+        ? { ...queueItem, status: 'uploading', progress: 0, error: undefined }
+        : queueItem
+    ));
+
+    try {
+      await uploadDocument(item.file, {
+        signal: controller.signal,
+        onProgress: (progress) => {
+          setUploadQueue(previous => previous.map(queueItem =>
+            queueItem.id === item.id ? { ...queueItem, progress } : queueItem
+          ));
+        },
+      });
+      queuedFileKeys.current.delete(fileKey);
+      setUploadQueue(previous => previous.filter(queueItem => queueItem.id !== item.id));
+      toast.success(t('upload.started'), { description: item.file.name });
+    } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        queuedFileKeys.current.delete(fileKey);
+        setUploadQueue(previous => previous.filter(queueItem => queueItem.id !== item.id));
+      } else {
+        const message = error instanceof Error ? error.message : t('common.uploadError');
+        setUploadQueue(previous => previous.map(queueItem =>
+          queueItem.id === item.id
+            ? { ...queueItem, status: 'error', error: message }
+            : queueItem
+        ));
+      }
+    } finally {
+      uploadControllers.current.delete(item.id);
+    }
+  };
+
+  const scheduleUpload = (item: UploadQueueItem) => {
+    uploadChain.current = uploadChain.current.then(() => runQueuedUpload(item));
+  };
+
   const addFilesToQueue = async (files: FileList) => {
     const validFiles: File[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (file.type !== 'application/pdf') {
-        toast.error('Invalid file type', { description: `${file.name}: Only PDF files are supported.` });
+      const hasPdfType = file.type === '' || file.type === 'application/pdf';
+      const hasPdfExtension = file.name.toLowerCase().endsWith('.pdf');
+      if (!hasPdfType || !hasPdfExtension) {
+        toast.error(t('common.invalidFileType'), { description: `${file.name}: ${t('common.onlyPdf')}` });
         continue;
       }
       if (file.size > 50 * 1024 * 1024) {
-        toast.error('File too large', { description: `${file.name}: File exceeds the 50MB limit.` });
+        toast.error(t('common.fileTooLarge'), { description: `${file.name}: ${t('common.fileTooLargeDesc')}` });
         continue;
       }
-      validFiles.push(file);
+      if ((await file.slice(0, 5).text()) !== '%PDF-') {
+        toast.error(t('common.invalidFileType'), { description: `${file.name}: ${t('upload.invalidContents')}` });
+        continue;
+      }
+
+      const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
+      if (queuedFileKeys.current.has(fileKey)) {
+        toast.error(t('upload.duplicateQueue'), { description: file.name });
+        continue;
+      }
+      queuedFileKeys.current.add(fileKey);
+      validFiles.push(file.type === 'application/pdf'
+        ? file
+        : new File([file], file.name, { type: 'application/pdf', lastModified: file.lastModified }));
     }
 
     if (validFiles.length > 0) {
-      const newItems = validFiles.map(file => ({
+      const newItems: UploadQueueItem[] = validFiles.map(file => ({
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         file,
         progress: 0,
         status: 'pending' as const,
       }));
       setUploadQueue(prev => [...prev, ...newItems]);
-
-      for (const item of newItems) {
-        try {
-          await uploadDocument(item.file);
-          setUploadQueue(prev => {
-            const rest = prev.filter(i => i.id !== item.id);
-            return rest;
-          });
-          toast.success(`${item.file.name} uploaded`);
-        } catch {
-          setUploadQueue(prev =>
-            prev.map(i => i.id === item.id ? { ...i, status: 'error' as const, error: 'Upload failed' } : i)
-          );
-        }
-      }
+      newItems.forEach(scheduleUpload);
     }
+  };
+
+  const cancelUpload = (item: UploadQueueItem) => {
+    const controller = uploadControllers.current.get(item.id);
+    if (controller) {
+      controller.abort();
+      return;
+    }
+
+    queuedFileKeys.current.delete(`${item.file.name}:${item.file.size}:${item.file.lastModified}`);
+    setUploadQueue(previous => previous.filter(queueItem => queueItem.id !== item.id));
+  };
+
+  const retryUpload = (item: UploadQueueItem) => {
+    setUploadQueue(previous => previous.map(queueItem =>
+      queueItem.id === item.id
+        ? { ...queueItem, status: 'pending', progress: 0, error: undefined }
+        : queueItem
+    ));
+    scheduleUpload({ ...item, status: 'pending', progress: 0, error: undefined });
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -181,6 +277,7 @@ export const Dashboard = () => {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       addFilesToQueue(e.target.files);
+      e.target.value = '';
     }
   };
 
@@ -242,10 +339,75 @@ export const Dashboard = () => {
         onDrop={handleDrop}
       >
          {uploadQueue.length > 0 ? (
-           <div className="flex flex-col items-center justify-center space-y-4">
-             <Loader2 className="w-10 h-10 text-accent animate-spin" />
-             <p className="text-sm font-medium animate-pulse text-foreground">{t('dashboard.processing')}</p>
-             <p className="text-xs text-muted-foreground">{t('dashboard.processingDetail')}</p>
+           <div className="w-full max-w-xl space-y-3 text-left">
+             <div className="flex items-center justify-between gap-3">
+               <div>
+                 <p className="text-sm font-semibold text-foreground">{t('upload.queueTitle')}</p>
+                 <p className="text-xs text-muted-foreground">{t('upload.queueDescription')}</p>
+               </div>
+               <label className="cursor-pointer">
+                 <span className="inline-flex h-8 items-center rounded-full border border-white/10 bg-background/60 px-3 text-xs font-medium hover:bg-background">
+                   {t('upload.addMore')}
+                 </span>
+                 <input type="file" className="hidden" accept="application/pdf,.pdf" onChange={handleFileSelect} multiple />
+               </label>
+             </div>
+
+             <div className="space-y-2" aria-live="polite">
+               {uploadQueue.map(item => (
+                 <div key={item.id} className="rounded-xl border border-white/10 bg-background/50 p-3">
+                   <div className="flex items-start gap-3">
+                     {item.status === 'uploading' ? (
+                       <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-accent" />
+                     ) : (
+                       <FileText className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                     )}
+                     <div className="min-w-0 flex-1">
+                       <p className="truncate text-sm font-medium">{item.file.name}</p>
+                       <p className={cn('mt-0.5 text-xs', item.status === 'error' ? 'text-rose-400' : 'text-muted-foreground')}>
+                         {item.status === 'pending' && t('upload.waiting')}
+                         {item.status === 'uploading' && t('upload.progress', { progress: item.progress })}
+                         {item.status === 'error' && item.error}
+                       </p>
+                       {item.status === 'uploading' && (
+                         <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                           <div
+                             className="h-full bg-accent transition-[width] duration-200"
+                             style={{ width: `${item.progress}%` }}
+                           />
+                         </div>
+                       )}
+                     </div>
+                     {item.status === 'error' ? (
+                       <div className="flex items-center gap-1">
+                         <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => retryUpload(item)}>
+                           <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> {t('upload.retry')}
+                         </Button>
+                         <Button
+                           variant="ghost"
+                           size="icon"
+                           className="h-8 w-8"
+                           aria-label={t('upload.dismissFile', { name: item.file.name })}
+                           onClick={() => cancelUpload(item)}
+                         >
+                           <X className="h-4 w-4" />
+                         </Button>
+                       </div>
+                     ) : (
+                       <Button
+                         variant="ghost"
+                         size="icon"
+                         className="h-8 w-8"
+                         aria-label={t('upload.cancelFile', { name: item.file.name })}
+                         onClick={() => cancelUpload(item)}
+                       >
+                         <X className="h-4 w-4" />
+                       </Button>
+                     )}
+                   </div>
+                 </div>
+               ))}
+             </div>
            </div>
          ) : (
            <div className="flex flex-col items-center justify-center space-y-4">
@@ -260,7 +422,7 @@ export const Dashboard = () => {
                <Button variant="secondary" className="relative z-10 rounded-full px-6 bg-background/50 hover:bg-background border-white/5">
                  {t('dashboard.browseFiles')}
                </Button>
-               <input type="file" className="hidden" accept=".pdf" onChange={handleFileSelect} disabled={uploadQueue.some(i => i.status === 'uploading')} multiple />
+               <input type="file" className="hidden" accept="application/pdf,.pdf" onChange={handleFileSelect} multiple />
              </label>
            </div>
          )}
@@ -291,17 +453,21 @@ export const Dashboard = () => {
                 <div className="flex items-center">
                   <Button 
                     variant={viewMode === 'grid' ? 'secondary' : 'ghost'} 
-                    size="icon" 
-                    className={cn("h-8 w-8 rounded-md", viewMode === 'grid' ? "bg-background shadow-sm" : "")}
-                    onClick={() => setViewMode('grid')}
+                     size="icon"
+                     className={cn("h-8 w-8 rounded-md", viewMode === 'grid' ? "bg-background shadow-sm" : "")}
+                     onClick={() => setViewMode('grid')}
+                     aria-label={t('dashboard.gridView')}
+                     title={t('dashboard.gridView')}
                   >
                     <LayoutGrid className="w-4 h-4" />
                   </Button>
                   <Button 
                     variant={viewMode === 'list' ? 'secondary' : 'ghost'} 
-                    size="icon" 
-                    className={cn("h-8 w-8 rounded-md", viewMode === 'list' ? "bg-background shadow-sm" : "")}
-                    onClick={() => setViewMode('list')}
+                     size="icon"
+                     className={cn("h-8 w-8 rounded-md", viewMode === 'list' ? "bg-background shadow-sm" : "")}
+                     onClick={() => setViewMode('list')}
+                     aria-label={t('dashboard.listView')}
+                     title={t('dashboard.listView')}
                   >
                     <List className="w-4 h-4" />
                   </Button>
@@ -409,7 +575,10 @@ export const Dashboard = () => {
                   )}
                 >
                   <AnimatePresence>
-                    {processedDocuments.map(doc => (
+                    {processedDocuments.map(doc => {
+                      const stage = getDocumentStage(doc);
+                      const ready = isDocumentReady(doc);
+                      return (
                       <motion.div 
                         layout
                         initial={{ opacity: 0, scale: 0.95 }}
@@ -418,10 +587,23 @@ export const Dashboard = () => {
                         transition={{ duration: 0.2 }}
                         key={doc.id} 
                         className={cn(
-                          "glass-card border border-white/5 rounded-2xl shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-accent/30 transition-all duration-300 group cursor-pointer relative overflow-hidden flex",
-                          viewMode === 'grid' ? "flex-col h-[220px]" : "flex-row items-center h-20 p-2 pr-4"
+                          "glass-card border border-white/5 rounded-2xl shadow-sm transition-all duration-300 group relative overflow-hidden flex",
+                          ready && "cursor-pointer hover:shadow-xl hover:-translate-y-1 hover:border-accent/30",
+                          !ready && "cursor-default",
+                          viewMode === 'grid' ? "flex-col min-h-[220px]" : "flex-row items-center min-h-20 p-2 pr-4"
                         )} 
-                        onClick={() => navigate(`/viewer/${doc.id}`)}
+                        data-testid={`document-card-${doc.id}`}
+                        role={ready ? 'button' : undefined}
+                        tabIndex={ready ? 0 : -1}
+                        onClick={() => {
+                          if (ready) navigate(`/viewer/${doc.id}`);
+                        }}
+                        onKeyDown={(event) => {
+                          if (ready && (event.key === 'Enter' || event.key === ' ')) {
+                            event.preventDefault();
+                            navigate(`/viewer/${doc.id}`);
+                          }
+                        }}
                       >
                         {/* Thumbnail Preview Area */}
                         <div className={cn(
@@ -460,7 +642,7 @@ export const Dashboard = () => {
                           </label>
 
                            {/* Hover overlay for grid */}
-                           {viewMode === 'grid' && (
+                           {viewMode === 'grid' && ready && (
                              <div className="absolute inset-0 bg-background/40 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                <div className="w-10 h-10 rounded-full bg-accent text-white flex items-center justify-center shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all">
                                  <Play size={16} className="ml-1" fill="currentColor" />
@@ -525,14 +707,14 @@ export const Dashboard = () => {
                           </div>
 
                           <div className="flex items-center text-[11px] text-muted-foreground mt-1.5 font-medium">
-                            <span className={cn(
-                              "px-1.5 py-0.5 rounded uppercase tracking-wider font-bold mr-2 text-[9px]",
-                              doc.status === 'ready' ? 'bg-emerald-500/10 text-emerald-500' :
-                              doc.status === 'processing' ? 'bg-amber-500/10 text-amber-500' :
-                              doc.status === 'error' ? 'bg-rose-500/10 text-rose-500' :
-                              'bg-blue-500/10 text-blue-500'
-                            )}>
-                              {doc.status}
+                            <span
+                              className={cn(
+                                "px-1.5 py-0.5 rounded uppercase tracking-wider font-bold mr-2 text-[9px]",
+                                getStageStyles(stage),
+                              )}
+                              data-testid={`document-status-${doc.id}`}
+                            >
+                              {getStageLabel(stage)}
                             </span>
                             <Calendar className="w-3 h-3 mr-1" />
                             {new Date(doc.created_at).toLocaleDateString()}
@@ -540,9 +722,36 @@ export const Dashboard = () => {
                             <HardDrive className="w-3 h-3 mr-1" />
                             {(doc.size_bytes / (1024 * 1024)).toFixed(1)} MB
                           </div>
+                          {!ready && stage !== 'failed' && (
+                            <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/10">
+                              <div
+                                className="h-full bg-accent transition-[width] duration-300"
+                                style={{ width: `${Math.max(doc.progress ?? 0, 3)}%` }}
+                              />
+                            </div>
+                          )}
+                          {stage === 'failed' && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <p className="min-w-0 flex-1 truncate text-xs text-rose-400" title={doc.processing_error || t('document.processingFailed')}>
+                                {doc.processing_error || t('document.processingFailed')}
+                              </p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 shrink-0 text-xs"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  retryDocument(doc.id).catch(() => toast.error(t('document.retryFailed')));
+                                }}
+                              >
+                                <RotateCcw className="mr-1 h-3.5 w-3.5" /> {t('upload.retry')}
+                              </Button>
+                            </div>
+                          )}
                         </div>
                       </motion.div>
-                    ))}
+                      );
+                    })}
                   </AnimatePresence>
                 </motion.div>
               )}
@@ -558,23 +767,6 @@ export const Dashboard = () => {
       {/* Right Sidebar: Context & Assistant (Desktop only) */}
       <div className="flex-1 hidden lg:flex flex-col gap-4 overflow-hidden min-w-[320px] max-w-[380px]">
         
-        {/* Assistant Promotion / Tip */}
-        <div className="shrink-0 bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 rounded-3xl p-6 relative overflow-hidden group shadow-lg shadow-accent/5">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-accent/20 rounded-full blur-2xl transform translate-x-10 -translate-y-10 group-hover:bg-accent/30 transition-colors" />
-          <div className="relative z-10">
-            <div className="w-10 h-10 bg-accent rounded-xl flex items-center justify-center text-white shadow-md shadow-accent/20 mb-4">
-              <MessageSquare size={18} fill="currentColor" />
-            </div>
-            <h3 className="font-heading font-semibold text-lg mb-1">{t('dashboard.globalSearch')}</h3>
-            <p className="text-sm text-muted-foreground/90 leading-relaxed mb-4">
-              {t('dashboard.globalSearchDesc')} <kbd className="font-mono text-xs px-1.5 py-0.5 bg-background rounded border border-white/10 text-foreground">⌘ K</kbd> {t('dashboard.globalSearchKey')}
-            </p>
-            <Button variant="secondary" size="sm" className="w-full bg-background hover:bg-background/80 border-white/5 shadow-sm text-xs h-9 rounded-full">
-              {t('dashboard.tryGlobalSearch')}
-            </Button>
-          </div>
-        </div>
-
         <ProcessingCenter />
 
         {/* Recent Activity */}
@@ -591,7 +783,15 @@ export const Dashboard = () => {
                 <div key={`act-${doc.id}`} className="flex gap-4 relative before:absolute before:left-[5px] before:top-4 before:bottom-[-20px] before:w-[2px] before:bg-white/5 last:before:hidden">
                    <div className="w-3 h-3 mt-1 rounded-full bg-accent shrink-0 shadow-[0_0_10px_rgba(var(--accent-hsl),0.5)] z-10 ring-4 ring-background" />
                    <div>
-                      <p className="text-sm text-foreground">{t('dashboard.added')} <strong className="font-medium text-accent hover:underline cursor-pointer" onClick={() => navigate(`/viewer/${doc.id}`)}>{doc.name}</strong></p>
+                      <p className="text-sm text-foreground">{t('dashboard.added')} <strong
+                        className={cn(
+                          'font-medium text-accent',
+                          isDocumentReady(doc) && 'cursor-pointer hover:underline',
+                        )}
+                        onClick={() => {
+                          if (isDocumentReady(doc)) navigate(`/viewer/${doc.id}`);
+                        }}
+                      >{doc.name}</strong></p>
                       <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                         <Clock size={10} /> {new Date(doc.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>

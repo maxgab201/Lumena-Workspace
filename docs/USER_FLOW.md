@@ -170,18 +170,19 @@ Continue Learning (Study Mode, Review)
 
 # 9. Document Upload
 
-**Route**: `/workspace/:workspaceId` → UploadZone
+**Route**: `/dashboard`
 
 **Flow**:
-1. **Drag-drop** or click → file picker
-2. **Validation**: `file.type === 'application/pdf'`, `file.size ≤ 50MB`
-3. **Upload**: `documentRepository.upload()` → Supabase Storage (`workspace_documents/{workspaceId}/{docId}.pdf`)
-4. **Metadata**: `documentRepository.create()` → `documents` row (status: `uploading`)
-5. **Progress**: `documentStore.uploadProgress` → Toast updates
-6. **Processing Trigger**: Auto-call `process-document` Edge Function (or manual "Process" button)
-7. **Status**: `processing` → `ocr` → `layout` → `extraction` → `vision` → `ready` / `error`
+1. **Drag-drop** or click → multi-file PDF queue
+2. **Client validation**: PDF MIME type, `.pdf` extension, 50MB limit, and `%PDF-` signature
+3. **Duplicate guard**: SHA-256 hash checked against the current workspace
+4. **Upload**: authenticated XHR → Supabase Storage (`workspace_documents/{workspaceId}/{sha256}.pdf`) with byte-level progress and cancellation
+5. **Metadata**: create the `documents` row only after Storage confirms the upload
+6. **Processing trigger**: create a queued `processing_jobs` row; the database webhook invokes `process-document`
+7. **Status reconciliation**: Realtime updates are backed by short polling while work is active, so missed events and refreshes converge on the database state
+8. **Open**: document cards become navigable only when the persisted state is `ready`
 
-**Error Handling**: Toast with retry, document stays in workspace with error status
+**Error Handling**: failed uploads remain in the local queue with Retry/Dismiss controls. If metadata or job creation fails, the partially uploaded file and row are compensated so no ghost document remains. Processing failures persist as `error` and expose a safe Retry action.
 
 ---
 
@@ -189,19 +190,22 @@ Continue Learning (Study Mode, Review)
 
 **Edge Function**: `process-document`
 
-**Stages** (via `EventBus` + `ProcessingEngine`):
+**Current native-PDF stages**:
 
-| Stage | Provider | Output | Credits |
-|-------|----------|--------|---------|
-| Inspection | `InspectionProvider` (PDF.js) | Page count, encryption, metadata | 0 |
-| OCR | `OCRProvider` (Tesseract.js) | Text + blocks per page | 2/page |
-| Layout | `LayoutProvider` | Structural elements per page | 0 |
-| Extraction | `TextExtractionProvider` | Full text content | 0 |
-| Vision | `VisionProvider` (future) | Semantic objects, summaries | 5/page |
+| Persisted job status | User-facing state | Work |
+|----------------------|-------------------|------|
+| `queued` | Uploaded | Waiting for the worker |
+| `inspecting` | Processing | Download and PDF validation |
+| `extracting` | Processing | Native text extraction |
+| `processing` | Analyzing | Chunking and embeddings |
+| `completed` | Ready | Document can be opened |
+| `failed` | Failed | Error is visible and retryable |
 
-**State Updates**: `processing_events` + `pageRegistryStore` (per-page status badges)
+`ocr` is already represented by the status model, but real OCR execution and page-level feedback belong to the later OCR checkpoint.
 
-**Completion**: `documents.status = 'ready'` → Toast "Document ready" → Auto-open viewer (optional)
+**State Updates**: `processing_jobs` and `documents` Realtime subscriptions plus active-job polling.
+
+**Completion**: `documents.status = 'ready'` and `processing_jobs.status = 'completed'` make the viewer available.
 
 ---
 
