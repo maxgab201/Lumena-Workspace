@@ -19,7 +19,6 @@ import {
   Check,
   HelpCircle,
   FileText,
-  ShieldCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { t } from '../i18n';
@@ -279,12 +278,6 @@ export const Settings = () => {
                           <span>•</span>
                           <a href="/legal#privacy" className="text-accent hover:underline">Privacy Policy</a>
                         </div>
-                      </div>
-                      <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
-                        <span className="flex items-center gap-2 text-foreground">
-                          <ShieldCheck size={14} className="text-accent" /> License
-                        </span>
-                        <span>Proprietary & Confidential</span>
                       </div>
                     </div>
                     <div className="pt-2 flex justify-center">
