@@ -25,29 +25,38 @@ export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) =>
   })));
 
   const pageNumber = pageIndex + 1;
+  const targetWidth = Math.max(100, Math.floor(width * scale));
 
   return (
     <div
-      className="relative flex justify-center"
+      className="relative flex justify-center py-2"
       style={style}
       data-page-index={pageIndex}
       data-page-number={pageNumber}
     >
-      <div className="relative shadow-2xl shadow-black/30 bg-white">
+      <div className="relative shadow-2xl shadow-black/40 bg-white rounded-sm">
         {/* Layer 1 & 2: PDF Canvas Layer + Text Layer (active via react-pdf) */}
         <Page
           pageNumber={pageNumber}
-          width={width * scale}
+          width={targetWidth}
           rotate={rotation}
           renderTextLayer={true}
           renderAnnotationLayer={false}
-          className="pdf-page"
+          className="pdf-page bg-white"
           loading={
             <div
-              className="flex items-center justify-center bg-muted/20"
-              style={{ width: width * scale, height: width * scale * 1.414 }}
+              className="flex items-center justify-center bg-white"
+              style={{ width: targetWidth, height: Math.floor(targetWidth * 1.414) }}
             >
               <div className="w-6 h-6 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+            </div>
+          }
+          error={
+            <div
+              className="flex items-center justify-center bg-white text-rose-500 text-xs p-4"
+              style={{ width: targetWidth, height: Math.floor(targetWidth * 1.414) }}
+            >
+              Failed to render page {pageNumber}
             </div>
           }
         />

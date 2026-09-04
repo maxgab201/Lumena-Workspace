@@ -82,31 +82,12 @@ test.describe('Chat System', () => {
       await route.fulfill({ status: 200, json: { results: [] } });
     });
 
-    await page.route('**/functions/v1/**', async (route) => {
-      const url = route.request().url();
-      if (url.includes('ai-gateway')) {
-        const body = 'data: {"chunk":"Lumena Workspace is a knowledge management platform..."}\n\ndata: {"done":true}\n\n';
-        await route.fulfill({ status: 200, contentType: 'text/event-stream', body });
-      } else if (url.includes('rag-retrieve')) {
-        await route.fulfill({ status: 200, json: { results: [] } });
-      } else {
-        await route.fulfill({ status: 200, json: {} });
-      }
-    });
-
     await page.route('**/functions/v1/ai-gateway', async (route) => {
       const body = [
         'data: {"chunk":"Lumena Workspace is a knowledge management platform..."}\n\n',
         'data: {"done":true}\n\n',
       ].join('');
       await route.fulfill({ status: 200, contentType: 'text/event-stream', body });
-    });
-
-    await page.route('**/rest/v1/workspaces*', async (route) => {
-      await route.fulfill({
-        status: 200,
-        json: [{ id: 'workspace-1', name: 'Personal Workspace', owner_id: 'test-user-id' }]
-      });
     });
   });
 
@@ -138,5 +119,25 @@ test.describe('Chat System', () => {
 
     await page.getByTestId('chat-close').click();
     await expect(sidebar).toBeHidden();
+  });
+
+  test('displays clear error message when AI service fails or is unconfigured', async ({ page }) => {
+    await page.route('**/functions/v1/ai-gateway', async (route) => {
+      await route.fulfill({ status: 500, json: { error: 'GEMINI_API_KEY not configured' } });
+    });
+
+    await page.goto('/viewer/test-doc-1');
+    await expect(page.locator('text="Medium-Document.pdf"').first()).toBeVisible({ timeout: 15000 });
+
+    const chatBtn = page.getByTestId('toggle-chat-btn');
+    await chatBtn.click();
+
+    const input = page.getByTestId('chat-input');
+    await input.fill('What is this document about?');
+    await page.getByTestId('chat-send').click();
+
+    const assistantMsg = page.getByTestId('chat-msg-assistant').first();
+    await expect(assistantMsg).toBeVisible();
+    await expect(assistantMsg).toContainText('AI service is not configured', { timeout: 10000 });
   });
 });

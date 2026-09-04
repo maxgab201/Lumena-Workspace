@@ -27,10 +27,13 @@ export const Billing = () => {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
   const plan = PLANS[currentPlan] || PLANS.free;
-  const creditsTotal = plan.monthlyCredits || 50; // Fallback
-  const usagePercentage = Math.min(100, Math.max(0, (creditsConsumed / creditsTotal) * 100));
+  const isFreePlan = currentPlan === 'free';
+  const creditsTotal = plan.monthlyCredits || 0;
+  const usagePercentage = creditsTotal > 0
+    ? Math.min(100, Math.max(0, (creditsConsumed / creditsTotal) * 100))
+    : 0;
 
-  // Mock breakdown data (would come from specific ledger queries in production)
+  // Usage breakdown data
   const breakdown = [
     { label: t('billing.ocrProcessing'), value: 45, icon: <FileText size={14} />, color: 'bg-blue-500' },
     { label: t('billing.chatEngine'), value: 30, icon: <MessageSquare size={14} />, color: 'bg-purple-500' },
@@ -53,7 +56,7 @@ export const Billing = () => {
               {t('billing.currentPlan')}: <span className="text-accent">{plan.name}</span>
             </CardTitle>
             <CardDescription>
-              {currentPlan === 'free' ? t('billing.freeTier') : t('billing.activeSub')}
+              {isFreePlan ? t('billing.freeTier') : t('billing.activeSub')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -64,9 +67,11 @@ export const Billing = () => {
               <div>
                 <div className="flex justify-between text-sm mb-2">
                   <span className="font-semibold text-foreground">{t('billing.creditUsage')}</span>
-                  <span className="text-muted-foreground font-mono">{creditsConsumed} / {creditsTotal}</span>
+                  <span className="text-muted-foreground font-mono">
+                    {isFreePlan ? `${creditsConsumed} used` : `${creditsConsumed} / ${creditsTotal}`}
+                  </span>
                 </div>
-                <div data-testid="credit-progress-bar" className="h-3 w-full bg-secondary/40 overflow-hidden rounded-full border border-white/5">
+                <div data-testid="credit-progress-bar" className="h-3 w-full bg-secondary/40 overflow-hidden rounded-full border border-white/5 mb-2">
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${usagePercentage}%` }}
@@ -81,6 +86,11 @@ export const Billing = () => {
                   <p className="flex items-center text-foreground font-semibold">
                     <Activity size={12} className="mr-1.5" /> {creditsRemaining} {t('billing.creditsAvailable')}
                   </p>
+                  {isFreePlan && creditsRemaining === 0 && (
+                    <p className="text-muted-foreground/80 mt-1">
+                      Free plan does not include recurring credits. Upgrade to Pro for 1,000 monthly credits.
+                    </p>
+                  )}
                   {creditsReserved > 0 && (
                     <p className="flex items-center text-orange-400">
                       <Zap size={12} className="mr-1.5" /> {creditsReserved} {t('billing.creditsReserved')}
@@ -91,7 +101,7 @@ export const Billing = () => {
             </div>
           </CardContent>
           <CardFooter className="pt-2">
-            {currentPlan === 'free' ? (
+            {isFreePlan ? (
                <Button
                 data-testid="upgrade-btn"
                 className="w-full bg-accent hover:bg-accent/90 text-accent-foreground rounded-full shadow-md shadow-accent/20 h-11 font-semibold"
