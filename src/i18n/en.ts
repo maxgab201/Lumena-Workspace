@@ -25,6 +25,7 @@ const en = {
   'dashboard.sessionStart': 'Session start',
   'dashboard.workspaceInitialized': 'Workspace initialized',
   'upload.queueTitle': 'PDF uploads',
+  'upload.workspaceLoading': 'Loading workspace…',
   'upload.queueDescription': 'Files upload one at a time. Processing continues in the background.',
   'upload.addMore': 'Add PDFs',
   'upload.waiting': 'Waiting to upload',

@@ -26,6 +26,24 @@ test.describe('PDF upload status lifecycle', () => {
     await fileChooser;
   });
 
+  test('waits for the active workspace before enabling uploads', async ({ page }) => {
+    await page.route('**/rest/v1/workspaces*', async route => {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await route.fulfill({
+        status: 200,
+        json: [{ id: 'ws-delayed', name: 'Delayed Workspace', owner_id: 'mock-user-id' }],
+      });
+    });
+    await page.route('**/rest/v1/documents*', route => route.fulfill({ status: 200, json: [] }));
+    await page.route('**/rest/v1/processing_jobs*', route => route.fulfill({ status: 200, json: [] }));
+
+    await page.goto('/dashboard');
+    const loadingWorkspace = page.getByRole('button', { name: 'Loading workspace…' });
+    await expect(loadingWorkspace).toBeDisabled();
+    const browseFiles = page.getByRole('button', { name: 'Browse Files' });
+    await expect(browseFiles).toBeEnabled({ timeout: 3_000 });
+  });
+
   test('reconciles an active upload with the completed backend job', async ({ page }) => {
     let document: MockDocument | null = null;
     let jobStatus: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' = 'queued';

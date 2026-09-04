@@ -27,6 +27,7 @@ const es: Record<TranslationKey, string> = {
   'dashboard.sessionStart': 'Inicio de sesión',
   'dashboard.workspaceInitialized': 'Espacio de trabajo inicializado',
   'upload.queueTitle': 'Subidas de PDF',
+  'upload.workspaceLoading': 'Cargando espacio de trabajo…',
   'upload.queueDescription': 'Los archivos se suben de a uno. El procesamiento continúa en segundo plano.',
   'upload.addMore': 'Agregar PDFs',
   'upload.waiting': 'Esperando para subir',

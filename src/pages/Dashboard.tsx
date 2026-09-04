@@ -205,6 +205,11 @@ export const Dashboard = () => {
   };
 
   const addFilesToQueue = async (files: FileList) => {
+    if (!activeWorkspace) {
+      toast.error(t('upload.workspaceLoading'));
+      return;
+    }
+
     const validFiles: File[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -269,6 +274,11 @@ export const Dashboard = () => {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
+
+    if (!activeWorkspace) {
+      toast.error(t('upload.workspaceLoading'));
+      return;
+    }
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       addFilesToQueue(e.dataTransfer.files);
@@ -352,6 +362,7 @@ export const Dashboard = () => {
                  size="sm"
                  className="h-8 rounded-full text-xs"
                  onClick={() => fileInputRef.current?.click()}
+                 disabled={!activeWorkspace}
                >
                  {t('upload.addMore')}
                </Button>
@@ -361,6 +372,7 @@ export const Dashboard = () => {
                  className="hidden"
                  accept="application/pdf,.pdf"
                  onChange={handleFileSelect}
+                 disabled={!activeWorkspace}
                  multiple
                />
              </div>
@@ -435,8 +447,9 @@ export const Dashboard = () => {
                variant="secondary"
                className="relative z-10 mt-2 rounded-full border-white/5 bg-background/50 px-6 hover:bg-background"
                onClick={() => fileInputRef.current?.click()}
+               disabled={!activeWorkspace}
              >
-               {t('dashboard.browseFiles')}
+               {activeWorkspace ? t('dashboard.browseFiles') : t('upload.workspaceLoading')}
              </Button>
              <input
                ref={fileInputRef}
@@ -444,6 +457,7 @@ export const Dashboard = () => {
                className="hidden"
                accept="application/pdf,.pdf"
                onChange={handleFileSelect}
+               disabled={!activeWorkspace}
                multiple
              />
            </div>
