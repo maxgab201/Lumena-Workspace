@@ -4,6 +4,8 @@ import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@1.3.2"
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 const EMBEDDING_MODEL = "gemini-embedding-001" // 768 dims by default
+// Core document ingestion stays unmetered until the separate Billing checkpoint is approved.
+const DOCUMENT_PROCESSING_CREDIT_COST = 0
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -162,14 +164,7 @@ serve(async (req) => {
     // ==========================================
     // 1. ESTIMATE & RESERVE CREDITS
     // ==========================================
-    const { data: docData } = await supabaseClient
-      .from('documents')
-      .select('page_count')
-      .eq('id', documentId)
-      .single()
-
-    const pageCount = docData?.page_count || 1;
-    const estimatedCost = Math.max(pageCount * 5, 20);
+    const estimatedCost = DOCUMENT_PROCESSING_CREDIT_COST
 
     const { data: accountData } = await supabaseClient
       .from('credit_accounts')
@@ -186,6 +181,11 @@ serve(async (req) => {
           error_message: `Insufficient credits. Required: ${estimatedCost}, Available: ${accountData?.available || 0}`
         })
         .eq('id', jobId)
+
+      await supabaseClient
+        .from('documents')
+        .update({ status: 'error' })
+        .eq('id', documentId)
 
       return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

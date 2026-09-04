@@ -95,6 +95,7 @@ Last Updated: 2026-09-02
 ### Fixed
 
 - Documents no longer remain stuck at Uploading when a fast processing event is missed.
+- Core PDF processing is no longer blocked by the not-yet-approved billing system.
 - Partial upload failures clean up Storage and document rows instead of leaving ghost documents.
 - The PDF viewer now measures its page container after loading and reports invalid PDF errors clearly.
 

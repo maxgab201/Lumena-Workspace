@@ -203,6 +203,8 @@ Continue Learning (Study Mode, Review)
 
 `ocr` is already represented by the status model, but real OCR execution and page-level feedback belong to the later OCR checkpoint.
 
+Core PDF ingestion is unmetered during the reading-experience checkpoints. Credit charging remains disabled until the separate Billing phase is explicitly approved.
+
 **State Updates**: `processing_jobs` and `documents` Realtime subscriptions plus active-job polling.
 
 **Completion**: `documents.status = 'ready'` and `processing_jobs.status = 'completed'` make the viewer available.

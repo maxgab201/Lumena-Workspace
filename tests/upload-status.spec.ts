@@ -44,6 +44,67 @@ test.describe('PDF upload status lifecycle', () => {
     await expect(browseFiles).toBeEnabled({ timeout: 3_000 });
   });
 
+  test('queues every PDF selected from a multi-file picker', async ({ page }) => {
+    const documents: Array<Record<string, unknown>> = [];
+    const jobs: Array<Record<string, unknown>> = [];
+
+    await page.route('**/rest/v1/documents*', async route => {
+      const method = route.request().method();
+      if (method === 'POST') {
+        const payload = route.request().postDataJSON() ?? {};
+        const document = {
+          ...payload,
+          id: `doc-${documents.length + 1}`,
+          status: 'ready',
+          created_at: new Date().toISOString(),
+        };
+        documents.push(document);
+        await route.fulfill({ status: 201, json: document });
+        return;
+      }
+
+      const hashFilter = new URL(route.request().url()).searchParams.get('file_hash');
+      const matchingDocuments = hashFilter
+        ? documents.filter(document => document.file_hash === hashFilter.replace(/^eq\./, ''))
+        : documents;
+      await route.fulfill({ status: 200, json: matchingDocuments });
+    });
+
+    await page.route('**/rest/v1/processing_jobs*', async route => {
+      if (route.request().method() === 'POST') {
+        const payload = route.request().postDataJSON() ?? {};
+        const job = {
+          id: `job-${jobs.length + 1}`,
+          workspace_id: payload.workspace_id,
+          document_id: payload.document_id,
+          status: 'completed',
+          progress: 100,
+        };
+        jobs.push(job);
+        await route.fulfill({ status: 201, json: job });
+        return;
+      }
+      await route.fulfill({ status: 200, json: jobs });
+    });
+
+    await page.route('**/storage/v1/object/workspace_documents/**', route => {
+      return route.fulfill({ status: 200, json: { Key: 'workspace_documents/test.pdf' } });
+    });
+
+    await page.goto('/dashboard');
+    const fileChooserPromise = page.waitForEvent('filechooser');
+    await page.getByRole('button', { name: 'Browse Files' }).click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles([
+      path.resolve(process.cwd(), 'tests', 'fixtures', 'small-native.pdf'),
+      path.resolve(process.cwd(), 'tests', 'fixtures', 'medium-native.pdf'),
+    ]);
+
+    await expect(page.getByText('small-native.pdf', { exact: true }).first()).toBeVisible();
+    await expect(page.getByText('medium-native.pdf', { exact: true }).first()).toBeVisible();
+    await expect.poll(() => documents.length).toBe(2);
+  });
+
   test('reconciles an active upload with the completed backend job', async ({ page }) => {
     let document: MockDocument | null = null;
     let jobStatus: 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' = 'queued';

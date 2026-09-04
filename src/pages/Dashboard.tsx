@@ -204,7 +204,7 @@ export const Dashboard = () => {
     uploadChain.current = uploadChain.current.then(() => runQueuedUpload(item));
   };
 
-  const addFilesToQueue = async (files: FileList) => {
+  const addFilesToQueue = async (files: File[]) => {
     if (!activeWorkspace) {
       toast.error(t('upload.workspaceLoading'));
       return;
@@ -281,14 +281,16 @@ export const Dashboard = () => {
     }
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      addFilesToQueue(e.dataTransfer.files);
+      void addFilesToQueue(Array.from(e.dataTransfer.files));
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      addFilesToQueue(e.target.files);
+      // FileList is live; copy it before clearing the input so every selected PDF survives awaits.
+      const selectedFiles = Array.from(e.target.files);
       e.target.value = '';
+      void addFilesToQueue(selectedFiles);
     }
   };
 
