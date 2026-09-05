@@ -225,6 +225,7 @@ export default defineConfig({
 |------|-------------|
 | `auth.spec.ts` | Sign up → email confirm → sign in → dashboard |
 | `upload.spec.ts` | Drag-drop PDF → processing → ready → viewer |
+| `upload-status.spec.ts` | Upload progress/cancel → status reconciliation → retry → ready → viewer |
 | `chat.spec.ts` | Open viewer → send message → receive response |
 | `billing.spec.ts` | Open billing → view credits → checkout (mocked) |
 | `highlights.spec.ts` | Select text → create highlight → verify overlay |

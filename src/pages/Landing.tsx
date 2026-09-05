@@ -326,7 +326,7 @@ export const Landing = () => {
                     "Advanced Multi-Document AI Engine",
                     "Full Knowledge Graphs & Mind Mapping",
                     "10 GB secure workspace storage",
-                    "Generate AI Audio Podcasts (Phase 11)",
+                    "Generate AI Audio Podcasts",
                     "Create Interactive Infographics & Slides",
                     "Priority OCR & Processing Queue"
                   ].map((feat, i) => (

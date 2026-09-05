@@ -1,5 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-
 async function run() {
   // Read service role key from .env.local
   const fs = require('fs')
@@ -41,7 +39,7 @@ async function run() {
   let data
   try {
     data = await res.json()
-  } catch (e) {
+  } catch {
     data = await res.text()
   }
 

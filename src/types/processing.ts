@@ -6,6 +6,7 @@ export type JobStatus =
   | 'extracting' 
   | 'ocr' 
   | 'layout' 
+  | 'processing'
   | 'completed' 
   | 'failed' 
   | 'retrying' 
@@ -18,8 +19,8 @@ export interface ProcessingJob {
   document_id: string;
   status: JobStatus;
   progress: number;
-  error_details?: string | null;
-  provider_metadata?: any | null;
+  error_message?: string | null;
+  provider_metadata?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,7 +29,7 @@ export interface ProcessingEvent {
   id: string;
   job_id: string;
   event_type: string;
-  event_data: any;
+  event_data: Record<string, unknown> | null;
   created_at: string;
 }
 

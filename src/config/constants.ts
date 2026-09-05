@@ -1,7 +1,7 @@
 export const APP_CONFIG = {
   name: 'Lumena Workspace',
-  description: 'Intelligence for your documents.',
-  version: '1.0.0',
+  description: 'Intelligent workspace for reading, analyzing, and synthesizing documents.',
+  version: '0.2.0 (Alpha)',
   supportEmail: 'support@lumena.app',
 };
 

@@ -58,48 +58,88 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   },
 
   sendMessage: async (text) => {
-    const { activeSessionId, selectedModel } = get();
+    let { activeSessionId, selectedModel } = get();
+
+    // Fallback: If no active session, attempt to initialize from current document
     if (!activeSessionId) {
-      console.error('[ChatStore] No active session');
+      const docId = useViewerStore.getState().documentId;
+      const wsId = useWorkspaceStore.getState().activeWorkspace?.id;
+      if (docId && wsId) {
+        try {
+          const session = await ChatRepository.getOrCreateSession(docId, wsId);
+          activeSessionId = session.id;
+          set((state) => ({
+            sessions: { ...state.sessions, [docId]: session },
+            activeSessionId: session.id,
+          }));
+        } catch {
+          // Fall through
+        }
+      }
+    }
+
+    if (!activeSessionId) {
+      console.warn('[ChatStore] No active session available for message');
       return;
     }
 
     set({ isGenerating: true });
 
+    let assistantMsgId: string | null = null;
     try {
       // 1. Persist user message
       const userMsg = await ChatRepository.addMessage(activeSessionId, 'user' as Role, text);
 
       // 2. Persist empty assistant message placeholder
       const assistantMsg = await ChatRepository.addMessage(activeSessionId, 'assistant' as Role, '');
+      assistantMsgId = assistantMsg.id;
 
       // 3. Build context for the AI (including RAG retrieval)
       const context = await buildChatContext(text);
 
-      // 4. Update local state immediately (optimistic) with citations
+      // 4. Update local state immediately with citations
       set((state) => ({
         messages: {
           ...state.messages,
-          [activeSessionId]: [
-            ...(state.messages[activeSessionId] ?? []),
+          [activeSessionId!]: [
+            ...(state.messages[activeSessionId!] ?? []),
             userMsg,
             { ...assistantMsg, citations: context.ragChunks },
           ],
         },
       }));
 
-      // 4. Stream AI response
+      // 5. Stream AI response
       let accumulated = '';
       await AIGateway.generateStream(text, context, selectedModel, (chunk) => {
         accumulated += chunk;
         get().appendStreamChunk(assistantMsg.id, chunk);
       });
 
-      // 5. Persist final assistant content to DB
+      // 6. Persist final assistant content to DB
       await ChatRepository.updateMessage(assistantMsg.id, accumulated);
-    } catch (err) {
+    } catch (err: any) {
       console.error('[ChatStore] Error sending message:', err);
-      // Append error note to assistant message in local state
+
+      let userFacingError = 'AI service is not configured for this environment or is currently unavailable.';
+      if (err?.status === 402 || err?.message?.toLowerCase().includes('credit')) {
+        userFacingError = 'You do not have enough AI credits to perform this request. Please upgrade to Pro or buy additional credits in Billing.';
+      } else if (err?.message?.includes('GEMINI_API_KEY') || err?.message?.includes('API key')) {
+        userFacingError = 'AI service is not configured for this environment.';
+      }
+
+      if (assistantMsgId && activeSessionId) {
+        // Replace empty assistant message with user-friendly error note
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [activeSessionId!]: (state.messages[activeSessionId!] ?? []).map((m) =>
+              m.id === assistantMsgId ? { ...m, content: `⚠️ ${userFacingError}` } : m
+            ),
+          },
+        }));
+        await ChatRepository.updateMessage(assistantMsgId, `⚠️ ${userFacingError}`).catch(() => undefined);
+      }
     } finally {
       set({ isGenerating: false });
     }
@@ -196,9 +236,6 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
     content: m.content,
   }));
 
-  // Get workspace info. The viewer can be opened directly (without first
-  // visiting the dashboard), so the active workspace store may not be hydrated
-  // yet; the chat session remains the authoritative fallback in that case.
   const activeWorkspace = workspaceStore.activeWorkspace;
   const activeSession = activeSessionId ? chatStore.sessions[activeSessionId] : undefined;
   const workspaceId = activeWorkspace?.id ?? activeSession?.workspace_id;

@@ -6,7 +6,7 @@ Version: 1.0.0-rc.1
 
 Status: Living Document
 
-Last Updated: 2026-07-27
+Last Updated: 2026-09-02
 
 ---
 
@@ -83,6 +83,26 @@ Last Updated: 2026-07-27
 ---
 
 # 5. Release History
+
+## [Unreleased] - 2026-09-02 — Core Reading Experience: Checkpoint 1
+
+### Added
+
+- Real upload progress, queued multi-PDF uploads, cancellation, retry, and duplicate detection.
+- User-facing document stages derived from persisted processing jobs: Uploaded, Processing, OCR, Analyzing, Ready, and Failed.
+- Realtime document/job subscriptions with active polling reconciliation and processing retry.
+
+### Fixed
+
+- Documents no longer remain stuck at Uploading when a fast processing event is missed.
+- Core PDF processing is no longer blocked by the not-yet-approved billing system.
+- Partial upload failures clean up Storage and document rows instead of leaving ghost documents.
+- The PDF viewer now measures its page container after loading and reports invalid PDF errors clearly.
+
+### Removed
+
+- Non-functional document search and developer overlay controls from the user-facing PDF toolbar.
+- The Dashboard Global AI Search call-to-action that had no action attached.
 
 ## [1.0.0-rc.1] - 2026-07-27 — Phase 11 Release Candidate
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useViewerStore } from '../../stores/viewerStore';
 import { Button } from '../ui/Button';
 import {
@@ -10,13 +10,8 @@ import {
   Maximize,
   ChevronsLeftRight,
   FileText,
-  Layers,
   MessageSquare,
   Brain,
-  Search,
-  X,
-  ChevronUp,
-  ChevronDown,
 } from 'lucide-react';
 import { useUiStore } from '../../stores/uiStore';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/Tooltip';
@@ -41,26 +36,11 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
     setCurrentPage,
     setFitMode,
     setScale,
-    showOverlays,
-    toggleOverlays,
-    searchQuery,
-    setSearchQuery,
-    searchResults,
-    isSearchActive,
-    setIsSearchActive,
   } = useViewerStore();
 
   const { activeRightPanel, setActiveRightPanel } = useUiStore();
 
   const [pageInput, setPageInput] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isSearchOpen && searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, [isSearchOpen]);
 
   const handlePageSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,39 +49,6 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
       setCurrentPage(page);
     }
     setPageInput('');
-  };
-
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
-    setSearchQuery(query);
-
-    if (query.trim()) {
-      setIsSearchActive(true);
-    } else {
-      setIsSearchActive(false);
-    }
-  };
-
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-  };
-
-  const closeSearch = () => {
-    setIsSearchOpen(false);
-  };
-
-  const goToNextMatch = () => {
-    const { searchResults } = useViewerStore.getState();
-    if (searchResults.length > 0) {
-      // const _nextIndex = (currentMatchIndex + 1) % searchResults.length;
-    }
-  };
-
-  const goToPrevMatch = () => {
-    const { searchResults } = useViewerStore.getState();
-    if (searchResults.length > 0) {
-      // Navigate to previous match
-    }
   };
 
   const formatFileSize = (bytes?: number) => {
@@ -118,86 +65,6 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
       setFitMode('fit-width');
       setScale(1.0);
     }
-  };
-
-  // Render search component separately to avoid ternary parsing issues
-  const SearchComponent = () => {
-    if (!isSearchOpen) return null;
-
-    return (
-      <div className="relative flex items-center gap-2">
-        <form onSubmit={handleSearchSubmit} className="relative w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/50 pointer-events-none" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchQuery}
-            onChange={handleSearchChange}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') closeSearch();
-              if (e.key === 'Enter' && e.shiftKey) goToPrevMatch();
-              if (e.key === 'Enter' && !e.shiftKey) goToNextMatch();
-            }}
-            placeholder="Search in document... (Esc to close)"
-            className="w-full pl-9 pr-9 py-1.5 bg-white/5 border border-white/10 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all"
-            autoFocus
-          />
-          {searchQuery && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6"
-              onClick={() => { setSearchQuery(''); setIsSearchActive(false); }}
-              aria-label="Clear search"
-            >
-              <X className="w-3.5 h-3.5" />
-            </Button>
-          )}
-        </form>
-        <div className="flex items-center gap-1 ml-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={goToPrevMatch}
-                disabled={!isSearchActive || searchResults.length === 0}
-                aria-label="Previous match"
-                className="h-8 w-8"
-              >
-                <ChevronUp className="w-4 h-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent><p className="flex items-center gap-2">Previous match <kbd className="bg-white/10 px-1 rounded">⇧Enter</kbd></p></TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={goToNextMatch}
-                disabled={!isSearchActive || searchResults.length === 0}
-                aria-label="Next match"
-                className="h-8 w-8"
-              >
-                <ChevronDown className="w-4 h-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent><p className="flex items-center gap-2">Next match <kbd className="bg-white/10 px-1 rounded">Enter</kbd></p></TooltipContent>
-          </Tooltip>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={closeSearch}
-            aria-label="Close search"
-            className="h-8 w-8"
-          >
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -264,27 +131,6 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
             </TooltipTrigger>
             <TooltipContent><p className="flex items-center gap-2">Next page <kbd className="bg-white/10 px-1 rounded">→</kbd></p></TooltipContent>
           </Tooltip>
-        </div>
-
-        {/* Search */}
-        <div className="flex items-center gap-2 ml-4">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsSearchOpen(true)}
-                aria-label="Search in document"
-                className="h-8 w-8"
-              >
-                <Search className="w-4 h-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent><p className="flex items-center gap-2">Search <kbd className="bg-white/10 px-1 rounded">⌘F</kbd></p></TooltipContent>
-          </Tooltip>
-
-          <SearchComponent />
-
         </div>
 
         {/* Right: Zoom & Tools */}
@@ -364,26 +210,6 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant={showOverlays ? "secondary" : "ghost"}
-                size="icon"
-                onClick={toggleOverlays}
-                aria-label="Toggle developer overlays"
-                className="h-8 w-8 relative group"
-              >
-                {showOverlays && (
-                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-accent rounded-full animate-pulse" />
-                )}
-                <Layers className="w-4 h-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent><p className="flex items-center gap-2">Developer Overlays <kbd className="bg-white/10 px-1 rounded">O</kbd></p></TooltipContent>
-          </Tooltip>
-
-          <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
                 variant={activeRightPanel === 'chat' ? "secondary" : "ghost"}
                 size="icon"
                 onClick={() => setActiveRightPanel(activeRightPanel === 'chat' ? 'none' : 'chat')}
@@ -410,8 +236,9 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
                 <Brain className="w-4 h-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent><p className="flex items-center gap-2">Knowledge Graph <kbd className="bg-white/10 px-1 rounded">K</kbd></p></TooltipContent>
+            <TooltipContent><p>Knowledge tools</p></TooltipContent>
           </Tooltip>
+
         </div>
       </div>
     </TooltipProvider>

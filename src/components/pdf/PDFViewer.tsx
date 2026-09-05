@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Document, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -12,7 +12,7 @@ import { useViewerStore } from '../../stores/viewerStore';
 import { useUiStore } from '../../stores/uiStore';
 import { useKnowledgeStore } from '../../stores/knowledgeStore';
 import { useShallow } from 'zustand/react/shallow';
-import { Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -59,33 +59,47 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
   const { isStudyModeActive } = useKnowledgeStore(useShallow(state => ({ isStudyModeActive: state.isStudyModeActive })));
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
-  const pdfDocRef = useRef<any>(null);
+  const pdfDocRef = useRef<{ destroy: () => Promise<void> } | null>(null);
 
-  // Measure container dimensions
+  // Configure standard options for PDF.js (cmaps, standard fonts)
+  const pdfOptions = useMemo(() => ({
+    cMapUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/standard_fonts/`,
+  }), []);
+
+  // Measure container dimensions immediately upon mount and on resize
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    const updateDimensions = () => {
+      const rect = container.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setDimensions({ width: Math.floor(rect.width), height: Math.floor(rect.height) });
+      }
+    };
+
+    updateDimensions();
+
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-
-        if (width === 0 || height === 0) {
-          console.log(`[DEBUG] Viewer dimensions: width=${width}, height=${height}`);
+        if (width > 0 && height > 0) {
+          setDimensions({ width: Math.floor(width), height: Math.floor(height) });
         }
-
-        setDimensions({ width, height });
       }
     });
+
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [isLoading]);
 
   // Cleanup PDF document on unmount
   useEffect(() => {
     return () => {
       if (pdfDocRef.current) {
-        pdfDocRef.current.destroy();
+        pdfDocRef.current.destroy().catch(() => undefined);
         pdfDocRef.current = null;
       }
     };
@@ -93,12 +107,8 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
 
   // Handle successful PDF load
   const onDocumentLoadSuccess = useCallback(
-    async (pdf: { numPages: number; getPageLabels?: () => Promise<string[] | null> }) => {
-      try {
-        // We removed pageLabels from initializeDocument since we'll set it per-page when OCR runs
-      } catch (err) {
-        console.warn('Could not read page labels', err);
-      }
+    (pdf: { numPages: number; destroy: () => Promise<void> }) => {
+      pdfDocRef.current = pdf;
       initializeDocument(pdf.numPages);
     },
     [initializeDocument]
@@ -106,7 +116,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
 
   const onDocumentLoadError = useCallback(
     (error: Error) => {
-      console.error('Failed to load PDF:', error);
+      console.error('[PDFViewer] Failed to load PDF:', error);
       setLoading(false);
     },
     [setLoading]
@@ -161,15 +171,6 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
           e.preventDefault();
           goToLastPage();
           break;
-        case 'f':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            // Open search in toolbar
-            const toolbar = document.querySelector('[data-testid="pdf-toolbar"]') as HTMLElement;
-            const searchButton = toolbar?.querySelector('button[aria-label="Search in document"]') as HTMLButtonElement;
-            searchButton?.click();
-          }
-          break;
       }
     };
 
@@ -178,27 +179,36 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
   }, [zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale]);
 
   return (
-    <div className="flex flex-col h-full w-full">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-background">
       <PDFToolbar
         filename={filename}
         fileSize={fileSize}
         pageCount={totalPages || undefined}
       />
 
-      <div className="flex-1 flex min-h-0 relative">
+      <div className="flex-1 flex min-h-0 relative overflow-hidden">
         <Document
-          ref={(doc: any) => { pdfDocRef.current = doc; }}
           file={fileUrl}
           onLoadSuccess={onDocumentLoadSuccess}
           onLoadError={onDocumentLoadError}
           loading={null}
-          className="flex-1 flex flex-col min-h-0 bg-background relative"
+          options={pdfOptions}
+          error={(
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center h-full w-full">
+              <AlertCircle className="h-10 w-10 text-rose-400" />
+              <p className="font-medium text-foreground text-lg">This PDF could not be opened.</p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                The file may be damaged or temporarily unavailable. Return to Documents and try again.
+              </p>
+            </div>
+          )}
+          className="flex-1 flex flex-col min-h-0 relative h-full w-full overflow-hidden"
         >
           <HighlightEditor />
 
           {/* Main Document Content */}
           {isLoading ? (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="flex-1 flex items-center justify-center h-full w-full bg-background">
               <div className="flex flex-col items-center gap-4">
                 <Loader2 className="w-8 h-8 text-accent animate-spin" />
                 <p className="text-sm text-muted-foreground">Loading document…</p>
@@ -207,17 +217,20 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
           ) : (
             <div
               ref={containerRef}
-              className="flex-1 bg-muted/20 relative overflow-hidden"
+              className="flex-1 bg-muted/20 relative overflow-hidden h-full w-full"
               data-testid="pdf-container"
               data-width={dimensions.width}
               data-height={dimensions.height}
             >
-              {/* eslint-disable-next-line no-constant-binary-expression */}
-              {(dimensions.width > 0 || true) && (
+              {dimensions.width > 0 && dimensions.height > 0 ? (
                 <PDFPageList
-                  containerWidth={Math.max(dimensions.width, 800)}
-                  containerHeight={Math.max(dimensions.height, 600)}
+                  containerWidth={dimensions.width}
+                  containerHeight={dimensions.height}
                 />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-accent" />
+                </div>
               )}
             </div>
           )}

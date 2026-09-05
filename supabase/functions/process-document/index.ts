@@ -4,6 +4,8 @@ import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@1.3.2"
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 const EMBEDDING_MODEL = "gemini-embedding-001" // 768 dims by default
+// Core document ingestion stays unmetered until the separate Billing checkpoint is approved.
+const DOCUMENT_PROCESSING_CREDIT_COST = 0
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -134,6 +136,7 @@ serve(async (req) => {
   // Hoisted so the error handler can refund/fail the job without re-reading
   // the request body (a Request body can only be consumed once).
   let jobId: string | undefined
+  let documentId: string | undefined
 
   try {
     const supabaseClient = createClient(
@@ -152,7 +155,7 @@ serve(async (req) => {
     }
 
     jobId = job.id
-    const documentId = job.document_id
+    documentId = job.document_id
     const workspaceId = job.workspace_id
     const startTime = Date.now()
 
@@ -161,14 +164,7 @@ serve(async (req) => {
     // ==========================================
     // 1. ESTIMATE & RESERVE CREDITS
     // ==========================================
-    const { data: docData } = await supabaseClient
-      .from('documents')
-      .select('page_count')
-      .eq('id', documentId)
-      .single()
-
-    const pageCount = docData?.page_count || 1;
-    const estimatedCost = Math.max(pageCount * 5, 20);
+    const estimatedCost = DOCUMENT_PROCESSING_CREDIT_COST
 
     const { data: accountData } = await supabaseClient
       .from('credit_accounts')
@@ -185,6 +181,11 @@ serve(async (req) => {
           error_message: `Insufficient credits. Required: ${estimatedCost}, Available: ${accountData?.available || 0}`
         })
         .eq('id', jobId)
+
+      await supabaseClient
+        .from('documents')
+        .update({ status: 'error' })
+        .eq('id', documentId)
 
       return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -236,10 +237,16 @@ serve(async (req) => {
     await supabaseClient
       .from('processing_jobs')
       .update({
-        status: 'processing',
+        status: 'inspecting',
+        progress: 10,
         started_at: new Date(startTime).toISOString(),
       })
       .eq('id', jobId)
+
+    await supabaseClient
+      .from('documents')
+      .update({ status: 'processing' })
+      .eq('id', documentId)
 
     // Fetch document file from storage
     const { data: docInfo } = await supabaseClient
@@ -261,10 +268,20 @@ serve(async (req) => {
       throw new Error('Failed to download PDF from storage')
     }
 
+    await supabaseClient
+      .from('processing_jobs')
+      .update({ status: 'extracting', progress: 30 })
+      .eq('id', jobId)
+
     // ==========================================
     // EXTRACT TEXT PER PAGE (real extraction)
     // ==========================================
     const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer())
+    const fileSignature = new TextDecoder().decode(pdfBytes.slice(0, 5))
+    if (fileSignature !== '%PDF-') {
+      throw new Error('The uploaded file is not a valid PDF')
+    }
+
     let pages: string[]
     try {
       const extraction = await extractPdfText(pdfBytes)
@@ -303,6 +320,11 @@ serve(async (req) => {
         status: 'processing'
       })
       .eq('id', documentId)
+
+    await supabaseClient
+      .from('processing_jobs')
+      .update({ status: 'processing', progress: 60 })
+      .eq('id', jobId)
 
     // ==========================================
     // 3. CHUNK TEXT (page-aware)
@@ -346,6 +368,11 @@ serve(async (req) => {
       console.error('Failed to insert embeddings:', embeddingError);
       throw new Error('Failed to store embeddings: ' + embeddingError.message);
     }
+
+    await supabaseClient
+      .from('processing_jobs')
+      .update({ progress: 90 })
+      .eq('id', jobId)
 
     // Store chunks in the real document_chunks schema (id TEXT PK, content, page_number)
     let chunkCounterByPage: Record<number, number> = {};
@@ -526,6 +553,13 @@ serve(async (req) => {
             error_message: error.message || 'Unknown processing error'
           })
           .eq('id', jobId)
+
+        if (documentId) {
+          await supabaseClient
+            .from('documents')
+            .update({ status: 'error' })
+            .eq('id', documentId)
+        }
       }
     } catch (refundError) {
       console.error('Failed to process refund on job failure:', refundError)

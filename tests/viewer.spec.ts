@@ -83,7 +83,6 @@ test.describe('PDF Viewer (Mocked API)', () => {
 
     await page.goto('/viewer/test-doc-1');
 
-    await page.screenshot({ path: 'artifacts/viewer-before-timeout.png' });
     await expect(page.locator('text=Large-Document-500-pages.pdf').first()).toBeVisible({ timeout: 10000 });
 
     await page.setViewportSize({ width: 1281, height: 721 });
@@ -120,7 +119,10 @@ test.describe('PDF Viewer (Mocked API)', () => {
     await page.locator('button[aria-label="Next page"]').click();
     await expect(page.locator('text=/ 100')).toBeVisible();
 
-    await expect(page.locator('button[aria-label="Toggle developer overlays"]')).toBeVisible();
+    await expect(page.locator('button[aria-label="Toggle developer overlays"]')).toHaveCount(0);
+    await expect(page.locator('button[aria-label="Search in document"]')).toHaveCount(0);
+    await expect(page.getByTestId('toggle-chat-btn')).toBeVisible();
+    await expect(page.getByTestId('toggle-knowledge-btn')).toBeVisible();
 
     await expect(page.locator('div[data-layer="annotation"]').first()).toBeAttached();
 

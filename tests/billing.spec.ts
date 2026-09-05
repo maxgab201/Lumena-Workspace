@@ -80,11 +80,12 @@ test.describe('Billing System', () => {
     await expect(page.getByText('Free').first()).toBeVisible();
   });
 
-  test('shows credit progress bar', async ({ page }) => {
+  test('free plan displays no AI credits included notice', async ({ page }) => {
     await page.goto('/billing');
     await page.waitForLoadState('networkidle');
+    await expect(page.getByText(/No AI credits included|Sin créditos de IA incluidos/i)).toBeVisible();
     const progressBar = page.getByTestId('credit-progress-bar');
-    await expect(progressBar).toBeAttached();
+    await expect(progressBar).not.toBeVisible();
   });
 
   test('upgrade flow shows modal', async ({ page }) => {
