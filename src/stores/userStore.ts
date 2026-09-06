@@ -8,7 +8,7 @@ interface UserStore {
   profile: { name?: string | null; avatar_url?: string | null } | null;
   loading: boolean;
   error: string | null;
-  initialize: () => void;
+  initialize: () => () => void;
   signOut: () => Promise<void>;
 }
 
@@ -19,9 +19,12 @@ export const useUserStore = create<UserStore>((set) => ({
   error: null,
 
   initialize: () => {
-    // Get initial session user
+    let isMounted = true;
+
+    // Get initial session user - don't fail if this throws
     AuthRepository.getUser()
       .then(async (user) => {
+        if (!isMounted) return;
         let profile = null;
         if (user) {
           const { data } = await supabase.from('profiles').select('name, avatar_url').eq('id', user.id).single();
@@ -29,12 +32,15 @@ export const useUserStore = create<UserStore>((set) => ({
         }
         set({ user, profile, loading: false });
       })
-      .catch((err) => {
-        set({ user: null, profile: null, error: err.message, loading: false });
+      .catch(() => {
+        // Don't set loading=false here - let onAuthStateChange handle it
+        if (!isMounted) return;
+        // Silently ignore - onAuthStateChange will fire with the actual session
       });
 
-    // Subscribe to auth state changes
-    supabase.auth.onAuthStateChange(async (_event, session) => {
+    // Subscribe to auth state changes - this is the source of truth
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return;
       let profile = null;
       if (session?.user) {
         const { data } = await supabase.from('profiles').select('name, avatar_url').eq('id', session.user.id).single();
@@ -42,6 +48,12 @@ export const useUserStore = create<UserStore>((set) => ({
       }
       set({ user: session?.user ?? null, profile, loading: false });
     });
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   },
 
   signOut: async () => {
