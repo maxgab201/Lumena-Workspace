@@ -1,13 +1,6 @@
-import { supabase } from '../lib/supabase';
-import type { Highlight, HighlightCategory } from '../types/highlights';
+import { supabase } from "../lib/supabase";
+import type { Highlight, HighlightCategory } from "../types/highlights";
 
-/**
- * The Supabase-generated types describe `rects` as `Json` because it's stored
- * as JSONB. We know the actual runtime shape is `NormalizedRect[]`, so we cast
- * through `unknown` here at the repository boundary. All incoming data from the
- * DB will have been validated by Postgres constraints and our own serialization
- * (which always writes NormalizedRect[]).
- */
 function toHighlight(row: unknown): Highlight {
   return row as Highlight;
 }
@@ -15,11 +8,11 @@ function toHighlight(row: unknown): Highlight {
 export const HighlightRepository = {
   async listHighlights(documentId: string): Promise<Highlight[]> {
     const { data, error } = await supabase
-      .from('highlights')
-      .select('*')
-      .eq('document_id', documentId)
-      .order('page_index', { ascending: true })
-      .order('created_at', { ascending: true });
+      .from("highlights")
+      .select("*")
+      .eq("document_id", documentId)
+      .order("page_index", { ascending: true })
+      .order("created_at", { ascending: true });
 
     if (error) throw error;
     return (data ?? []).map(toHighlight);
@@ -30,25 +23,32 @@ export const HighlightRepository = {
     pageIndex: number,
   ): Promise<Highlight[]> {
     const { data, error } = await supabase
-      .from('highlights')
-      .select('*')
-      .eq('document_id', documentId)
-      .eq('page_index', pageIndex)
-      .order('created_at', { ascending: true });
+      .from("highlights")
+      .select("*")
+      .eq("document_id", documentId)
+      .eq("page_index", pageIndex)
+      .order("created_at", { ascending: true });
 
     if (error) throw error;
     return (data ?? []).map(toHighlight);
   },
 
   async createHighlight(
-    highlight: Omit<Highlight, 'id' | 'created_at' | 'updated_at'>,
+    highlight: Omit<Highlight, "id" | "created_at" | "updated_at">,
   ): Promise<Highlight> {
-    // Cast rects through unknown since Supabase uses Json type for JSONB
-    const payload = { ...highlight, rects: highlight.rects as unknown };
+    const payload: Record<string, unknown> = {
+      document_id: highlight.document_id,
+      workspace_id: highlight.workspace_id,
+      page_index: highlight.page_index,
+      rects: highlight.rects as unknown,
+      text: highlight.text,
+      color: highlight.color || "#fef08a",
+      category_id: highlight.category_id && highlight.category_id.trim().length > 0 ? highlight.category_id : null,
+      note: highlight.note && highlight.note.trim().length > 0 ? highlight.note.trim() : null,
+    };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await supabase
-      .from('highlights')
+      .from("highlights")
       .insert(payload as any)
       .select()
       .single();
@@ -59,18 +59,32 @@ export const HighlightRepository = {
 
   async updateHighlight(
     id: string,
-    updates: Partial<Pick<Highlight, 'color' | 'note' | 'category_id' | 'text' | 'rects'>>,
+    updates: Partial<Pick<Highlight, "color" | "note" | "category_id" | "text" | "rects">>,
   ): Promise<Highlight> {
-    // Cast rects through unknown since Supabase uses Json type for JSONB
-    const payload = updates.rects
-      ? { ...updates, rects: updates.rects as unknown }
-      : { ...updates };
+    const payload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ("color" in updates && updates.color !== undefined) {
+      payload.color = updates.color;
+    }
+    if ("category_id" in updates) {
+      payload.category_id = updates.category_id && updates.category_id.trim().length > 0 ? updates.category_id : null;
+    }
+    if ("note" in updates) {
+      payload.note = updates.note !== undefined && updates.note !== null && updates.note.trim().length > 0 ? updates.note.trim() : null;
+    }
+    if ("text" in updates && updates.text !== undefined) {
+      payload.text = updates.text;
+    }
+    if ("rects" in updates && updates.rects) {
+      payload.rects = updates.rects as unknown;
+    }
+
     const { data, error } = await supabase
-      .from('highlights')
+      .from("highlights")
       .update(payload as any)
-      .eq('id', id)
+      .eq("id", id)
       .select()
       .single();
 
@@ -80,19 +94,19 @@ export const HighlightRepository = {
 
   async deleteHighlight(id: string): Promise<void> {
     const { error } = await supabase
-      .from('highlights')
+      .from("highlights")
       .delete()
-      .eq('id', id);
+      .eq("id", id);
 
     if (error) throw error;
   },
 
   async listCategories(workspaceId: string): Promise<HighlightCategory[]> {
     const { data, error } = await supabase
-      .from('highlight_categories')
-      .select('*')
-      .eq('workspace_id', workspaceId)
-      .order('created_at', { ascending: true });
+      .from("highlight_categories")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: true });
 
     if (error) throw error;
     return (data ?? []) as HighlightCategory[];
@@ -104,7 +118,7 @@ export const HighlightRepository = {
     color: string,
   ): Promise<HighlightCategory> {
     const { data, error } = await supabase
-      .from('highlight_categories')
+      .from("highlight_categories")
       .insert({ workspace_id: workspaceId, name, color })
       .select()
       .single();

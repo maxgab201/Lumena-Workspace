@@ -17,56 +17,66 @@ export const HighlightOverlay = ({ pageIndex }: HighlightOverlayProps) => {
     getHighlightsForPage,
     activeHighlightId,
     setActiveHighlight,
-    removeHighlight
   } = useHighlightStore(useShallow(state => ({
     getHighlightsForPage: state.getHighlightsForPage,
     activeHighlightId: state.activeHighlightId,
     setActiveHighlight: state.setActiveHighlight,
-    removeHighlight: state.removeHighlight,
   })));
 
   if (!documentId || !showOverlays) return null;
 
   const highlights = getHighlightsForPage(documentId, pageIndex);
-
   if (highlights.length === 0) return null;
 
   return (
     <div
       className="absolute inset-0 pointer-events-none"
-      style={{ zIndex: 30 }}
+      style={{ zIndex: 25 }}
       data-layer="highlight"
     >
       {highlights.map((highlight) => {
         const isActive = activeHighlightId === highlight.id;
+        const hasNote = Boolean(highlight.note && highlight.note.trim().length > 0);
 
         return (
-          <div key={highlight.id} className="absolute inset-0">
+          <div
+            key={highlight.id}
+            className="absolute inset-0 pointer-events-none"
+            data-highlight-id={highlight.id}
+          >
             {highlight.rects.map((rect, i) => (
               <div
                 key={`${highlight.id}-rect-${i}`}
+                data-highlight-rect="true"
                 className={cn(
-                  "absolute mix-blend-multiply opacity-50 cursor-pointer pointer-events-auto transition-all",
-                  isActive ? "ring-2 ring-primary ring_offset-1 opacity-70" : "hover:opacity-60"
+                  "absolute mix-blend-multiply opacity-50 cursor-pointer pointer-events-auto transition-all rounded-[2px]",
+                  isActive
+                    ? "ring-2 ring-primary ring-offset-1 opacity-75 shadow-sm"
+                    : "hover:opacity-70"
                 )}
                 style={{
                   left: `${rect.x * 100}%`,
                   top: `${rect.y * 100}%`,
                   width: `${rect.width * 100}%`,
                   height: `${rect.height * 100}%`,
-                  backgroundColor: highlight.color
+                  backgroundColor: highlight.color,
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   setActiveHighlight(isActive ? null : highlight.id);
                 }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  removeHighlight(highlight.id);
-                }}
-                title={highlight.note ? `${highlight.text}\n\nNote: ${highlight.note}` : highlight.text}
-              />
+                title={hasNote ? `${highlight.text}\n\n📝 Nota: ${highlight.note}` : highlight.text}
+              >
+                {/* Note indicator on the first rect */}
+                {hasNote && i === 0 && (
+                  <span
+                    className="absolute -top-3 -right-2 w-4 h-4 bg-amber-400 text-amber-950 rounded-full flex items-center justify-center shadow-md border border-white text-[10px] pointer-events-none select-none font-sans font-bold"
+                    title={`Nota: ${highlight.note}`}
+                  >
+                    ✎
+                  </span>
+                )}
+              </div>
             ))}
           </div>
         );

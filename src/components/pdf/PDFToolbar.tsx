@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useViewerStore } from '../../stores/viewerStore';
+import { useHighlightStore } from '../../stores/highlightStore';
 import { Button } from '../ui/Button';
 import {
   ZoomIn,
@@ -12,6 +13,7 @@ import {
   FileText,
   MessageSquare,
   Brain,
+  Highlighter,
 } from 'lucide-react';
 import { useUiStore } from '../../stores/uiStore';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/Tooltip';
@@ -24,6 +26,7 @@ interface PDFToolbarProps {
 
 export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) => {
   const {
+    documentId,
     currentPage,
     totalPages,
     scale,
@@ -39,6 +42,9 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
   } = useViewerStore();
 
   const { activeRightPanel, setActiveRightPanel } = useUiStore();
+  const highlightCount = useHighlightStore((state) =>
+    documentId ? state.highlights[documentId]?.length ?? 0 : 0
+  );
 
   const [pageInput, setPageInput] = useState('');
 
@@ -187,7 +193,7 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
                 )}
               </Button>
             </TooltipTrigger>
-            <TooltipContent><p className="flex items-center gap-2">{fitMode === 'fit-width' ? 'Fit to page' : 'Fit to width'} <kbd className="bg-white/10 px-1 rounded">F</kbd></p></TooltipContent>
+            <TooltipContent><p className="flex items-center gap-2">{fitMode === 'fit-width' ? 'Fit to page' : 'Fit to width'} <kbd className="bg-white/10 px-1 rounded">0</kbd></p></TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -207,6 +213,29 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
 
           <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
 
+          {/* Annotations & Notes panel trigger */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={activeRightPanel === 'annotations' ? "secondary" : "ghost"}
+                size="icon"
+                onClick={() => setActiveRightPanel(activeRightPanel === 'annotations' ? 'none' : 'annotations')}
+                aria-label="Anotaciones y notas"
+                className="h-8 w-8 relative"
+                data-testid="toggle-annotations-btn"
+              >
+                <Highlighter className="w-4 h-4" />
+                {highlightCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-accent text-[9px] font-bold text-background rounded-full flex items-center justify-center">
+                    {highlightCount > 9 ? '9+' : highlightCount}
+                  </span>
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent><p className="flex items-center gap-2">Anotaciones <kbd className="bg-white/10 px-1 rounded">A</kbd></p></TooltipContent>
+          </Tooltip>
+
+          {/* AI Chat panel trigger */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -223,6 +252,7 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
             <TooltipContent><p className="flex items-center gap-2">AI Chat <kbd className="bg-white/10 px-1 rounded">C</kbd></p></TooltipContent>
           </Tooltip>
 
+          {/* Knowledge tools trigger */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

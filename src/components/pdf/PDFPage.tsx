@@ -31,10 +31,15 @@ export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) =>
     <div
       className="relative flex justify-center py-2"
       style={style}
-      data-page-index={pageIndex}
+      data-page-outer-index={pageIndex}
       data-page-number={pageNumber}
     >
-      <div className="relative shadow-2xl shadow-black/40 bg-white rounded-sm">
+      <div
+        className="relative shadow-2xl shadow-black/40 bg-white rounded-sm"
+        data-pdf-page-wrapper="true"
+        data-page-index={pageIndex}
+        data-page-number={pageNumber}
+      >
         {/* Layer 1 & 2: PDF Canvas Layer + Text Layer (active via react-pdf) */}
         <Page
           pageNumber={pageNumber}
