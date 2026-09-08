@@ -49,7 +49,7 @@ export const HighlightOverlay = ({ pageIndex }: HighlightOverlayProps) => {
                 key={`${highlight.id}-rect-${i}`}
                 data-highlight-rect="true"
                 className={cn(
-                  "absolute mix-blend-multiply opacity-50 cursor-pointer pointer-events-auto transition-all rounded-[2px]",
+                  "absolute opacity-60 cursor-pointer pointer-events-auto transition-all rounded-[2px]",
                   isActive
                     ? "ring-2 ring-primary ring-offset-1 opacity-75 shadow-sm"
                     : "hover:opacity-70"
