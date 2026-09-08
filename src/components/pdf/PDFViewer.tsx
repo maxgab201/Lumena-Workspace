@@ -5,6 +5,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import { PDFToolbar } from './PDFToolbar';
 import { PDFPageList } from './PDFPageList';
 import { HighlightEditor } from './HighlightEditor';
+import { AnnotationsSidebar } from './AnnotationsSidebar';
 import { ChatSidebar } from '../chat/ChatSidebar';
 import { KnowledgeSidebar } from '../knowledge/KnowledgeSidebar';
 import { StudyModeOverlay } from '../knowledge/StudyModeOverlay';
@@ -155,6 +156,20 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
             rotate();
           }
           break;
+        case 'a':
+        case 'A':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setActiveRightPanel(activeRightPanel === 'annotations' ? 'none' : 'annotations');
+          }
+          break;
+        case 'c':
+        case 'C':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setActiveRightPanel(activeRightPanel === 'chat' ? 'none' : 'chat');
+          }
+          break;
         case 'PageDown':
           e.preventDefault();
           goToNextPage();
@@ -176,7 +191,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale]);
+  }, [zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale, activeRightPanel, setActiveRightPanel]);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-background">
@@ -204,7 +219,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
           )}
           className="flex-1 flex flex-col min-h-0 relative h-full w-full overflow-hidden"
         >
-          <HighlightEditor />
+          <HighlightEditor workspaceId={workspaceId ?? ''} />
 
           {/* Main Document Content */}
           {isLoading ? (
@@ -236,6 +251,13 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
           )}
         </Document>
 
+        {activeRightPanel === 'annotations' && (
+          <AnnotationsSidebar
+            documentId={documentId ?? fileUrl}
+            workspaceId={workspaceId ?? ''}
+            onClose={() => setActiveRightPanel('none')}
+          />
+        )}
         {activeRightPanel === 'chat' && <ChatSidebar />}
         {activeRightPanel === 'knowledge' && (
           <KnowledgeSidebar 
