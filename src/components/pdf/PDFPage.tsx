@@ -88,6 +88,8 @@ export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) =>
     </div>
   );
 }, (prev, next) => {
+  // NOTE: scale/rotation are consumed from the store inside the component, so
+  // they re-render pages even when width/style props are unchanged.
   return prev.pageIndex === next.pageIndex &&
          prev.width === next.width &&
          prev.style === next.style;

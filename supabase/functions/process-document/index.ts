@@ -164,72 +164,80 @@ serve(async (req) => {
     // ==========================================
     // 1. ESTIMATE & RESERVE CREDITS
     // ==========================================
+    // Core reading (upload → storage → text extraction → reader) is a FREE
+    // operation: when estimatedCost === 0 the billing flow is skipped entirely
+    // so a workspace without a credit account (or with 0 credits) can never be
+    // blocked. Credits only gate metered (AI) operations in later checkpoints.
     const estimatedCost = DOCUMENT_PROCESSING_CREDIT_COST
 
-    const { data: accountData } = await supabaseClient
-      .from('credit_accounts')
-      .select('available')
-      .eq('workspace_id', workspaceId)
-      .single()
+    let reservationId: string | null = null
 
-    if (!accountData || accountData.available < estimatedCost) {
-      console.error(`Job ${jobId} failed: Insufficient credits (Requires ${estimatedCost}, Available ${accountData?.available || 0})`)
-      await supabaseClient
-        .from('processing_jobs')
-        .update({
-          status: 'failed',
-          error_message: `Insufficient credits. Required: ${estimatedCost}, Available: ${accountData?.available || 0}`
+    if (estimatedCost > 0) {
+      const { data: accountData, error: accountError } = await supabaseClient
+        .from('credit_accounts')
+        .select('available')
+        .eq('workspace_id', workspaceId)
+        .single()
+
+      if (accountError || !accountData || accountData.available < estimatedCost) {
+        console.error(`Job ${jobId} failed: Insufficient credits (Requires ${estimatedCost}, Available ${accountData?.available || 0})`)
+        await supabaseClient
+          .from('processing_jobs')
+          .update({
+            status: 'failed',
+            error_message: `Insufficient credits. Required: ${estimatedCost}, Available: ${accountData?.available || 0}`
+          })
+          .eq('id', jobId)
+
+        await supabaseClient
+          .from('documents')
+          .update({ status: 'error' })
+          .eq('id', documentId)
+
+        return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 402,
         })
-        .eq('id', jobId)
+      }
 
+      // Create reservation
+      const { data: reservation, error: reserveError } = await supabaseClient
+        .from('credit_reservations')
+        .insert({
+          workspace_id: workspaceId,
+          job_id: jobId,
+          requested_amount: estimatedCost,
+          reserved_amount: estimatedCost,
+          expires_at: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
+          status: 'pending'
+        })
+        .select('id')
+        .single()
+
+      if (reserveError) throw new Error('Failed to reserve credits: ' + reserveError.message)
+      reservationId = reservation.id;
+
+      // Deduct reserved amount from available, add to reserved
       await supabaseClient
-        .from('documents')
-        .update({ status: 'error' })
-        .eq('id', documentId)
+        .from('credit_accounts')
+        .update({
+          available: accountData.available - estimatedCost,
+          reserved: (accountData.reserved || 0) + estimatedCost
+        })
+        .eq('workspace_id', workspaceId)
 
-      return new Response(JSON.stringify({ error: 'Insufficient credits' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 402,
-      })
+      // Write to ledger
+      await supabaseClient
+        .from('credit_ledger')
+        .insert({
+          workspace_id: workspaceId,
+          entry_type: 'reserve',
+          amount: estimatedCost,
+          direction: -1,
+          reservation_id: reservationId,
+          job_id: jobId
+        })
     }
-
-    // Create reservation
-    const { data: reservation, error: reserveError } = await supabaseClient
-      .from('credit_reservations')
-      .insert({
-        workspace_id: workspaceId,
-        job_id: jobId,
-        requested_amount: estimatedCost,
-        reserved_amount: estimatedCost,
-        expires_at: new Date(Date.now() + 1000 * 60 * 60).toISOString(),
-        status: 'pending'
-      })
-      .select('id')
-      .single()
-
-    if (reserveError) throw new Error('Failed to reserve credits: ' + reserveError.message)
-    const reservationId = reservation.id;
-
-    // Deduct reserved amount from available, add to reserved
-    await supabaseClient
-      .from('credit_accounts')
-      .update({
-        available: accountData.available - estimatedCost,
-        reserved: (accountData.reserved || 0) + estimatedCost
-      })
-      .eq('workspace_id', workspaceId)
-
-    // Write to ledger
-    await supabaseClient
-      .from('credit_ledger')
-      .insert({
-        workspace_id: workspaceId,
-        entry_type: 'reserve',
-        amount: estimatedCost,
-        direction: -1,
-        reservation_id: reservationId,
-        job_id: jobId
-      })
 
     // ==========================================
     // 2. PROCESS DOCUMENT
@@ -333,40 +341,59 @@ serve(async (req) => {
     console.log(`Created ${chunks.length} chunks for document ${documentId}`);
 
     // ==========================================
-    // 4. GENERATE EMBEDDINGS
+    // 4. GENERATE EMBEDDINGS  (AI / monetizable layer)
     // ==========================================
+    // Core-vs-AI separation: text extraction above is CORE (free, required by
+    // the reader). Embeddings power AI search/RAG and are best-effort — a
+    // quota/billing failure in this AI layer must NOT block the reading
+    // experience. The document still becomes `ready` and embeddings can be
+    // regenerated later by re-processing.
     const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+    let embeddingFailure: string | null = null
     if (!geminiApiKey) {
-      throw new Error('GEMINI_API_KEY not configured');
+      embeddingFailure = 'GEMINI_API_KEY not configured — AI search disabled for this document.'
+      console.warn(embeddingFailure)
     }
 
     const chunkTexts = chunks.map(c => c.text);
-    const embeddings = await generateEmbeddings(chunkTexts, geminiApiKey);
+    let embeddings: number[][] = []
+    if (geminiApiKey) {
+      try {
+        embeddings = await generateEmbeddings(chunkTexts, geminiApiKey);
+      } catch (embedErr: any) {
+        // e.g. Gemini quota (429). Reading is unaffected; AI features degrade.
+        embeddingFailure = `AI embeddings deferred: ${embedErr?.message || 'unknown error'}`
+        console.warn(embeddingFailure)
+      }
+    }
 
     // ==========================================
     // 5. STORE EMBEDDINGS AND CHUNKS
     // ==========================================
-    const embeddingRows = chunks.map((chunk, i) => ({
-      workspace_id: workspaceId,
-      document_id: documentId,
-      chunk_index: i,
-      chunk_text: chunk.text,
-      chunk_tokens: chunk.tokenCount,
-      embedding: embeddings[i],
-      metadata: {
-        page_numbers: chunk.pageNumbers,
-        // Scalar for hybrid_search's metadata->>'page_number' lookup
-        page_number: chunk.pageNumbers[0] ?? null,
+    if (embeddings.length > 0) {
+      const embeddingRows = chunks.map((chunk, i) => ({
+        workspace_id: workspaceId,
+        document_id: documentId,
+        chunk_index: i,
+        chunk_text: chunk.text,
+        chunk_tokens: chunk.tokenCount,
+        embedding: embeddings[i],
+        metadata: {
+          page_numbers: chunk.pageNumbers,
+          // Scalar for hybrid_search's metadata->>'page_number' lookup
+          page_number: chunk.pageNumbers[0] ?? null,
+        }
+      }));
+
+      const { error: embeddingError } = await supabaseClient
+        .from('document_embeddings')
+        .upsert(embeddingRows, { onConflict: 'document_id,chunk_index' });
+
+      if (embeddingError) {
+        // Same policy: storage of AI artifacts is not core. Degrade gracefully.
+        embeddingFailure = `Failed to store embeddings: ${embeddingError.message}`
+        console.warn(embeddingFailure)
       }
-    }));
-
-    const { error: embeddingError } = await supabaseClient
-      .from('document_embeddings')
-      .upsert(embeddingRows, { onConflict: 'document_id,chunk_index' });
-
-    if (embeddingError) {
-      console.error('Failed to insert embeddings:', embeddingError);
-      throw new Error('Failed to store embeddings: ' + embeddingError.message);
     }
 
     await supabaseClient
@@ -400,12 +427,14 @@ serve(async (req) => {
       throw new Error('Failed to store chunks: ' + chunkError.message);
     }
 
-    // Update document with embedding info
+    // Update document: the reading experience is READY as soon as text
+    // extraction (core) succeeded, regardless of the AI embedding outcome.
     await supabaseClient
       .from('documents')
       .update({
         chunk_count: chunks.length,
-        embedding_status: 'completed',
+        embedding_status: embeddingFailure ? 'failed' : 'completed',
+        embedding_error: embeddingFailure,
         status: 'ready'
       })
       .eq('id', documentId)
@@ -417,61 +446,64 @@ serve(async (req) => {
     // ==========================================
     const actualCost = estimatedCost;
 
-    try {
-      // Settle reservation
-      await supabaseClient
-        .from('credit_reservations')
-        .update({
-          status: 'confirmed',
-          settled_amount: actualCost
-        })
-        .eq('id', reservationId)
-
-      // Ledger consume entry
-      await supabaseClient
-        .from('credit_ledger')
-        .insert({
-          workspace_id: workspaceId,
-          entry_type: 'consume',
-          amount: actualCost,
-          direction: -1,
-          reservation_id: reservationId,
-          job_id: jobId
-        })
-
-      // Update account
-      const { data: finalAccount } = await supabaseClient
-        .from('credit_accounts')
-        .select('reserved, consumed, available')
-        .eq('workspace_id', workspaceId)
-        .single()
-
-      if (finalAccount) {
-        const refundAmount = Math.max(0, estimatedCost - actualCost);
+    // Free (core) jobs never opened a reservation — nothing to settle.
+    if (reservationId) {
+      try {
+        // Settle reservation
         await supabaseClient
-          .from('credit_accounts')
+          .from('credit_reservations')
           .update({
-            reserved: Math.max(0, (finalAccount.reserved || 0) - estimatedCost),
-            consumed: (finalAccount.consumed || 0) + actualCost,
-            available: (finalAccount.available || 0) + refundAmount
+            status: 'confirmed',
+            settled_amount: actualCost
           })
-          .eq('workspace_id', workspaceId)
-      }
+          .eq('id', reservationId)
 
-      // If there was a refund, log it to ledger
-      const refundAmount = Math.max(0, estimatedCost - actualCost);
-      if (refundAmount > 0) {
-        await supabaseClient.from('credit_ledger').insert({
-          workspace_id: workspaceId,
-          entry_type: 'refund',
-          amount: refundAmount,
-          direction: 1,
-          reservation_id: reservationId,
-          job_id: jobId
-        })
+        // Ledger consume entry
+        await supabaseClient
+          .from('credit_ledger')
+          .insert({
+            workspace_id: workspaceId,
+            entry_type: 'consume',
+            amount: actualCost,
+            direction: -1,
+            reservation_id: reservationId,
+            job_id: jobId
+          })
+
+        // Update account
+        const { data: finalAccount } = await supabaseClient
+          .from('credit_accounts')
+          .select('reserved, consumed, available')
+          .eq('workspace_id', workspaceId)
+          .single()
+
+        if (finalAccount) {
+          const refundAmount = Math.max(0, estimatedCost - actualCost);
+          await supabaseClient
+            .from('credit_accounts')
+            .update({
+              reserved: Math.max(0, (finalAccount.reserved || 0) - estimatedCost),
+              consumed: (finalAccount.consumed || 0) + actualCost,
+              available: (finalAccount.available || 0) + refundAmount
+            })
+            .eq('workspace_id', workspaceId)
+        }
+
+        // If there was a refund, log it to ledger
+        const refundAmount = Math.max(0, estimatedCost - actualCost);
+        if (refundAmount > 0) {
+          await supabaseClient.from('credit_ledger').insert({
+            workspace_id: workspaceId,
+            entry_type: 'refund',
+            amount: refundAmount,
+            direction: 1,
+            reservation_id: reservationId,
+            job_id: jobId
+          })
+        }
+      } catch (settleError: any) {
+        console.error('Failed to settle credits:', settleError)
       }
-    } catch (settleError: any) {
-      console.error('Failed to settle credits:', settleError)
     }
 
     // Complete Job
@@ -485,7 +517,7 @@ serve(async (req) => {
       })
       .eq('id', jobId)
 
-    console.log(`Job ${jobId} completed successfully in ${Math.round((Date.now() - startTime) / 1000)}s. Cost: ${actualCost} credits.`)
+    console.log(`Job ${jobId} completed successfully in ${Math.round((Date.now() - startTime) / 1000)}s. Cost: ${actualCost} credits (core processing).`)
 
     return new Response(JSON.stringify({ success: true, jobId, cost: actualCost }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -495,7 +527,8 @@ serve(async (req) => {
   } catch (error: any) {
     console.error('Processing job failed:', error)
 
-    // Attempt to refund reserved credits on failure
+    // Attempt to refund reserved credits on failure.
+    // Free (core) jobs have no reservation; the lookup below safely finds none.
     try {
       if (jobId) {
         const supabaseClient = createClient(
@@ -503,13 +536,13 @@ serve(async (req) => {
           Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
         )
 
-        // Find and update the reservation
+        // Find and update the reservation (may not exist for free jobs)
         const { data: reservation } = await supabaseClient
           .from('credit_reservations')
           .select('id, reserved_amount, workspace_id')
           .eq('job_id', jobId)
           .eq('status', 'pending')
-          .single()
+          .maybeSingle()
 
         if (reservation) {
           // Mark reservation as cancelled/refunded
