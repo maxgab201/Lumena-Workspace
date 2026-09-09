@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { PDFPage } from './PDFPage';
 import { useViewerStore } from '../../stores/viewerStore';
+import { useShallow } from 'zustand/react/shallow';
 
 interface PDFPageListProps {
   containerWidth: number;
@@ -19,7 +20,14 @@ const PAGE_GAP = 16;
  * Prepared for dynamic heights (e.g. rotation) and overlays.
  */
 export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProps) => {
-  const { totalPages, scale, rotation, currentPage, setCurrentPage, fitMode } = useViewerStore();
+  const { totalPages, scale, rotation, currentPage, setCurrentPage, fitMode } = useViewerStore(useShallow(state => ({
+    totalPages: state.totalPages,
+    scale: state.scale,
+    rotation: state.rotation,
+    currentPage: state.currentPage,
+    setCurrentPage: state.setCurrentPage,
+    fitMode: state.fitMode,
+  })));
   const parentRef = useRef<HTMLDivElement>(null);
 
   // Calculate page width: leave padding on sides
@@ -51,7 +59,7 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
     count: totalPages,
     getScrollElement: () => parentRef.current,
     estimateSize: getRowHeight,
-    overscan: 2,
+    overscan: 5,
     // When scale/rotation/fitMode changes, we force a re-measurement
     onChange: (instance: any) => {
       // Find the most visible page and update the store

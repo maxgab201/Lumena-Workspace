@@ -12,7 +12,7 @@ interface UiStore {
   sidebarCollapsed: boolean;
   mobileSidebarOpen: boolean;
   commandPaletteOpen: boolean;
-  activeRightPanel: 'chat' | 'activity' | 'knowledge' | 'none' | null;
+  activeRightPanel: 'chat' | 'activity' | 'knowledge' | 'annotations' | 'none' | null;
   setTheme: (theme: 'light' | 'dark' | 'system') => Promise<void>;
   setLang: (lang: Language) => Promise<void>;
   setViewMode: (mode: 'grid' | 'list') => Promise<void>;
@@ -22,7 +22,7 @@ interface UiStore {
   toggleSidebar: () => void;
   setMobileSidebarOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
-  setActiveRightPanel: (panel: 'chat' | 'activity' | 'knowledge' | 'none' | null) => void;
+  setActiveRightPanel: (panel: 'chat' | 'activity' | 'knowledge' | 'annotations' | 'none' | null) => void;
   loadSettings: () => Promise<void>;
 }
 

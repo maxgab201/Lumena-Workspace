@@ -3,7 +3,7 @@
 > **Where documents become knowledge.**
 
 [![Status](https://img.shields.io/badge/status-planning-blue)]()
-[![Version](https://img.shields.io/badge/version-0.1.0-green)]()
+[![Version](https://img.shields.io/badge/version-0.2.0%20Alpha-green)]()
 [![License](https://img.shields.io/badge/license-TBD-lightgrey)]()
 
 ---
@@ -74,25 +74,16 @@ Maintainability always has higher priority than implementation speed.
 
 ---
 
-# Core Features
+# Core Product Status
 
-Current roadmap includes:
+The current product priority is the reading experience:
 
-✅ Workspaces
+- ✅ Workspaces and document dashboard foundation
+- ✅ PDF upload, processing states, and viewer opening
+- ✅ Text selection, manual highlights, colors, notes, and annotations panel
+- ⏳ Native-text detection, OCR, and AI highlights follow only after user review
 
-✅ PDF Viewer
-
-✅ OCR Pipeline
-
-✅ AI Analysis
-
-✅ Smart Highlights
-
-✅ AI Chat
-
-✅ Credits System
-
-✅ Subscription Plans
+Chat, billing, and knowledge-tool code may exist in the repository, but those areas are not considered product-complete until they are connected, deployed, and manually approved.
 
 Future roadmap:
 
@@ -126,21 +117,17 @@ Future roadmap:
 
 Current Version
 
-0.1.0
+0.2.0 (Alpha)
 
 Status
 
-Planning & Architecture
+Active Development
 
 Current Phase
 
-Documentation
+Core Reading Experience — Checkpoint 2 pending user review
 
-Architecture
-
-Technology Research
-
-No production implementation has started yet.
+The application has an implemented frontend and Supabase backend. Features are accepted block by block only after a working Preview is manually reviewed.
 
 ---
 

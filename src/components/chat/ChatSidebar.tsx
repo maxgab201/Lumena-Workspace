@@ -1,15 +1,37 @@
-import { useEffect, useRef } from 'react';
-import { X, Sparkles, Lock } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { X, Sparkles, Lock, Search, ChevronDown, ChevronUp } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { useChatStore } from '../../stores/chatStore';
 import { useBillingStore } from '../../stores/billingStore';
+import { useViewerStore } from '../../stores/viewerStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
+import { KnowledgeSearch } from './KnowledgeSearch';
 import { useUiStore } from '../../stores/uiStore';
+import { useShallow } from 'zustand/react/shallow';
 import { AVAILABLE_MODELS, PLANS, type PlanType } from '../../types/billing';
 
 export const ChatSidebar = () => {
   const { setActiveRightPanel } = useUiStore();
+  const navigate = useNavigate();
+  const setCurrentPage = useViewerStore(state => state.setCurrentPage);
+  const currentDocumentId = useViewerStore(state => state.documentId);
+
+  const navigateToCitationPage = (pageNumber: number) => {
+    if (pageNumber && pageNumber > 0) {
+      setCurrentPage(pageNumber);
+      setActiveRightPanel(null);
+    }
+  };
+
+  const openCitationDocument = (documentId: string) => {
+    if (documentId !== currentDocumentId) {
+      navigate(`/viewer/${documentId}`);
+    } else {
+      setActiveRightPanel(null);
+    }
+  };
   const {
     isGenerating,
     isLoadingSession,
@@ -17,9 +39,16 @@ export const ChatSidebar = () => {
     setSelectedModel,
     sendMessage,
     getActiveMessages,
-  } = useChatStore();
+  } = useChatStore(useShallow(state => ({
+    isGenerating: state.isGenerating,
+    isLoadingSession: state.isLoadingSession,
+    selectedModel: state.selectedModel,
+    setSelectedModel: state.setSelectedModel,
+    sendMessage: state.sendMessage,
+    getActiveMessages: state.getActiveMessages,
+  })));
 
-  const { subscription } = useBillingStore();
+  const { subscription } = useBillingStore(useShallow(state => ({ subscription: state.subscription })));
   const currentPlan = (subscription?.plan?.code || 'free') as PlanType;
   const planConfig = PLANS[currentPlan] ?? PLANS.free;
 
@@ -43,6 +72,8 @@ export const ChatSidebar = () => {
     if (isLocked) return; // Silently ignore — button is disabled
     setSelectedModel(modelCode);
   };
+
+  const [showSearch, setShowSearch] = useState(false);
 
   return (
     <div
@@ -100,6 +131,36 @@ export const ChatSidebar = () => {
               Upgrade to Pro to unlock advanced models.
             </p>
           )}
+
+          {/* Knowledge Search Toggle */}
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className="flex items-center justify-between text-xs px-3 py-2 rounded-lg border border-white/5 bg-secondary/10 text-muted-foreground hover:text-foreground hover:border-white/10 hover:bg-secondary/20 transition-colors w-full"
+          >
+            <div className="flex items-center gap-2">
+              <Search className="h-3.5 w-3.5" />
+              <span>Search Knowledge</span>
+            </div>
+            {showSearch ? (
+              <ChevronUp className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5" />
+            )}
+          </button>
+
+          {showSearch && (
+            <div className="pt-2 border-t border-white/5">
+              <KnowledgeSearch
+                onSelectResult={(result) => {
+                  if (result.document_id === currentDocumentId && result.page_number) {
+                    setCurrentPage(result.page_number);
+                  } else if (result.document_id) {
+                    navigate(`/viewer/${result.document_id}`);
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -117,7 +178,12 @@ export const ChatSidebar = () => {
         ) : (
           <div className="flex flex-col pb-4">
             {messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} />
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                onNavigateToPage={navigateToCitationPage}
+                onOpenDocument={openCitationDocument}
+              />
             ))}
           </div>
         )}

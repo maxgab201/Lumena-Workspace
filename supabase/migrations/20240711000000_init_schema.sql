@@ -29,6 +29,18 @@ CREATE TABLE public.workspace_members (
   UNIQUE(workspace_id, user_id)
 );
 
+-- Helper function for RLS policies (avoids infinite recursion on workspace_members)
+-- Migration 007 will CREATE OR REPLACE this with the same definition.
+CREATE OR REPLACE FUNCTION public.get_user_workspace_ids()
+RETURNS SETOF UUID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT workspace_id FROM workspace_members WHERE user_id = auth.uid();
+$$;
+
 -- Enable Row Level Security
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.workspaces ENABLE ROW LEVEL SECURITY;

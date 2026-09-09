@@ -2,6 +2,15 @@ import { create } from 'zustand';
 import type { ViewerFitMode } from '../types';
 import { usePageRegistryStore } from './pageRegistryStore';
 
+interface SearchMatch {
+  pageIndex: number;
+  matches: Array<{
+    text: string;
+    rect: { x: number; y: number; width: number; height: number };
+    pageNumber: number;
+  }>;
+}
+
 interface ViewerStoreState {
   documentId: string | null;
   totalPages: number;
@@ -11,6 +20,14 @@ interface ViewerStoreState {
   rotation: 0 | 90 | 180 | 270;
   isLoading: boolean;
   showOverlays: boolean;
+  selectedText: string;
+  selectedTextPageIndex: number;
+  selectionRects: Array<{ x: number; y: number; width: number; height: number }>;
+  // Search state
+  searchQuery: string;
+  searchResults: SearchMatch[];
+  currentMatchIndex: number;
+  isSearchActive: boolean;
 
   // Actions
   setDocumentId: (id: string | null) => void;
@@ -29,6 +46,16 @@ interface ViewerStoreState {
   initializeDocument: (totalPages: number) => void;
   setLoading: (loading: boolean) => void;
   reset: () => void;
+  setSelectedText: (text: string, pageIndex: number) => void;
+  setSelectionRects: (rects: Array<{ x: number; y: number; width: number; height: number }>) => void;
+  clearSelection: () => void;
+  // Search actions
+  setSearchQuery: (query: string) => void;
+  setSearchResults: (results: SearchMatch[]) => void;
+  setCurrentMatchIndex: (index: number) => void;
+  setIsSearchActive: (active: boolean) => void;
+  clearSearch: () => void;
+  goToMatch: (match: SearchMatch['matches'][0]) => void;
 }
 
 const ZOOM_STEP = 0.25;
@@ -44,6 +71,14 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
   rotation: 0,
   isLoading: true,
   showOverlays: true,
+  selectedText: '',
+  selectedTextPageIndex: -1,
+  selectionRects: [],
+  // Search state
+  searchQuery: '',
+  searchResults: [],
+  currentMatchIndex: 0,
+  isSearchActive: false,
 
   setDocumentId: (id) => set({ documentId: id }),
   setTotalPages: (total) => set({ totalPages: total }),
@@ -104,6 +139,26 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
       fitMode: 'fit-width',
       rotation: 0,
       isLoading: true,
+      selectedText: '',
+      selectedTextPageIndex: -1,
+      selectionRects: [],
     });
-  }
+  },
+
+  setSelectedText: (text, pageIndex) => set({ selectedText: text, selectedTextPageIndex: pageIndex }),
+
+  setSelectionRects: (rects) => set({ selectionRects: rects }),
+
+  clearSelection: () => set({ selectedText: '', selectedTextPageIndex: -1, selectionRects: [] }),
+  // Search actions
+  setSearchQuery: (query: string) => set({ searchQuery: query }),
+  setSearchResults: (results) => set({ searchResults: results }),
+  setCurrentMatchIndex: (index: number) => set({ currentMatchIndex: index }),
+  setIsSearchActive: (active: boolean) => set({ isSearchActive: active }),
+  clearSearch: () => set({ searchQuery: '', searchResults: [], currentMatchIndex: 0, isSearchActive: false }),
+  goToMatch: (match) => {
+    const { setCurrentPage } = get();
+    setCurrentPage(match.pageNumber);
+    // Scroll to match will be handled by the component
+  },
 }));

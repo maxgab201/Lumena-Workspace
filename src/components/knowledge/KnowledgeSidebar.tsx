@@ -3,7 +3,8 @@ import { FlashcardsView } from './FlashcardsView';
 import { GlossaryView } from './GlossaryView';
 import { MindMapView } from './MindMapView';
 import { TimelineView } from './TimelineView';
-import { Brain, BookOpen, Network, Clock, X } from 'lucide-react';
+import { PresentationView } from './PresentationView';
+import { Brain, BookOpen, Network, Clock, FileText, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/utils';
 
@@ -13,7 +14,7 @@ interface KnowledgeSidebarProps {
   onClose: () => void;
 }
 
-type TabId = 'flashcards' | 'glossary' | 'mindmap' | 'timeline';
+type TabId = 'flashcards' | 'glossary' | 'mindmap' | 'timeline' | 'presentation';
 
 export const KnowledgeSidebar = ({ documentId, workspaceId, onClose }: KnowledgeSidebarProps) => {
   const [activeTab, setActiveTab] = useState<TabId>('flashcards');
@@ -23,6 +24,7 @@ export const KnowledgeSidebar = ({ documentId, workspaceId, onClose }: Knowledge
     { id: 'glossary', label: 'Glossary', icon: BookOpen },
     { id: 'mindmap', label: 'Mind Map', icon: Network },
     { id: 'timeline', label: 'Timeline', icon: Clock },
+    { id: 'presentation', label: 'Presentation', icon: FileText },
   ] as const;
 
   return (
@@ -44,8 +46,8 @@ export const KnowledgeSidebar = ({ documentId, workspaceId, onClose }: Knowledge
               onClick={() => setActiveTab(tab.id)}
               className={cn(
                 "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                isActive 
-                  ? "bg-accent/20 text-accent" 
+                isActive
+                  ? "bg-accent/20 text-accent"
                   : "text-muted-foreground hover:bg-white/5 hover:text-foreground"
               )}
               data-testid={`tab-${tab.id}`}
@@ -62,6 +64,7 @@ export const KnowledgeSidebar = ({ documentId, workspaceId, onClose }: Knowledge
         {activeTab === 'glossary' && <GlossaryView documentId={documentId} workspaceId={workspaceId} />}
         {activeTab === 'mindmap' && <MindMapView documentId={documentId} workspaceId={workspaceId} />}
         {activeTab === 'timeline' && <TimelineView documentId={documentId} workspaceId={workspaceId} />}
+        {activeTab === 'presentation' && <PresentationView documentId={documentId} workspaceId={workspaceId} />}
       </div>
     </div>
   );

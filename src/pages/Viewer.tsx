@@ -54,8 +54,30 @@ export const Viewer = () => {
       const doc = await DocumentRepository.getDocument(documentId) as DocumentMeta;
       setDocument(doc);
 
+      // Reconcile status with processing jobs if not yet marked ready
+      if (doc.status !== 'ready') {
+        const jobs = await DocumentRepository.listProcessingJobs(doc.workspace_id).catch(() => []);
+        const activeJob = jobs.find(j => j.document_id === documentId);
+        if (activeJob && activeJob.status === 'completed') {
+          doc.status = 'ready';
+          await DocumentRepository.updateDocumentStatus(documentId, 'ready').catch(() => undefined);
+          setDocument({ ...doc, status: 'ready' });
+        } else if (doc.status === 'error' || activeJob?.status === 'failed') {
+          throw new Error(
+            activeJob?.error_message || 'Document processing failed. Return to Documents to retry it.'
+          );
+        } else {
+          throw new Error(
+            'This document is still being processed. It will open automatically when ready.'
+          );
+        }
+      }
+
       // 2. Get a signed URL for the PDF file (valid for 1 hour)
-      const signedUrl = await DocumentRepository.getSignedUrl(doc.file_path);
+      const signedUrl = await DocumentRepository.getSignedUrl(doc.file_path, 3600);
+      if (!signedUrl) {
+        throw new Error('Unable to generate secure access URL for this file.');
+      }
       setFileUrl(signedUrl);
 
       // 3. Load all per-document data in parallel (non-blocking)
@@ -66,7 +88,7 @@ export const Viewer = () => {
         loadKnowledge(documentId),
       ]).catch((err) => {
         // These are non-fatal — the PDF still renders
-        console.warn('[Viewer] Failed to load some document data:', err);
+        console.warn('[Viewer] Failed to load secondary document data:', err);
       });
     } catch (err: any) {
       console.error('[Viewer] Failed to load document:', err);
@@ -111,9 +133,9 @@ export const Viewer = () => {
           <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/20">
             <AlertCircle className="w-10 h-10 text-red-400" />
           </div>
-          <h2 className="text-2xl font-heading font-bold mb-3">Document Not Found</h2>
+          <h2 className="text-2xl font-heading font-bold mb-3">Unable to open document</h2>
           <p className="text-sm text-muted-foreground mb-8 leading-relaxed max-w-[280px] mx-auto">
-            {error}. The file might have been deleted or you don&apos;t have access to it.
+            {error}
           </p>
           <Button
             variant="secondary"
@@ -197,7 +219,7 @@ export const Viewer = () => {
 
       {/* Main Viewer Area */}
       <div className="flex flex-1 min-h-0 overflow-hidden relative">
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 h-full w-full">
           <PDFViewer
             fileUrl={fileUrl}
             filename={document?.name}

@@ -8,6 +8,7 @@ export default defineConfig({
   timeout: 60000,
   testDir: './tests',
   testMatch: /.*\.spec\.ts/,
+  testIgnore: ['**/unit/**'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -19,16 +20,14 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'brave',
+      name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        channel: 'chrome',
-        executablePath: process.env.BRAVE_PATH || 'C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe',
       },
-    }
+    },
   ],
   webServer: {
-    command: 'pnpm dev',
+    command: 'npm run dev',
     url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
   },

@@ -1,13 +1,15 @@
+import React from 'react';
 import { usePageRegistryStore } from '../../../stores/pageRegistryStore';
 import { useViewerStore } from '../../../stores/viewerStore';
+import { useShallow } from 'zustand/react/shallow';
 
 interface OCROverlayProps {
   pageIndex: number;
 }
 
-export const OCROverlay = ({ pageIndex }: OCROverlayProps) => {
-  const page = usePageRegistryStore((state) => state.pages[pageIndex]);
-  const showOverlays = useViewerStore((state) => state.showOverlays);
+export const OCROverlay = React.memo(({ pageIndex }: OCROverlayProps) => {
+  const page = usePageRegistryStore(useShallow(state => state.pages[pageIndex]));
+  const showOverlays = useViewerStore(useShallow(state => state.showOverlays));
 
   // We only render this overlay if we want to debug the OCR blocks visually.
   // The actual selectable text is rendered by react-pdf TextLayer.
@@ -41,4 +43,4 @@ export const OCROverlay = ({ pageIndex }: OCROverlayProps) => {
       })}
     </div>
   );
-};
+});

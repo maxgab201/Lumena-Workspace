@@ -56,7 +56,11 @@ export const useBillingStore = create<BillingStore>((set) => ({
   error: null,
 
   fetchBillingData: async () => {
-    const workspace = useWorkspaceStore.getState().activeWorkspace;
+    let workspace = useWorkspaceStore.getState().activeWorkspace;
+    if (!workspace) {
+      await useWorkspaceStore.getState().fetchWorkspaces();
+      workspace = useWorkspaceStore.getState().activeWorkspace;
+    }
     if (!workspace) {
       set({ subscription: null, account: null, transactions: [], packages: [], loading: false, error: 'No workspace selected' });
       return;

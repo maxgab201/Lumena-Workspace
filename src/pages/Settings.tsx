@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { cn } from '../lib/utils';
 import { PageContainer } from '../components/ui/PageContainer';
@@ -6,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../co
 import { Button } from '../components/ui/Button';
 import { useUiStore } from '../stores/uiStore';
 import { useUserStore } from '../stores/userStore';
+import { APP_CONFIG } from '../config/constants';
 import { toast } from 'sonner';
 import {
   User,
@@ -17,8 +17,8 @@ import {
   Info,
   Camera,
   Check,
-  Shield,
-  HelpCircle
+  HelpCircle,
+  FileText,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { t } from '../i18n';
@@ -226,8 +226,8 @@ export const Settings = () => {
                           { label: "Previous Page", keys: ["←"] },
                           { label: "Zoom In", keys: ["⌘", "+"] },
                           { label: "Zoom Out", keys: ["⌘", "-"] },
-                          { label: "Highlight Text selection", keys: ["H"] },
-                          { label: "Ask AI about selection", keys: ["Shift", "A"] },
+                          { label: "Rotate Clockwise", keys: ["R"] },
+                          { label: "Toggle AI Chat panel", keys: ["C"] },
                         ]}
                       ].map((grp, i) => (
                         <div key={i} className="space-y-2">
@@ -261,26 +261,27 @@ export const Settings = () => {
                     <div className="flex flex-col items-center text-center p-6 bg-secondary/10 rounded-2xl border border-white/5 gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-accent to-accent/60 text-white font-bold flex items-center justify-center shadow-lg shadow-accent/15 text-lg">L</div>
                       <div>
-                        <h4 className="font-heading font-semibold text-lg">Lumena Workspace</h4>
-                        <p className="text-xs text-muted-foreground">Version 1.0.0-rc2 (Phase 11 Release)</p>
+                        <h4 className="font-heading font-semibold text-lg">{APP_CONFIG.name}</h4>
+                        <p className="text-xs text-muted-foreground">Version {APP_CONFIG.version}</p>
+                      </div>
+                      <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">
+                        {APP_CONFIG.description}
+                      </p>
+                    </div>
+                    <div className="space-y-3 text-xs text-muted-foreground font-medium">
+                      <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
+                        <span className="flex items-center gap-2 text-foreground">
+                          <FileText size={14} className="text-accent" /> Terms & Privacy
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <a href="/legal#terms" className="text-accent hover:underline">Terms of Service</a>
+                          <span>•</span>
+                          <a href="/legal#privacy" className="text-accent hover:underline">Privacy Policy</a>
+                        </div>
                       </div>
                     </div>
-                    <div className="space-y-3.5 text-xs text-muted-foreground font-medium">
-                      <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                        <span>{t('settings.databaseStatus')}</span>
-                        <span className="text-emerald-500 font-semibold flex items-center gap-1.5"><Shield size={12} /> {t('settings.connected')}</span>
-                      </div>
-                      <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                        <span>{t('settings.aiEngine')}</span>
-                        <span className="text-accent font-semibold flex items-center gap-1.5"><Check size={12} /> {t('settings.premiumActive')}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>{t('settings.licensing')}</span>
-                        <span>{t('settings.commercialProprietary')}</span>
-                      </div>
-                    </div>
-                    <div className="pt-4 border-t border-white/5 flex justify-center">
-                      <a href="#" className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                    <div className="pt-2 flex justify-center">
+                      <a href={`mailto:${APP_CONFIG.supportEmail}`} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors">
                         <HelpCircle size={14} /> {t('settings.contactSupport')}
                       </a>
                     </div>

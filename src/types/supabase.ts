@@ -374,6 +374,8 @@ export type Database = {
           status: Database["public"]["Enums"]["document_status"]
           updated_at: string
           workspace_id: string
+          thumbnail_path: string | null
+          thumbnail_generated_at: string | null
         }
         Insert: {
           created_at?: string
@@ -387,6 +389,8 @@ export type Database = {
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
           workspace_id: string
+          thumbnail_path?: string | null
+          thumbnail_generated_at?: string | null
         }
         Update: {
           created_at?: string
@@ -400,6 +404,8 @@ export type Database = {
           status?: Database["public"]["Enums"]["document_status"]
           updated_at?: string
           workspace_id?: string
+          thumbnail_path?: string | null
+          thumbnail_generated_at?: string | null
         }
         Relationships: [
           {
@@ -421,6 +427,12 @@ export type Database = {
           page_number: number | null
           updated_at: string
           workspace_id: string
+          ease_factor: number
+          repetitions: number
+          interval_days: number
+          next_review_at: string | null
+          last_reviewed_at: string | null
+          last_grade: number | null
         }
         Insert: {
           back: string
@@ -431,6 +443,12 @@ export type Database = {
           page_number?: number | null
           updated_at?: string
           workspace_id: string
+          ease_factor?: number
+          repetitions?: number
+          interval_days?: number
+          next_review_at?: string | null
+          last_reviewed_at?: string | null
+          last_grade?: number | null
         }
         Update: {
           back?: string
@@ -441,6 +459,12 @@ export type Database = {
           page_number?: number | null
           updated_at?: string
           workspace_id?: string
+          ease_factor?: number
+          repetitions?: number
+          interval_days?: number
+          next_review_at?: string | null
+          last_reviewed_at?: string | null
+          last_grade?: number | null
         }
         Relationships: [
           {
@@ -1227,6 +1251,51 @@ export type Database = {
           },
           {
             foreignKeyName: "timeline_events_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      presentations: {
+        Row: {
+          id: string
+          document_id: string
+          workspace_id: string
+          title: string
+          slides: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          document_id: string
+          workspace_id: string
+          title: string
+          slides: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          document_id?: string
+          workspace_id?: string
+          title?: string
+          slides?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentations_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentations_workspace_id_fkey"
             columns: ["workspace_id"]
             isOneToOne: false
             referencedRelation: "workspaces"

@@ -1,13 +1,15 @@
+import React from 'react';
 import { usePageRegistryStore } from '../../../stores/pageRegistryStore';
 import { useViewerStore } from '../../../stores/viewerStore';
+import { useShallow } from 'zustand/react/shallow';
 
 interface LayoutOverlayProps {
   pageIndex: number;
 }
 
-export const LayoutOverlay = ({ pageIndex }: LayoutOverlayProps) => {
-  const page = usePageRegistryStore((state) => state.pages[pageIndex]);
-  const showOverlays = useViewerStore((state) => state.showOverlays);
+export const LayoutOverlay = React.memo(({ pageIndex }: LayoutOverlayProps) => {
+  const page = usePageRegistryStore(useShallow(state => state.pages[pageIndex]));
+  const showOverlays = useViewerStore(useShallow(state => state.showOverlays));
 
   if (!showOverlays || !page || page.layoutStatus !== 'completed' || !page.layoutData?.data) {
     return null;
@@ -52,4 +54,4 @@ export const LayoutOverlay = ({ pageIndex }: LayoutOverlayProps) => {
       })}
     </div>
   );
-};
+}, (prev, next) => prev.pageIndex === next.pageIndex);

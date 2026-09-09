@@ -7,46 +7,69 @@ test.describe('Document Processing Engine Performance', () => {
   test.describe.configure({ mode: 'serial' });
 
   test.beforeEach(async ({ page }) => {
+    let processingJobCreated = false;
+    let mockDocument: Record<string, unknown> | null = null;
     // Mock Documents API
     await page.route('**/rest/v1/documents?*', async route => {
       if (route.request().method() === 'POST') {
-        route.fulfill({ 
-          status: 201, 
-          contentType: 'application/json', 
-          body: JSON.stringify({ id: 'mock-doc-id', name: 'uploaded.pdf', status: 'ready', created_at: new Date().toISOString(), size_bytes: 1024, file_path: 'ws-1/test.pdf' }) 
+        mockDocument = {
+          id: 'mock-doc-id',
+          workspace_id: 'ws-1',
+          name: 'uploaded.pdf',
+          status: 'ready',
+          created_at: new Date().toISOString(),
+          size_bytes: 1024,
+          file_path: 'ws-1/test.pdf',
+          mime_type: 'application/pdf',
+        };
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify(mockDocument)
         });
       } else if (route.request().method() === 'GET') {
-        route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(mockDocument ? [mockDocument] : []),
+        });
       } else {
-        route.continue();
+        await route.continue();
       }
     });
 
     // Mock processing jobs
     await page.route('**/rest/v1/processing_jobs*', async route => {
       if (route.request().method() === 'POST') {
-        route.fulfill({ 
-          status: 201, 
-          contentType: 'application/json', 
-          body: JSON.stringify([{ id: 'mock-job-id', document_id: 'mock-doc-id', status: 'queued', progress: 0 }]) 
+        processingJobCreated = true;
+        await route.fulfill({
+          status: 201,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: 'mock-job-id', document_id: 'mock-doc-id', status: 'completed', progress: 100 })
         });
       } else if (route.request().method() === 'PATCH') {
-        route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+        await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       } else {
-        route.continue();
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(processingJobCreated
+            ? [{ id: 'mock-job-id', document_id: 'mock-doc-id', status: 'completed', progress: 100 }]
+            : []),
+        });
       }
     });
 
     // Mock Upload Storage
-    await page.route('**/storage/v1/object/workspace_documents**', route => {
-      route.fulfill({ status: 200, body: JSON.stringify({ Key: 'workspace_documents/test.pdf' }) });
+    await page.route('**/storage/v1/object/workspace_documents**', async route => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ Key: 'workspace_documents/test.pdf' }) });
     });
 
     // Mock the storage signed URL
     await page.context().route('**/storage/v1/object/sign/**', async (route) => {
-      route.fulfill({
+      await route.fulfill({
         status: 200,
-        json: { 
+        json: {
           signedUrl: '/mock.pdf',
           signedURL: '/mock.pdf'
         }
@@ -54,8 +77,8 @@ test.describe('Document Processing Engine Performance', () => {
     });
 
     // Mock the actual PDF download (using context.route so Web Worker requests are intercepted)
-    await page.context().route('**/storage/v1/mock.pdf', route => {
-      route.fulfill({
+    await page.context().route('**/storage/v1/mock.pdf', async route => {
+      await route.fulfill({
         status: 200,
         contentType: 'application/pdf',
         body: fs.readFileSync(path.resolve(process.cwd(), 'tests', 'fixtures', 'small-native.pdf'))
@@ -86,9 +109,8 @@ test.describe('Document Processing Engine Performance', () => {
     // The mocked upload returns name: 'uploaded.pdf'
     await expect(page.locator(`text=uploaded.pdf`).first()).toBeVisible({ timeout: 15000 });
     
-    // Wait for it to hit Completed state
-    // The status badge says "completed"
-    await expect(page.locator('text=completed').first()).toBeVisible({ timeout: timeoutMs });
+    // The client marks the document ready after the processing job settles.
+    await expect(page.getByTestId('document-status-mock-doc-id')).toHaveText('Ready', { timeout: timeoutMs });
     
     const endTime = Date.now();
     const duration = endTime - startTime;
@@ -115,4 +137,3 @@ test.describe('Document Processing Engine Performance', () => {
     expect(duration).toBeLessThan(900000);
   });
 });
-
