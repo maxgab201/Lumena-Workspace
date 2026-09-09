@@ -14,6 +14,9 @@ const PALETTE = [
   { name: 'Púrpura', color: '#e9d5ff' },
 ];
 
+// Stable empty-array reference keeps the store selector referentially stable.
+const EMPTY_HIGHLIGHTS: Highlight[] = [];
+
 interface AnnotationsSidebarProps {
   documentId: string;
   workspaceId: string;
@@ -22,16 +25,19 @@ interface AnnotationsSidebarProps {
 
 export const AnnotationsSidebar = ({ documentId, onClose }: AnnotationsSidebarProps) => {
   const {
-    getHighlightsForDocument,
     activeHighlightId,
     setActiveHighlight,
     updateHighlight,
     removeHighlight,
   } = useHighlightStore();
 
-  const { setCurrentPage } = useViewerStore();
+  // Subscribe to the COLLECTION so the list updates immediately on
+  // create/update/delete — opening/closing the panel must not be required.
+  const highlights = useHighlightStore(
+    (state) => state.highlights[documentId] ?? EMPTY_HIGHLIGHTS
+  );
 
-  const highlights = getHighlightsForDocument(documentId);
+  const { setCurrentPage } = useViewerStore();
 
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState('');

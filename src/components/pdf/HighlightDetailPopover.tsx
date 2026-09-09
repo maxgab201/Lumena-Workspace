@@ -18,10 +18,18 @@ export const HighlightDetailPopover = () => {
     setActiveHighlight,
     updateHighlight,
     removeHighlight,
-    getActiveHighlight,
   } = useHighlightStore();
 
-  const activeHighlight = getActiveHighlight();
+  // Subscribe to the COLLECTION and derive the active highlight reactively,
+  // so color/note changes show up immediately (no panel open/close needed).
+  const activeHighlight = useHighlightStore((state) => {
+    if (!activeHighlightId) return null;
+    for (const docId in state.highlights) {
+      const found = state.highlights[docId]?.find((h) => h.id === activeHighlightId);
+      if (found) return found;
+    }
+    return null;
+  });
   const activeHighlightIdValue = activeHighlight?.id;
   const activeHighlightNote = activeHighlight?.note;
   const popoverRef = useRef<HTMLDivElement>(null);

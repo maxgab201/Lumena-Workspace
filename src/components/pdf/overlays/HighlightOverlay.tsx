@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { useHighlightStore } from '../../../stores/highlightStore';
 import { useViewerStore } from '../../../stores/viewerStore';
+import { HighlightEngine } from '../../../lib/processing/HighlightEngine';
 import { cn } from '../../../lib/utils';
 import { useShallow } from 'zustand/react/shallow';
 import React from 'react';
@@ -9,25 +11,34 @@ interface HighlightOverlayProps {
 }
 
 export const HighlightOverlay = ({ pageIndex }: HighlightOverlayProps) => {
-  const { documentId, showOverlays } = useViewerStore(useShallow(state => ({
+  const { documentId, showOverlays, rotation } = useViewerStore(useShallow(state => ({
     documentId: state.documentId,
     showOverlays: state.showOverlays,
+    rotation: state.rotation,
   })));
-  const {
-    getHighlightsForPage,
-    activeHighlightId,
-    setActiveHighlight,
-  } = useHighlightStore(useShallow(state => ({
-    getHighlightsForPage: state.getHighlightsForPage,
+  const { activeHighlightId, setActiveHighlight } = useHighlightStore(useShallow(state => ({
     activeHighlightId: state.activeHighlightId,
     setActiveHighlight: state.setActiveHighlight,
   })));
 
-  if (!documentId || !showOverlays) return null;
+  // Subscribe to the highlight COLLECTION (not to the selector action) so the
+  // overlay re-renders immediately when a highlight is added/updated/removed.
+  const docHighlights = useHighlightStore(
+    (state) => (documentId ? state.highlights[documentId] : undefined)
+  );
 
-  const highlights = getHighlightsForPage(documentId, pageIndex);
+  // Reactive derivation from the subscribed collection.
+  const highlights = useMemo(
+    () => (docHighlights ?? []).filter((h) => h.page_index === pageIndex),
+    [docHighlights, pageIndex]
+  );
+
+  if (!documentId || !showOverlays) return null;
   if (highlights.length === 0) return null;
 
+  // Canonical (unrotated, normalized) rects are transformed to the CURRENT
+  // rotation at render time. Zoom needs no transform here: the overlay is a
+  // child of the page wrapper, so percentages scale with it automatically.
   return (
     <div
       className="absolute inset-0 pointer-events-none"
@@ -37,6 +48,7 @@ export const HighlightOverlay = ({ pageIndex }: HighlightOverlayProps) => {
       {highlights.map((highlight) => {
         const isActive = activeHighlightId === highlight.id;
         const hasNote = Boolean(highlight.note && highlight.note.trim().length > 0);
+        const renderedRects = HighlightEngine.canonicalRectsToRendered(highlight.rects, rotation);
 
         return (
           <div
@@ -44,7 +56,7 @@ export const HighlightOverlay = ({ pageIndex }: HighlightOverlayProps) => {
             className="absolute inset-0 pointer-events-none"
             data-highlight-id={highlight.id}
           >
-            {highlight.rects.map((rect, i) => (
+            {renderedRects.map((rect, i) => (
               <div
                 key={`${highlight.id}-rect-${i}`}
                 data-highlight-rect="true"
