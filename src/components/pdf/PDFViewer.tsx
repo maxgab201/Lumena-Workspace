@@ -6,6 +6,7 @@ import { PDFToolbar } from './PDFToolbar';
 import { PDFPageList } from './PDFPageList';
 import { HighlightEditor } from './HighlightEditor';
 import { AnnotationsSidebar } from './AnnotationsSidebar';
+import { AiHighlightPanel } from './AiHighlightPanel';
 import { ChatSidebar } from '../chat/ChatSidebar';
 import { KnowledgeSidebar } from '../knowledge/KnowledgeSidebar';
 import { StudyModeOverlay } from '../knowledge/StudyModeOverlay';
@@ -38,7 +39,7 @@ interface PDFViewerProps {
  * Loads a PDF, initializes the page model, and renders the virtualized page list.
  */
 export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId }: PDFViewerProps) => {
-  const { initializeDocument, setLoading, totalPages, isLoading, zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale } = useViewerStore(useShallow(state => ({
+  const { initializeDocument, setLoading, totalPages, isLoading, zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale, currentPage } = useViewerStore(useShallow(state => ({
     initializeDocument: state.initializeDocument,
     setLoading: state.setLoading,
     totalPages: state.totalPages,
@@ -52,6 +53,7 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
     goToLastPage: state.goToLastPage,
     setFitMode: state.setFitMode,
     setScale: state.setScale,
+    currentPage: state.currentPage,
   })));
   const { activeRightPanel, setActiveRightPanel } = useUiStore(useShallow(state => ({
     activeRightPanel: state.activeRightPanel,
@@ -170,6 +172,13 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
             setActiveRightPanel(activeRightPanel === 'chat' ? 'none' : 'chat');
           }
           break;
+        case 'i':
+        case 'I':
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            setActiveRightPanel(activeRightPanel === 'ai' ? 'none' : 'ai');
+          }
+          break;
         case 'PageDown':
           e.preventDefault();
           goToNextPage();
@@ -255,6 +264,15 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
           <AnnotationsSidebar
             documentId={documentId ?? fileUrl}
             workspaceId={workspaceId ?? ''}
+            onClose={() => setActiveRightPanel('none')}
+          />
+        )}
+        {activeRightPanel === 'ai' && (
+          <AiHighlightPanel
+            documentId={documentId ?? ''}
+            workspaceId={workspaceId ?? ''}
+            fileUrl={fileUrl}
+            currentPage={currentPage}
             onClose={() => setActiveRightPanel('none')}
           />
         )}

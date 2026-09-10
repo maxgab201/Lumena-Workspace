@@ -361,6 +361,63 @@ export type Database = {
           },
         ]
       }
+      document_page_segments: {
+        Row: {
+          id: string
+          document_id: string
+          workspace_id: string
+          page_number: number
+          segment_key: string
+          text: string
+          rects: Json
+          origin: string
+          confidence: number | null
+          sequence: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          document_id: string
+          workspace_id: string
+          page_number: number
+          segment_key: string
+          text: string
+          rects?: Json
+          origin?: string
+          confidence?: number | null
+          sequence?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          document_id?: string
+          workspace_id?: string
+          page_number?: number
+          segment_key?: string
+          text?: string
+          rects?: Json
+          origin?: string
+          confidence?: number | null
+          sequence?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_page_segments_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_page_segments_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           created_at: string
@@ -376,6 +433,13 @@ export type Database = {
           workspace_id: string
           thumbnail_path: string | null
           thumbnail_generated_at: string | null
+          extracted_text: string | null
+          text_extracted_at: string | null
+          chunk_count: number | null
+          ocr_status: string | null
+          embedding_status: string | null
+          embedding_error: string | null
+          ai_status: string | null
         }
         Insert: {
           created_at?: string
@@ -391,6 +455,13 @@ export type Database = {
           workspace_id: string
           thumbnail_path?: string | null
           thumbnail_generated_at?: string | null
+          extracted_text?: string | null
+          text_extracted_at?: string | null
+          chunk_count?: number | null
+          ocr_status?: string | null
+          embedding_status?: string | null
+          embedding_error?: string | null
+          ai_status?: string | null
         }
         Update: {
           created_at?: string
@@ -406,6 +477,13 @@ export type Database = {
           workspace_id?: string
           thumbnail_path?: string | null
           thumbnail_generated_at?: string | null
+          extracted_text?: string | null
+          text_extracted_at?: string | null
+          chunk_count?: number | null
+          ocr_status?: string | null
+          embedding_status?: string | null
+          embedding_error?: string | null
+          ai_status?: string | null
         }
         Relationships: [
           {
@@ -576,6 +654,8 @@ export type Database = {
           text: string
           updated_at: string
           workspace_id: string
+          source: string
+          ai_metadata: Json | null
         }
         Insert: {
           category_id?: string | null
@@ -589,6 +669,8 @@ export type Database = {
           text?: string
           updated_at?: string
           workspace_id: string
+          source?: string
+          ai_metadata?: Json | null
         }
         Update: {
           category_id?: string | null
@@ -602,6 +684,8 @@ export type Database = {
           text?: string
           updated_at?: string
           workspace_id?: string
+          source?: string
+          ai_metadata?: Json | null
         }
         Relationships: [
           {

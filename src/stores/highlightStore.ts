@@ -23,6 +23,8 @@ interface HighlightStoreState {
     color: string;
     category_id?: string;
     note?: string;
+    source?: 'manual' | 'ai';
+    ai_metadata?: Highlight['ai_metadata'];
   }) => Promise<Highlight | null>;
 
   updateHighlight: (
@@ -71,7 +73,11 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
 
   addHighlight: async (highlightData) => {
     try {
-      const created = await HighlightRepository.createHighlight(highlightData);
+      // Default provenance to 'manual' — AI highlights pass source='ai'.
+      const created = await HighlightRepository.createHighlight({
+        ...highlightData,
+        source: highlightData.source ?? 'manual',
+      });
       set((state) => {
         const existing = state.highlights[highlightData.document_id] ?? [];
         return {

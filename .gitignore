@@ -29,6 +29,7 @@ coverage/
 artifacts/
 playwright-report/
 test-results/
+.playwright-mcp/
 e2e-results.json
 .env*
 .vercel
