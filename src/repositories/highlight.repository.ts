@@ -45,6 +45,8 @@ export const HighlightRepository = {
       color: highlight.color || "#fef08a",
       category_id: highlight.category_id && highlight.category_id.trim().length > 0 ? highlight.category_id : null,
       note: highlight.note && highlight.note.trim().length > 0 ? highlight.note.trim() : null,
+      source: highlight.source ?? "manual",
+      ai_metadata: highlight.ai_metadata ?? null,
     };
 
     const { data, error } = await supabase

@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Brain,
   Highlighter,
+  Sparkles,
 } from 'lucide-react';
 import { useUiStore } from '../../stores/uiStore';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/Tooltip';
@@ -212,6 +213,23 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
           </Tooltip>
 
           <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
+
+          {/* AI Highlighting panel trigger */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={activeRightPanel === 'ai' ? "secondary" : "ghost"}
+                size="icon"
+                onClick={() => setActiveRightPanel(activeRightPanel === 'ai' ? 'none' : 'ai')}
+                aria-label="Subrayar con IA"
+                className="h-8 w-8"
+                data-testid="toggle-ai-highlight-btn"
+              >
+                <Sparkles className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent><p className="flex items-center gap-2">Subrayar con IA <kbd className="bg-white/10 px-1 rounded">I</kbd></p></TooltipContent>
+          </Tooltip>
 
           {/* Annotations & Notes panel trigger */}
           <Tooltip>

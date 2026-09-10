@@ -308,15 +308,47 @@ serve(async (req) => {
 
     const scannedPages = pages.filter(isScannedPage).length
     if (scannedPages > 0) {
-      console.warn(`${scannedPages}/${pages.length} pages appear to be scanned (no text layer). OCR support required for full coverage.`)
+      console.warn(`${scannedPages}/${pages.length} pages appear to be scanned (no text layer). Client-side OCR covers these pages.`)
     }
 
     const extractedText = pages
       .map((pageText, idx) => `---PAGE ${idx + 1}---\n${pageText}`)
       .join('\n\n')
 
-    if (extractedText.replace(/\s+/g, '').length < 32) {
-      throw new Error('No extractable text found in PDF. The document appears to be fully scanned; OCR processing is required.')
+    // Core-vs-AI separation: a scanned PDF is still CORE-readable (the viewer
+    // renders it fine). Its text arrives later via client-side OCR, so missing
+    // native text must NOT fail the job. Only skip the AI (embeddings) layer.
+    const hasNoNativeText = extractedText.replace(/\s+/g, '').length < 32
+    if (hasNoNativeText) {
+      console.warn('No extractable text — scanned document. Completing core processing; OCR text will come from the client.')
+
+      await supabaseClient
+        .from('documents')
+        .update({
+          extracted_text: '',
+          text_extracted_at: new Date().toISOString(),
+          ocr_status: 'pending',
+          embedding_status: 'pending',
+          embedding_error: 'Awaiting client-side OCR for scanned pages.',
+          status: 'ready'
+        })
+        .eq('id', documentId)
+
+      await supabaseClient
+        .from('processing_jobs')
+        .update({
+          status: 'completed',
+          progress: 100,
+          completed_at: new Date().toISOString(),
+          processing_time: Math.round((Date.now() - startTime) / 1000),
+        })
+        .eq('id', jobId)
+
+      console.log(`Job ${jobId} completed (scanned document, core-only). Client OCR will supply text.`)
+      return new Response(JSON.stringify({ success: true, jobId, scanned: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      })
     }
 
     // Update document with extracted text

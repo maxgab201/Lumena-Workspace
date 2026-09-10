@@ -34,6 +34,17 @@ export interface Highlight {
   category_id?: string | null;
   note?: string | null;
 
+  // Provenance: 'manual' (user selection) or 'ai' (AI Highlighting).
+  // AI highlights are ordinary highlights — same canonical geometry,
+  // same renderer, same persistence — plus optional metadata.
+  source?: 'manual' | 'ai';
+  ai_metadata?: {
+    category?: string;
+    confidence?: number;
+    origin?: 'native' | 'ocr';
+    model?: string;
+  } | null;
+
   created_at: string;
   updated_at: string;
 }
