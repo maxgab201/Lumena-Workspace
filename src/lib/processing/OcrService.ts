@@ -26,6 +26,10 @@ export interface OcrPageResult {
   segmentCount: number;
   error?: string;
   confidence?: number;
+  /** Real OCR words with pixel bboxes on the page raster (canonical input). */
+  words?: Array<{ text: string; bbox: [number, number, number, number]; confidence: number }>;
+  rasterWidth?: number;
+  rasterHeight?: number;
 }
 
 export interface OcrProgress {
@@ -39,6 +43,37 @@ type ProgressCallback = (progress: OcrProgress) => void;
 
 const OCR_RENDER_SCALE = 2.0;
 const MIN_WORD_CONFIDENCE = 30; // drop obvious garbage words
+
+/** Flatten Tesseract v7 block hierarchy into a flat word list with bboxes. */
+function flattenTesseractWords(data: unknown): Array<{
+  text: string; bbox: [number, number, number, number]; confidence: number;
+}> {
+  const out: Array<{ text: string; bbox: [number, number, number, number]; confidence: number }> = [];
+  for (const block of (data as {
+    blocks?: Array<{
+      paragraphs?: Array<{
+        lines?: Array<{
+          words?: Array<{ text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }>;
+        }>;
+      }>;
+    }> | null
+  }).blocks ?? []) {
+    for (const paragraph of block.paragraphs ?? []) {
+      for (const line of paragraph.lines ?? []) {
+        for (const word of line.words ?? []) {
+          if (word.text?.trim() && typeof word.confidence === 'number') {
+            out.push({
+              text: word.text,
+              bbox: [word.bbox.x0, word.bbox.y0, word.bbox.x1, word.bbox.y1],
+              confidence: word.confidence,
+            });
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
 
 /** Loose JSON type matching Supabase's Json for canonical rect arrays. */
 type supabase_json = string | number | boolean | null | supabase_json[] | { [key: string]: supabase_json };
@@ -83,6 +118,97 @@ export class OcrService {
     await page.render({ canvasContext: context, viewport }).promise;
     const data = context.getImageData(0, 0, canvas.width, canvas.height);
     return { data, width: canvas.width, height: canvas.height };
+  }
+
+  /**
+   * Run OCR over the given pages and return REAL word-level results (text +
+   * pixel bboxes + confidence) without persisting. Used by the sentence
+   * inventory for precise sub-sentence highlighting.
+   */
+  static async ocrWordsForPages(
+    file: File | Blob,
+    pageNumbers: number[],
+    onProgress?: ProgressCallback,
+  ): Promise<OcrPageResult[]> {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument(new Uint8Array(arrayBuffer)).promise;
+    const results: OcrPageResult[] = [];
+    let completed = 0;
+    const worker = await this.getWorker();
+
+    for (const pageNumber of pageNumbers) {
+      try {
+        onProgress?.({ phase: 'rasterizing', page_number: pageNumber, totalPages: pageNumbers.length, completedPages: completed });
+        const { data: raster, width, height } = await this.rasterizePage(pdf, pageNumber);
+        onProgress?.({ phase: 'recognizing', page_number: pageNumber, totalPages: pageNumbers.length, completedPages: completed });
+
+        const encodeCanvas = new OffscreenCanvas(width, height);
+        encodeCanvas.getContext('2d')!.putImageData(raster, 0, 0);
+        const pngBlob = await encodeCanvas.convertToBlob({ type: 'image/png' });
+
+        // v7 returns only `text` unless outputs are requested explicitly.
+        const { data } = await worker.recognize(pngBlob, {}, { text: true, blocks: true });
+
+        const words = flattenTesseractWords(data).filter((w) => w.confidence >= MIN_WORD_CONFIDENCE);
+        completed++;
+        results.push({
+          page_number: pageNumber,
+          success: true,
+          segmentCount: words.length,
+          confidence: (data as { confidence?: number }).confidence
+            ? Number(((data as { confidence?: number }).confidence! / 100).toFixed(3))
+            : undefined,
+          words,
+          rasterWidth: width,
+          rasterHeight: height,
+        });
+      } catch (err) {
+        console.error(`[OcrService] Page ${pageNumber} failed:`, err);
+        completed++;
+        results.push({
+          page_number: pageNumber,
+          success: false,
+          segmentCount: 0,
+          error: err instanceof Error ? err.message : 'Unknown OCR error',
+        });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Persist OCR word groups as line segments (canonical geometry) to
+   * document_page_segments for observability/debugging. Non-fatal on failure.
+   */
+  static async persistOcrSegments(
+    documentId: string,
+    workspaceId: string,
+    results: OcrPageResult[],
+  ): Promise<void> {
+    const { supabase } = await import('../supabase');
+    const { PageSegmentInventory } = await import('./PageSegmentInventory');
+    for (const r of results) {
+      if (!r.success || !r.words || !r.rasterWidth || !r.rasterHeight) continue;
+      const segments = PageSegmentInventory.buildOcrSegments(
+        r.page_number, r.words, r.rasterWidth, r.rasterHeight,
+      );
+      if (segments.length === 0) continue;
+      const rows = segments.map((s) => ({
+        document_id: documentId,
+        workspace_id: workspaceId,
+        page_number: s.page_number,
+        segment_key: s.segment_key,
+        text: s.text,
+        rects: s.rects as unknown as supabase_json,
+        origin: s.origin,
+        confidence: s.confidence,
+        sequence: s.sequence,
+      }));
+      const { error } = await supabase
+        .from('document_page_segments')
+        .upsert(rows, { onConflict: 'document_id,segment_key' });
+      if (error) console.error('[OcrService] persistOcrSegments failed:', error.message);
+    }
   }
 
   /**
@@ -137,35 +263,9 @@ export class OcrService {
           blocks: true,
         });
 
-        // Flatten word-level results from the block hierarchy
-        const rawWords: Array<{ text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }> = [];
-        for (const block of (data as unknown as {
-          blocks?: Array<{
-            paragraphs?: Array<{
-              lines?: Array<{
-                words?: Array<{ text: string; bbox: { x0: number; y0: number; x1: number; y1: number }; confidence: number }>;
-              }>;
-            }>;
-          }> | null
-        }).blocks ?? []) {
-          for (const paragraph of block.paragraphs ?? []) {
-            for (const line of paragraph.lines ?? []) {
-              for (const word of line.words ?? []) {
-                if (word.text?.trim() && typeof word.confidence === 'number') {
-                  rawWords.push(word);
-                }
-              }
-            }
-          }
-        }
+        const rawWords = flattenTesseractWords(data);
 
-        const words = rawWords
-          .filter((w) => w.confidence >= MIN_WORD_CONFIDENCE)
-          .map((w) => ({
-            text: w.text,
-            bbox: [w.bbox.x0, w.bbox.y0, w.bbox.x1, w.bbox.y1] as [number, number, number, number],
-            confidence: w.confidence,
-          }));
+        const words = rawWords.filter((w) => w.confidence >= MIN_WORD_CONFIDENCE);
 
         const segments: PageSegment[] = PageSegmentInventory.buildOcrSegments(
           pageNumber, words, width, height,
