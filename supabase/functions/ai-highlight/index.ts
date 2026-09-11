@@ -1,18 +1,23 @@
 /**
- * AI Highlight Edge Function (Checkpoint 3)
+ * AI Highlight Edge Function (Checkpoint 3 — semantic quality rework)
  *
  * SEMANTIC-ONLY AI selection. The AI NEVER returns coordinates.
  *
- * Input:  { document_id, workspace_id, page_number? (null = whole doc),
- *           segments: [{ segment_key, text, sequence }],  // client-built inventory
+ * Input:  { document_id, workspace_id, page_number?, sentences: [keys+text],
  *           density: 'low' | 'normal' | 'high' }
- * Output: { selections: [{ segment_key, category, confidence }],
- *           model, warning? }
+ * Output: { selections: [{ sentence_key, quote, category, confidence }],
+ *           model, analyzed_sentences }
  *
- * The client then maps each returned segment_key to its canonical geometry
- * (already stored in document_page_segments) and creates normal highlights
- * with source='ai'. If a segment_key is unknown the client simply ignores
- * that selection — no heuristic geometry is ever invented.
+ * The AI picks WHOLE SENTENCES from the inventory, then narrows each pick to
+ * the exact substring (quote) that matters. The client validates that every
+ * quote really exists inside its sentence (strict normalization) and maps it
+ * to real word geometry — quotes that don't match are silently dropped, never
+ * approximated. No geometry is ever invented by the model.
+ *
+ * Selection quality rules (mirrored from the prompt):
+ *   - coverage budget per density (less, but better)
+ *   - noise rejection (titles, footers, page numbers, connectors)
+ *   - category discipline (few, meaningful categories)
  *
  * Billing is intentionally NOT wired (Checkpoint 3 runs without metering).
  */
@@ -39,7 +44,7 @@ async function callGemini(apiKey: string, prompt: string): Promise<{ ok: boolean
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.2, responseMimeType: "application/json" },
+          generationConfig: { temperature: 0.15, responseMimeType: "application/json" },
         }),
       },
     )
@@ -48,13 +53,18 @@ async function callGemini(apiKey: string, prompt: string): Promise<{ ok: boolean
   }
 
   let { res, bodyText } = await attempt(GENERATION_MODEL)
-
-  // One retry after a short pause on transient upstream failures
+  // High-demand windows can last a few seconds — retry with growing backoff.
   if (!res.ok && [429, 500, 503].includes(res.status)) {
-    await new Promise((r) => setTimeout(r, 1500))
+    await new Promise((r) => setTimeout(r, 2000))
     const retry = await attempt(GENERATION_MODEL)
     res = retry.res
     bodyText = retry.bodyText
+  }
+  if (!res.ok && [429, 500, 503].includes(res.status)) {
+    await new Promise((r) => setTimeout(r, 4000))
+    const retry2 = await attempt(GENERATION_MODEL)
+    res = retry2.res
+    bodyText = retry2.bodyText
   }
   // Model-level fallback: try the stable alias before giving up
   if (!res.ok && [429, 500, 503].includes(res.status)) {
@@ -62,66 +72,87 @@ async function callGemini(apiKey: string, prompt: string): Promise<{ ok: boolean
     res = fb.res
     bodyText = fb.bodyText
   }
-
   return { ok: res.ok, status: res.status, text: bodyText }
 }
 
 const CATEGORY_SET = new Set([
-  'idea', 'definition', 'concept', 'date', 'name', 'fact',
-  'key-term', 'relationship', 'example', 'summary', 'warning',
+  'main_idea', 'definition', 'key_fact', 'date', 'person', 'formula',
 ])
 
-const DENSITY_GUIDANCE: Record<string, string> = {
-  low: 'Be extremely selective: only the few segments a reader absolutely cannot miss. At most 2 selections per page.',
-  normal: 'Select the important segments: main ideas, key definitions, critical facts. Around 3-5 selections per page.',
-  high: 'Be thorough: all useful study material including supporting details, examples and secondary facts. Up to 8 selections per page.',
+const DENSITY_BUDGET: Record<string, { minPct: number; maxPct: number; maxPer1000Words: number }> = {
+  // Coverage of the page's useful text — guidelines, never a quota.
+  low:    { minPct: 4,  maxPct: 10, maxPer1000Words: 12 },
+  normal: { minPct: 8,  maxPct: 18, maxPer1000Words: 25 },
+  high:   { minPct: 15, maxPct: 30, maxPer1000Words: 45 },
 }
 
-interface SegmentInput {
-  segment_key: string
+interface SentenceInput {
+  sentence_key: string
   text: string
-  sequence: number
 }
 
 interface AIHighlightRequest {
   document_id: string
   workspace_id: string
   page_number?: number | null
-  segments: SegmentInput[]
+  sentences: SentenceInput[]
   density?: 'low' | 'normal' | 'high'
+}
+
+const COMMON_NOISE = [
+  'page', 'página', 'copyright', 'all rights reserved', 'www.', 'http',
+  'doi:', 'isbn', 'vol.', 'fig.', 'figure', 'tabla', 'table',
+]
+
+/** Heuristic pre-filter: obvious non-content lines never reach the model. */
+function isNoise(text: string): boolean {
+  const t = text.trim().toLowerCase()
+  if (t.length < 12) return true // "42", "Chapter 3", "Fig. 1"
+  if (/^\d+$/.test(t)) return true
+  if (COMMON_NOISE.some((n) => t.includes(n)) && t.length < 60) return true
+  const letters = t.replace(/[^a-záéíóúñüäöß]/g, '')
+  if (letters.length < t.length * 0.5) return true // mostly numbers/symbols
+  return false
 }
 
 function buildPrompt(req: AIHighlightRequest): string {
   const scope = req.page_number
     ? `The user wants the CURRENT PAGE (page ${req.page_number}) highlighted.`
-    : 'The user wants the WHOLE DOCUMENT (the segments below span multiple pages; their key is prefixed with p<page>).'
-  const density = DENSITY_GUIDANCE[req.density ?? 'normal'] ?? DENSITY_GUIDANCE.normal
+    : 'The user wants the WHOLE DOCUMENT — each sentence below belongs to one page (keys are prefixed p<page>).'
+  const budget = DENSITY_BUDGET[req.density ?? 'normal'] ?? DENSITY_BUDGET.normal
 
-  const inventory = req.segments
-    .map((s) => `${s.segment_key}\t${s.text.replace(/\t|\n/g, ' ').substring(0, 300)}`)
+  const inventory = req.sentences
+    .map((s) => `${s.sentence_key}\t${s.text.replace(/\t|\n/g, ' ').substring(0, 400)}`)
     .join('\n')
 
-  return `You are a study assistant that selects which text segments of a document are worth highlighting.
+  return `You are an expert study partner highlighting a document for a student. Act like a careful reader: mark ONLY what the student would genuinely need to remember or review later.
 
 ${scope}
-${density}
 
-You receive a numbered inventory of text segments (key TAB text). Choose the segments that contain:
-- main ideas and arguments
-- definitions and key concepts
-- important dates, names, and facts
-- critical data, formulas, or conclusions
-- study-worthy phrases
+SELECTION RULES (follow strictly):
+1. Highlight LESS, but BETTER. A precise fragment of one great sentence beats many vague ones. It is fine — even good — to return very few or zero selections for a page with little real content.
+2. Select the SPECIFIC fragment inside a sentence, not the whole sentence, when only part of it matters. The "quote" must be copied VERBATIM from that sentence (same language, same words, no paraphrase, no translation).
+3. Prioritize (in order): main ideas and arguments · definitions of key concepts · cause/effect relationships · essential facts, names, dates and figures · formulas or data a student must recall.
+4. NEVER select: titles or headings · page numbers, headers/footers · pure connectors or empty introductions ("In this chapter we will...") · trivia or filler · repeated statements of the same idea.
+5. Category must be exactly one of: main_idea | definition | key_fact | date | person | formula.
+6. Coverage guideline for this run: roughly ${budget.minPct}–${budget.maxPct}% of the meaningful text. Do NOT pad to reach it.
 
-Rules:
-1. Return ONLY a JSON array. No markdown, no explanation, no code fences.
-2. Each element: { "segment_key": "<exact key from the inventory>", "category": "<one of: idea|definition|concept|date|name|fact|key-term|relationship|example|summary|warning>", "confidence": <0.0-1.0> }
-3. Copy segment_key EXACTLY as given. Never invent keys. Never output x/y/width/height — you have no geometry information.
-4. Prefer FEWER, higher-value selections over many shallow ones.
-5. Do not select consecutive segments that could have been one — pick the best one.
+OUTPUT — return ONLY a JSON array (no markdown, no prose). Each element:
+{ "sentence_key": "<exact key from the inventory>", "quote": "<verbatim fragment copied from that sentence>", "category": "<one of the six categories>", "confidence": <0.0-1.0> }
 
-SEGMENT INVENTORY:
+Rules: copy sentence_key exactly · the quote MUST appear character-for-character (after collapsing whitespace) inside that sentence · never invent keys or coordinates (you have no geometry) · at most one selection per sentence · drop a selection rather than guess.
+
+SENTENCES:
 ${inventory}`
+}
+
+/** Token-overlap redundancy check between two normalized quotes. */
+function isRedundant(a: string, b: string): boolean {
+  const A = new Set(a.toLowerCase().split(/\s+/))
+  const B = new Set(b.toLowerCase().split(/\s+/))
+  if (A.size === 0 || B.size === 0) return false
+  const overlap = [...A].filter((w) => B.has(w)).length
+  return overlap / Math.min(A.size, B.size) >= 0.75
 }
 
 serve(async (req) => {
@@ -135,7 +166,6 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // ─── Authentication ───
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(JSON.stringify({ error: 'Missing Authorization' }), {
@@ -150,53 +180,49 @@ serve(async (req) => {
       })
     }
 
-    // ─── Parse Request ───
     const payload: AIHighlightRequest = await req.json()
-    const { document_id, workspace_id, segments } = payload
+    const { document_id, workspace_id, sentences, density = 'normal' } = payload
 
-    if (!document_id || !workspace_id || !Array.isArray(segments)) {
-      return new Response(JSON.stringify({ error: 'Missing required fields: document_id, workspace_id, segments' }), {
+    if (!document_id || !workspace_id || !Array.isArray(sentences)) {
+      return new Response(JSON.stringify({ error: 'Missing required fields: document_id, workspace_id, sentences' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-    if (segments.length === 0) {
-      return new Response(JSON.stringify({ selections: [], model: GENERATION_MODEL, warning: 'No text segments provided for this scope.' }), {
+    if (sentences.length === 0) {
+      return new Response(JSON.stringify({ selections: [], model: GENERATION_MODEL }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,
       })
     }
 
-    // ─── Verify Workspace Membership ───
     const { data: membership } = await supabaseClient
       .from('workspace_members')
       .select('id')
       .eq('workspace_id', workspace_id)
       .eq('user_id', user.id)
       .single()
-
     if (!membership) {
       return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403, headers: corsHeaders })
     }
 
-    // ─── Verify Document Access ───
     const { data: doc } = await supabaseClient
       .from('documents')
       .select('id, workspace_id, name')
       .eq('id', document_id)
       .single()
-
     if (!doc || doc.workspace_id !== workspace_id) {
       return new Response(JSON.stringify({ error: 'Document not found' }), { status: 404, headers: corsHeaders })
     }
 
-    // ─── Billing intentionally NOT wired in Checkpoint 3 ───
+    // ─── Pre-filter noise, cap prompt size ───
+    const contentful = sentences.filter((s) => !isNoise(s.text))
+    const MAX_SENTENCES = 220
+    const inventory = contentful.length > MAX_SENTENCES ? contentful.slice(0, MAX_SENTENCES) : contentful
+    if (inventory.length === 0) {
+      return new Response(JSON.stringify({ selections: [], model: GENERATION_MODEL, note: 'no contentful sentences' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,
+      })
+    }
 
-    // ─── Cap inventory size to protect the prompt ───
-    const MAX_SEGMENTS = 400
-    const inventory = segments.length > MAX_SEGMENTS
-      ? segments.slice(0, MAX_SEGMENTS)
-      : segments
-
-    // ─── Call Gemini directly (same pattern as generate-knowledge) ───
     const apiKey = Deno.env.get('GEMINI_API_KEY')
     if (!apiKey) {
       return new Response(JSON.stringify({ error: 'AI service is not configured. The document remains fully readable.' }), {
@@ -204,8 +230,7 @@ serve(async (req) => {
       })
     }
 
-    const prompt = buildPrompt({ ...payload, segments: inventory })
-
+    const prompt = buildPrompt({ ...payload, sentences: inventory })
     const gen = await callGemini(apiKey, prompt)
     if (!gen.ok) {
       console.error('ai-highlight Gemini error:', gen.status, gen.text.slice(0, 300))
@@ -227,8 +252,7 @@ serve(async (req) => {
       responseText = gen.text.trim()
     }
 
-    // ─── Parse AI Response ───
-    let parsed: Array<{ segment_key?: string; category?: string; confidence?: number }>
+    let parsed: Array<{ sentence_key?: string; quote?: string; category?: string; confidence?: number }>
     try {
       const cleaned = responseText.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim()
       parsed = JSON.parse(cleaned)
@@ -240,28 +264,80 @@ serve(async (req) => {
       })
     }
 
-    // ─── Validate against the provided inventory (the AI can only pick keys we sent) ───
-    const validKeys = new Set(inventory.map((s) => s.segment_key))
-    const selections = parsed
-      .filter((s) => typeof s.segment_key === 'string' && validKeys.has(s.segment_key))
-      .map((s) => ({
-        segment_key: s.segment_key as string,
-        category: typeof s.category === 'string' && CATEGORY_SET.has(s.category) ? s.category : 'idea',
-        confidence: typeof s.confidence === 'number' ? Math.max(0, Math.min(1, s.confidence)) : 0.8,
-      }))
+    // ─── STRICT validation: the quote must exist inside its sentence ───
+    const byKey = new Map(inventory.map((s) => [s.sentence_key, s.text]))
+    const norm = (v: string) => v.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim()
 
-    // Deduplicate by segment_key keeping the first occurrence
-    const seen = new Set<string>()
-    const unique = selections.filter((s) => {
-      if (seen.has(s.segment_key)) return false
-      seen.add(s.segment_key)
-      return true
-    })
+    interface Candidate {
+      sentence_key: string
+      quote: string
+      category: string
+      confidence: number
+      rank: number
+    }
+    const candidates: Candidate[] = []
+    const seenKeys = new Set<string>()
+
+    for (const sel of parsed) {
+      const key = typeof sel.sentence_key === 'string' ? sel.sentence_key : ''
+      const quote = typeof sel.quote === 'string' ? sel.quote.trim() : ''
+      if (!key || !quote || seenKeys.has(key)) continue
+      const sentenceText = byKey.get(key)
+      if (!sentenceText) continue // invented key → drop
+
+      // Quote must genuinely appear in the sentence (whitespace-insensitive)
+      if (!norm(sentenceText).includes(norm(quote))) {
+        console.warn('ai-highlight: dropping unverifiable quote for', key, JSON.stringify(quote.slice(0, 60)))
+        continue
+      }
+      if (norm(quote).length < 8) continue // too short to be meaningful
+
+      seenKeys.add(key)
+      candidates.push({
+        sentence_key: key,
+        quote,
+        category: typeof sel.category === 'string' && CATEGORY_SET.has(sel.category) ? sel.category : 'key_fact',
+        confidence: typeof sel.confidence === 'number' ? Math.max(0, Math.min(1, sel.confidence)) : 0.75,
+        rank: candidates.length,
+      })
+    }
+
+    // ─── Ranking: confidence first, then model order (narrative priority) ───
+    candidates.sort((a, b) => (b.confidence - a.confidence) || (a.rank - b.rank))
+
+    // ─── Redundancy filter (token overlap ≥ 0.75 on shorter side) ───
+    const kept: Candidate[] = []
+    for (const cand of candidates) {
+      const dup = kept.some((k) =>
+        k.sentence_key === cand.sentence_key ||
+        isRedundant(k.quote, cand.quote)
+      )
+      if (!dup) kept.push(cand)
+    }
+
+    // ─── Coverage budget: enforce the density's maximum share of text.
+    // The budget is a ceiling on over-highlighting, not a quota: short pages
+    // keep their few best selections (guaranteed minimum of 3 when the model
+    // proposed them), long pages get trimmed once the share is exceeded.
+    const budget = DENSITY_BUDGET[density] ?? DENSITY_BUDGET.normal
+    const totalChars = inventory.reduce((sum, s) => sum + s.text.length, 0)
+    const maxChars = Math.max((budget.maxPct / 100) * totalChars, 500)
+    const GUARANTEED = 3
+    const final: Candidate[] = []
+    let usedChars = 0
+    for (const cand of kept) {
+      const qLen = cand.quote.length
+      if (final.length >= GUARANTEED && usedChars + qLen > maxChars) continue
+      final.push(cand)
+      usedChars += qLen
+    }
 
     return new Response(JSON.stringify({
-      selections: unique,
+      selections: final.map(({ sentence_key, quote, category, confidence }) => ({
+        sentence_key, quote, category, confidence,
+      })),
       model: GENERATION_MODEL,
-      analyzed_segments: inventory.length,
+      analyzed_sentences: inventory.length,
       doc_title: doc.name,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
