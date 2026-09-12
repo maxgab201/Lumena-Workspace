@@ -476,6 +476,20 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }, 2_000);
     set({ _pollTimer: pollTimer });
     void get().reconcileDocumentStatuses(workspaceId);
+    // Watchdog sweep: reap jobs stuck 'processing' with a stale heartbeat
+    // (Edge Function killed mid-flight). Runs once per polling session —
+    // cheap indexed RPC that turns eternal spinners into retryable errors.
+    void (async () => {
+      try {
+        const reaped = await DocumentRepository.reapStaleProcessingJobs();
+        if (reaped > 0) {
+          console.warn(`[workspaceStore] Watchdog reaped ${reaped} stale processing job(s)`);
+          void get().reconcileDocumentStatuses(workspaceId);
+        }
+      } catch {
+        // Watchdog is best-effort; polling continues regardless.
+      }
+    })();
   },
 
   stopStatusPolling: () => {
