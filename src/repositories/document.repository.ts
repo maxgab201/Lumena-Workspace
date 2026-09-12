@@ -180,6 +180,21 @@ export const DocumentRepository = {
   },
 
   /**
+   * Watchdog sweep: reap processing jobs whose heartbeat is stale (the Edge
+   * Function died mid-flight). Returns how many jobs were reaped.
+   */
+  async reapStaleProcessingJobs(): Promise<number> {
+    // RPC added by 20250912000001_incremental_pipeline.sql (not in generated types yet)
+    const { data, error } = await (supabase.rpc as unknown as (
+      fn: string, args?: Record<string, unknown>
+    ) => Promise<{ data: unknown; error: { message: string } | null }>)(
+      'reap_stale_processing_jobs', { stale_minutes: 10 }
+    );
+    if (error) throw error;
+    return Number(data ?? 0);
+  },
+
+  /**
    * Subscribe to real-time updates for processing jobs in a workspace.
    */
   subscribeToProcessingJobs(workspaceId: string, onUpdate: (job: ProcessingJob) => void) {

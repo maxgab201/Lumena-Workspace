@@ -125,22 +125,182 @@ function buildPrompt(req: AIHighlightRequest): string {
     .map((s) => `${s.sentence_key}\t${s.text.replace(/\t|\n/g, ' ').substring(0, 400)}`)
     .join('\n')
 
-  return `You are an expert study partner highlighting a document for a student. Act like a careful reader: mark ONLY what the student would genuinely need to remember or review later.
+  return `You are the semantic highlighting engine for Lumena Workspace.
+
+Your job is NOT to summarize the document.
+Your job is NOT to highlight as much text as possible.
+Your job is to behave like an excellent student, researcher, and careful reader who has understood the material and is deciding exactly which original fragments are worth marking for later review.
+
+You receive structured text extracted from a PDF.
+Every candidate sentence has a stable key. You may only select text that exists verbatim inside the supplied units.
+The application, not you, controls geometry.
+NEVER generate coordinates, bounding boxes, page positions, or approximate locations.
+You select semantic text only.
+The application will map the exact quotation back to real PDF words and geometry.
+
+━━━ PRIMARY OBJECTIVE ━━━
+
+Choose the smallest self-contained portions of the original text that preserve the important meaning.
+
+A good highlight should answer: "If the reader returned to this document tomorrow and only looked at the highlighted fragments, would these markings help them quickly recover the central ideas and information worth remembering?"
+
+Highlight less, but better.
+Do not mark text merely because it sounds academic.
+Do not try to fill a quota.
+Zero highlights is valid when the provided content contains nothing worth marking.
+
+━━━ WHAT DESERVES A HIGHLIGHT ━━━
+
+Prioritize, in roughly this order:
+
+1. CENTRAL IDEAS — statements that express the main concept, argument, principle, mechanism, result, or conclusion of a section.
+
+2. DEFINITIONS — precise explanations of what a term, concept, process, phenomenon, object, or theory means. Prefer preserving both the concept being defined AND the essential definition when removing the term would make the highlight ambiguous.
+
+3. CAUSE AND EFFECT — statements explaining why something happens, what produces an outcome, or what consequence follows. Whenever practical, preserve enough of both cause and effect so the highlight makes sense independently.
+
+4. MECHANISMS AND PROCESSES — important descriptions of how something works or the essential stages of a process. Do not highlight every procedural step unless those steps are necessary to understand the mechanism.
+
+5. KEY RELATIONSHIPS AND COMPARISONS — important contrasts, dependencies, classifications, or relationships between concepts.
+
+6. IMPORTANT FACTS — facts that are central to understanding the subject or are likely to matter for study/review. Do not select trivia merely because it is factual.
+
+7. DATES — select a date ONLY when the date itself matters, and normally keep it attached to the event/person/fact it describes.
+   Bad: "1882"
+   Better: "Walther Flemming described mitosis in 1882" when that complete relation is what matters.
+
+8. PEOPLE — highlight people only when their identity matters to the topic and they are associated with an important discovery, event, theory, work, or action. Do not highlight names simply because they appear.
+
+9. FORMULAS / NUMERIC VALUES — highlight when they are important for understanding, remembering, comparing, or solving something. Preserve enough surrounding text to understand what the number/formula represents.
+
+━━━ WHAT NOT TO HIGHLIGHT ━━━
+
+Do NOT highlight:
+- page numbers, headers, footers, copyright notices, navigation or decorative text
+- repeated section labels, bibliography/reference noise
+- captions that provide no useful information
+- generic introductory language, transition phrases, obvious filler, rhetorical wording
+- redundant explanations, isolated pronouns
+- partial clauses that lose meaning outside the sentence
+- examples that add no important concept
+- facts that are technically correct but irrelevant to the main subject
+- entire paragraphs merely because several sentences are useful
+- entire sentences when a shorter exact fragment communicates the same useful idea
+
+━━━ CONTEXTUAL COMPLETENESS ━━━
+
+A highlight must remain understandable when seen later without reading the entire paragraph.
+Do NOT make fragments so short that they lose their subject or meaning.
+
+Bad: "reduces it by half"
+Better: "meiosis reduces the number of chromosomes by half"
+
+Bad: "was discovered in 1882"
+Better: "mitosis was described by Walther Flemming in 1882"
+
+Bad: "genetically identical"
+Better: "produces two genetically identical daughter cells"
+
+The goal is NOT the shortest possible quote. The goal is: the shortest quote that remains semantically complete.
+
+━━━ EXACT QUOTATION ━━━
+
+Every quote MUST be copied verbatim from the supplied source sentence.
+NEVER: paraphrase · translate · correct grammar · change spelling · rewrite punctuation · invent missing words · combine non-contiguous fragments into one quote.
+
+If the exact useful idea cannot be represented by a contiguous quotation from one supplied sentence, either choose the best valid contiguous fragment or do not select it.
+
+━━━ LANGUAGE ━━━
+
+The source may be English, Spanish, or another language.
+Do not translate. Understand the source in its original language. Return the quote exactly as written.
+Your selection criteria remain the same regardless of language.
+
+━━━ GRANULARITY ━━━
+
+Avoid two extremes:
+TOO LARGE: marking entire lines, sentences, or paragraphs unnecessarily.
+TOO SMALL: marking fragments that become meaningless.
+
+Example — source: "Photosynthesis is the process by which plants convert light energy into chemical energy stored in glucose."
+Poor: "Photosynthesis" · Poor: "convert light energy" · Poor: the whole surrounding paragraph.
+Good: "Photosynthesis is the process by which plants convert light energy into chemical energy stored in glucose."
+(because this is a compact definition and removing more would damage the meaning)
+
+Another source: "Water is composed of two hydrogen atoms and one oxygen atom, and it is essential for many biological processes."
+If the relevant fact is composition:
+Good: "two hydrogen atoms and one oxygen atom"
+(there is no need to highlight the unrelated second clause)
+
+━━━ REDUNDANCY ━━━
+
+Do not select several fragments that communicate essentially the same information.
+If two candidates overlap heavily in meaning, choose the stronger, clearer, or more complete one.
+
+━━━ DENSITY MODES ━━━
+
+The user selected: ${req.density ?? 'normal'}.
+These are GUIDELINES, not quotas. Never add weak highlights merely to reach a target.
+Typical coverage: approximately ${budget.minPct}–${budget.maxPct}% of the useful text.
+
+LOW/POCO — only the most essential: central ideas, essential definitions, extremely important facts. Returning zero or one highlight is completely valid.
+NORMAL — a balanced study-friendly set: central ideas, important definitions, major cause/effect, important mechanisms, notable facts. Still be selective.
+HIGH/MUCHO — detailed study coverage without turning the page into a marker-covered wall: may include supporting facts, useful secondary details, additional mechanisms, notable names/dates. Even HIGH must avoid filler, repetition, and irrelevant material.
+
+THERE IS NO MINIMUM NUMBER OF HIGHLIGHTS. A page with one important idea may receive one highlight. A page with no meaningful study content must receive zero.
+
+━━━ HEADINGS ━━━
+
+A heading alone is usually NOT useful to highlight ("CELL DIVISION" should normally not be selected).
+However, if a heading itself contains substantive information rather than being merely a label, it may be selected.
+
+━━━ EXAMPLES AND LISTS ━━━
+
+Highlight examples only if they clarify an otherwise difficult principle, are explicitly important, or are likely to be studied themselves.
+For lists: select individual important list items, not the whole list. If a list only makes sense with its introductory phrase, preserve enough context.
+
+━━━ CONFIDENCE ━━━
+
+Return confidence as a value from 0 to 1 representing: "How confident are you that this exact fragment deserves to be highlighted for later study?"
+0.90–1.00: essential / extremely strong selection
+0.75–0.89: clearly useful
+0.60–0.74: useful but secondary
+Below 0.60: normally do not return the candidate
+
+━━━ CATEGORIES ━━━
+
+Use ONLY: main_idea | definition | key_fact | date | person | formula
+Choose the category describing WHY the fragment deserves highlighting. If multiple could apply, choose the most educationally useful one.
+
+━━━ SELECTION PROCEDURE ━━━
+
+Before producing output:
+STEP 1 — Understand the topic and purpose of the supplied text.
+STEP 2 — Identify the central ideas.
+STEP 3 — Identify definitions, mechanisms, relationships, important facts, and relevant dates/names/formulas.
+STEP 4 — Remove low-value candidates.
+STEP 5 — Shorten remaining candidates to the smallest semantically complete exact quote.
+STEP 6 — Remove redundant/overlapping candidates.
+STEP 7 — Apply the requested density.
+STEP 8 — Verify every quote is verbatim and belongs to its stated sentence_key.
+STEP 9 — Return structured output only.
+
+━━━ OUTPUT ━━━
+
+Return ONLY valid JSON. No Markdown. No explanation before or after.
+Schema:
+{
+  "highlights": [
+    { "sentence_key": "p3-S7", "quote": "exact text copied from source", "category": "definition", "confidence": 0.94 }
+  ]
+}
+If nothing should be highlighted: { "highlights": [] }
+
+Never return a quote that does not appear verbatim inside its referenced sentence.
+Never generate geometry.
+Never fabricate sentence keys.
 
 ${scope}
-
-SELECTION RULES (follow strictly):
-1. Highlight LESS, but BETTER. A precise fragment of one great sentence beats many vague ones. It is fine — even good — to return very few or zero selections for a page with little real content.
-2. Select the SPECIFIC fragment inside a sentence, not the whole sentence, when only part of it matters. The "quote" must be copied VERBATIM from that sentence (same language, same words, no paraphrase, no translation).
-3. Prioritize (in order): main ideas and arguments · definitions of key concepts · cause/effect relationships · essential facts, names, dates and figures · formulas or data a student must recall.
-4. NEVER select: titles or headings · page numbers, headers/footers · pure connectors or empty introductions ("In this chapter we will...") · trivia or filler · repeated statements of the same idea.
-5. Category must be exactly one of: main_idea | definition | key_fact | date | person | formula.
-6. Coverage guideline for this run: roughly ${budget.minPct}–${budget.maxPct}% of the meaningful text. Do NOT pad to reach it.
-
-OUTPUT — return ONLY a JSON array (no markdown, no prose). Each element:
-{ "sentence_key": "<exact key from the inventory>", "quote": "<verbatim fragment copied from that sentence>", "category": "<one of the six categories>", "confidence": <0.0-1.0> }
-
-Rules: copy sentence_key exactly · the quote MUST appear character-for-character (after collapsing whitespace) inside that sentence · never invent keys or coordinates (you have no geometry) · at most one selection per sentence · drop a selection rather than guess.
 
 SENTENCES:
 ${inventory}`
@@ -255,8 +415,11 @@ serve(async (req) => {
     let parsed: Array<{ sentence_key?: string; quote?: string; category?: string; confidence?: number }>
     try {
       const cleaned = responseText.replace(/^```json?\n?/i, '').replace(/\n?```$/i, '').trim()
-      parsed = JSON.parse(cleaned)
-      if (!Array.isArray(parsed)) throw new Error('Expected JSON array')
+      const raw = JSON.parse(cleaned)
+      // New schema wraps selections in { "highlights": [...] }; accept both
+      // the wrapped object and a bare array for robustness.
+      parsed = Array.isArray(raw) ? raw : (Array.isArray(raw?.highlights) ? raw.highlights : null)
+      if (!parsed) throw new Error('Expected { highlights: [...] } array')
     } catch {
       console.error('ai-highlight: malformed AI response:', responseText.slice(0, 500))
       return new Response(JSON.stringify({ error: 'The AI returned an unexpected format. Please try again.' }), {
@@ -316,18 +479,16 @@ serve(async (req) => {
     }
 
     // ─── Coverage budget: enforce the density's maximum share of text.
-    // The budget is a ceiling on over-highlighting, not a quota: short pages
-    // keep their few best selections (guaranteed minimum of 3 when the model
-    // proposed them), long pages get trimmed once the share is exceeded.
+    // Pure ceiling — densities control how much to ACCEPT, never how much to
+    // produce. Zero highlights is a valid outcome; there is no minimum.
     const budget = DENSITY_BUDGET[density] ?? DENSITY_BUDGET.normal
     const totalChars = inventory.reduce((sum, s) => sum + s.text.length, 0)
     const maxChars = Math.max((budget.maxPct / 100) * totalChars, 500)
-    const GUARANTEED = 3
     const final: Candidate[] = []
     let usedChars = 0
     for (const cand of kept) {
       const qLen = cand.quote.length
-      if (final.length >= GUARANTEED && usedChars + qLen > maxChars) continue
+      if (final.length > 0 && usedChars + qLen > maxChars) continue
       final.push(cand)
       usedChars += qLen
     }

@@ -87,24 +87,48 @@ async function embedOne(text: string, apiKey: string): Promise<number[]> {
 }
 
 async function generateEmbeddings(texts: string[], apiKey: string): Promise<number[][]> {
-  const embeddings: number[][] = [];
+  // Bounded-concurrency embedding: a 900-page document is 900 chunks and the
+  // original sequential loop risked exhausting the Edge Function time budget
+  // (the observed root cause of jobs dying mid-flight and staying 'processing'
+  // forever). Concurrency 8 with per-batch heartbeats keeps each stage short.
+  const CONCURRENCY = 8;
+  const embeddings: number[][] = new Array(texts.length);
+  let next = 0;
+  let failures = 0;
+  const failure = { message: '' };
 
-  for (const text of texts) {
-    try {
-      // Truncate if too long (gemini-embedding-001 has a 2048-token input limit)
-      const truncatedText = text.slice(0, 8000);
-      const values = await embedOne(truncatedText, apiKey);
-      if (values.length !== 768) {
-        throw new Error(`Unexpected embedding dimension: ${values.length}`);
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= texts.length) return;
+      try {
+        // Truncate (gemini-embedding-001 has a 2048-token input limit)
+        const values = await embedOne(texts[i].slice(0, 8000), apiKey);
+        if (values.length !== 768) {
+          throw new Error(`Unexpected embedding dimension: ${values.length}`);
+        }
+        embeddings[i] = values;
+      } catch (error: any) {
+        failures++;
+        failure.message = error?.message || 'unknown embedding error';
+        console.error(`Failed to generate embedding for chunk ${i}:`, failure.message);
+        // Zero vectors would poison search, so leave the slot empty; the
+        // caller treats a fully-failed batch as an AI-layer degradation.
+        embeddings[i] = [];
       }
-      embeddings.push(values);
-    } catch (error) {
-      console.error('Failed to generate embedding for text:', error);
-      // Re-throw: storing zero vectors would poison search results.
-      throw error;
     }
   }
 
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, texts.length) }, worker));
+
+  if (failures > 0 && failures === texts.length) {
+    // Everything failed (e.g. quota exhausted) — surface to the caller so it
+    // degrades the AI layer without ever blocking core reading.
+    throw new Error(failure.message || 'all embeddings failed');
+  }
+  if (failures > 0) {
+    console.warn(`${failures}/${texts.length} embeddings failed — partial indexing (search degraded for those chunks)`)
+  }
   return embeddings;
 }
 
@@ -242,14 +266,17 @@ serve(async (req) => {
     // ==========================================
     // 2. PROCESS DOCUMENT
     // ==========================================
-    await supabaseClient
-      .from('processing_jobs')
-      .update({
-        status: 'inspecting',
-        progress: 10,
-        started_at: new Date(startTime).toISOString(),
-      })
-      .eq('id', jobId)
+    // Heartbeat helper: every stage update refreshes progress_heartbeat.
+    // If the runtime kills this invocation mid-flight (CPU/memory limits),
+    // the reap_stale_processing_jobs watchdog detects the stale heartbeat
+    // and marks the job failed-with-retryable instead of an eternal spinner.
+    const heartbeat = (status: string, progress: number, extra: Record<string, unknown> = {}) =>
+      supabaseClient
+        .from('processing_jobs')
+        .update({ status, progress, progress_heartbeat: new Date().toISOString(), ...extra })
+        .eq('id', jobId)
+
+    await heartbeat('inspecting', 10, { started_at: new Date(startTime).toISOString() })
 
     await supabaseClient
       .from('documents')
@@ -276,10 +303,7 @@ serve(async (req) => {
       throw new Error('Failed to download PDF from storage')
     }
 
-    await supabaseClient
-      .from('processing_jobs')
-      .update({ status: 'extracting', progress: 30 })
-      .eq('id', jobId)
+    await heartbeat('extracting', 30)
 
     // ==========================================
     // EXTRACT TEXT PER PAGE (real extraction)
@@ -351,20 +375,20 @@ serve(async (req) => {
       })
     }
 
-    // Update document with extracted text
+    // Update document with extracted text + fine-grained text_status
+    // (partial = some pages had no extractable text; complete = all pages did)
+    const emptyPages = pages.filter((p) => p.replace(/\s+/g, '').length === 0).length
     await supabaseClient
       .from('documents')
       .update({
         extracted_text: extractedText,
         text_extracted_at: new Date().toISOString(),
+        text_status: emptyPages === 0 ? 'complete' : (emptyPages < pages.length ? 'partial' : 'pending'),
         status: 'processing'
       })
       .eq('id', documentId)
 
-    await supabaseClient
-      .from('processing_jobs')
-      .update({ status: 'processing', progress: 60 })
-      .eq('id', jobId)
+    await heartbeat('processing', 60)
 
     // ==========================================
     // 3. CHUNK TEXT (page-aware)
@@ -397,43 +421,55 @@ serve(async (req) => {
         embeddingFailure = `AI embeddings deferred: ${embedErr?.message || 'unknown error'}`
         console.warn(embeddingFailure)
       }
+      // Heartbeat after the (potentially long) embedding stage
+      await heartbeat('processing', 75)
     }
 
     // ==========================================
     // 5. STORE EMBEDDINGS AND CHUNKS
     // ==========================================
+    // 5. STORE EMBEDDINGS AND CHUNKS — batched writes
+    // ==========================================
+    // A 900-chunk single insert is a giant payload that can hit request
+    // limits; store embeddings in batches of 100 with heartbeats between.
     if (embeddings.length > 0) {
-      const embeddingRows = chunks.map((chunk, i) => ({
-        workspace_id: workspaceId,
-        document_id: documentId,
-        chunk_index: i,
-        chunk_text: chunk.text,
-        chunk_tokens: chunk.tokenCount,
-        embedding: embeddings[i],
-        metadata: {
-          page_numbers: chunk.pageNumbers,
-          // Scalar for hybrid_search's metadata->>'page_number' lookup
-          page_number: chunk.pageNumbers[0] ?? null,
+      const BATCH = 100
+      let stored = 0
+      for (let start = 0; start < chunks.length; start += BATCH) {
+        const slice = chunks.slice(start, start + BATCH)
+        const embeddingRows = slice.map((chunk, i) => ({
+          workspace_id: workspaceId,
+          document_id: documentId,
+          chunk_index: start + i,
+          chunk_text: chunk.text,
+          chunk_tokens: chunk.tokenCount,
+          embedding: embeddings[start + i],
+          metadata: {
+            page_numbers: chunk.pageNumbers,
+            // Scalar for hybrid_search's metadata->>'page_number' lookup
+            page_number: chunk.pageNumbers[0] ?? null,
+          }
+        }));
+
+        const { error: embeddingError } = await supabaseClient
+          .from('document_embeddings')
+          .upsert(embeddingRows, { onConflict: 'document_id,chunk_index' });
+
+        if (embeddingError) {
+          // Same policy: storage of AI artifacts is not core. Degrade gracefully.
+          embeddingFailure = `Failed to store embeddings: ${embeddingError.message}`
+          console.warn(embeddingFailure)
+          break
         }
-      }));
-
-      const { error: embeddingError } = await supabaseClient
-        .from('document_embeddings')
-        .upsert(embeddingRows, { onConflict: 'document_id,chunk_index' });
-
-      if (embeddingError) {
-        // Same policy: storage of AI artifacts is not core. Degrade gracefully.
-        embeddingFailure = `Failed to store embeddings: ${embeddingError.message}`
-        console.warn(embeddingFailure)
+        stored += slice.length
+        await heartbeat('processing', Math.min(75 + Math.round(stored / chunks.length * 10), 85))
       }
     }
 
-    await supabaseClient
-      .from('processing_jobs')
-      .update({ progress: 90 })
-      .eq('id', jobId)
+    await heartbeat('processing', 90)
 
     // Store chunks in the real document_chunks schema (id TEXT PK, content, page_number)
+    // — same batched strategy.
     let chunkCounterByPage: Record<number, number> = {};
     const chunkRows = chunks.map((chunk) => {
       const pageNo = chunk.pageNumbers[0] ?? 1;
@@ -449,14 +485,19 @@ serve(async (req) => {
       };
     });
 
-    // Upsert on the natural key (id encodes doc/page/chunk ordinality)
-    const { error: chunkError } = await supabaseClient
-      .from('document_chunks')
-      .upsert(chunkRows, { onConflict: 'id' });
-
-    if (chunkError) {
-      console.error('Failed to insert chunks:', chunkError);
-      throw new Error('Failed to store chunks: ' + chunkError.message);
+    {
+      const BATCH = 100
+      let chunkStoreError: string | null = null
+      for (let start = 0; start < chunkRows.length; start += BATCH) {
+        const { error } = await supabaseClient
+          .from('document_chunks')
+          .upsert(chunkRows.slice(start, start + BATCH), { onConflict: 'id' });
+        if (error) { chunkStoreError = error.message; break }
+      }
+      if (chunkStoreError) {
+        console.error('Failed to insert chunks:', chunkStoreError);
+        throw new Error('Failed to store chunks: ' + chunkStoreError);
+      }
     }
 
     // Update document: the reading experience is READY as soon as text
@@ -538,12 +579,13 @@ serve(async (req) => {
       }
     }
 
-    // Complete Job
+    // Complete Job (heartbeat refreshed so the watchdog never races a live job)
     await supabaseClient
       .from('processing_jobs')
       .update({
         status: 'completed',
         progress: 100,
+        progress_heartbeat: new Date().toISOString(),
         completed_at: new Date().toISOString(),
         processing_time: Math.round((Date.now() - startTime) / 1000),
       })
@@ -615,7 +657,8 @@ serve(async (req) => {
           .from('processing_jobs')
           .update({
             status: 'failed',
-            error_message: error.message || 'Unknown processing error'
+            error_message: error.message || 'Unknown processing error',
+            progress_heartbeat: new Date().toISOString(),
           })
           .eq('id', jobId)
 

@@ -243,3 +243,77 @@ describe('selection dedup contract', () => {
     )).toBe(false);
   });
 });
+
+describe('output schema — no minimum highlights (the floor of 3 is gone)', () => {
+  // Mirrors the deployed function's post-processing: budget is a pure
+  // ceiling; zero selections pass through untouched.
+  function postProcess(
+    parsed: Array<{ sentence_key?: string; quote?: string; confidence?: number }>,
+    inventory: Array<{ sentence_key: string; text: string }>,
+    densityMaxPct: number,
+  ): Array<{ key: string; quote: string }> {
+    const byKey = new Map(inventory.map((s) => [s.sentence_key, s.text]));
+    const norm = (v: string) => v.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+    const candidates: Array<{ key: string; quote: string; confidence: number; rank: number }> = [];
+    const seenKeys = new Set<string>();
+    for (const sel of parsed) {
+      const key = sel.sentence_key ?? '';
+      const quote = (sel.quote ?? '').trim();
+      if (!key || !quote || seenKeys.has(key)) continue;
+      const text = byKey.get(key);
+      if (!text || !norm(text).includes(norm(quote))) continue;
+      if (norm(quote).length < 8) continue;
+      seenKeys.add(key);
+      candidates.push({ key, quote, confidence: sel.confidence ?? 0.75, rank: candidates.length });
+    }
+    candidates.sort((a, b) => (b.confidence - a.confidence) || (a.rank - b.rank));
+    const totalChars = inventory.reduce((sum, s) => sum + s.text.length, 0);
+    const maxChars = Math.max((densityMaxPct / 100) * totalChars, 500);
+    const final: Array<{ key: string; quote: string }> = [];
+    let used = 0;
+    for (const c of candidates) {
+      if (final.length > 0 && used + c.quote.length > maxChars) continue;
+      final.push({ key: c.key, quote: c.quote });
+      used += c.quote.length;
+    }
+    return final;
+  }
+
+  const inventory = [
+    { sentence_key: 'p1-S0', text: 'La mitosis produce dos celulas hijas geneticamente identicas entre si.' },
+    { sentence_key: 'p1-S1', text: 'La meiosis reduce el numero de cromosomas a la mitad.' },
+  ];
+
+  it('zero highlights is valid (no quota padding)', () => {
+    const out = postProcess([], inventory, 18);
+    expect(out).toHaveLength(0);
+  });
+
+  it('one strong selection survives even when short page (no floor forcing more)', () => {
+    const out = postProcess(
+      [{ sentence_key: 'p1-S0', quote: 'dos celulas hijas geneticamente identicas', confidence: 0.95 }],
+      inventory,
+      18,
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].quote).toBe('dos celulas hijas geneticamente identicas');
+  });
+
+  it('unverifiable quotes are dropped, never approximated', () => {
+    const out = postProcess(
+      [{ sentence_key: 'p1-S0', quote: 'la mitosis genera celulas identicas', confidence: 0.99 }], // paraphrase
+      inventory,
+      18,
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  it('invented keys are dropped', () => {
+    const out = postProcess(
+      [{ sentence_key: 'p9-S99', quote: 'whatever long fragment', confidence: 0.99 }],
+      inventory,
+      18,
+    );
+    expect(out).toHaveLength(0);
+  });
+});

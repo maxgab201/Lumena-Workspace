@@ -13,7 +13,7 @@ const auth = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
   headers: { apikey: ANON, 'Content-Type': 'application/json' },
   body: JSON.stringify({ email: 'lumena-staging-e2e-test@example.com', password: 'test123456' }),
 });
-const { access_token, user } = await auth.json();
+const { access_token } = await auth.json();
 
 const bytes = fs.readFileSync(filePath);
 const hashBuf = await crypto.subtle.digest('SHA-256', bytes);
