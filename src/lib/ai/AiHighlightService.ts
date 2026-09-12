@@ -134,6 +134,20 @@ export class AiHighlightService {
       ? [params.pageNumber]
       : [...sentencesByPage.keys()].sort((a, b) => a - b);
 
+    // Re-run semantics: an AI analysis REPLACES the previous AI highlights of
+    // the analyzed scope (manual highlights are never touched). This prevents
+    // duplicates accumulating across repeated runs.
+    const store = (await import('../../stores/highlightStore')).useHighlightStore.getState();
+    const removedIds = new Set<string>();
+    for (const h of store.highlights[documentId] ?? []) {
+      if (h.source !== 'ai') continue;
+      const inScope = scope === 'page' ? h.page_index === (params.pageNumber ?? -1) - 1 : true;
+      if (inScope && !removedIds.has(h.id)) {
+        removedIds.add(h.id);
+        await store.removeHighlight(h.id);
+      }
+    }
+
     for (const pageNumber of pageBlocks) {
       const pageSentences = sentencesByPage.get(pageNumber) ?? [];
       if (pageSentences.length === 0) continue;
