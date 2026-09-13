@@ -28,6 +28,34 @@ ALTER TABLE public.documents
   ADD COLUMN IF NOT EXISTS text_status TEXT DEFAULT 'pending'
   CHECK (text_status IN ('pending', 'processing', 'complete', 'partial', 'failed'));
 
+-- 3. Per-page text checkpoint: extraction of large PDFs is incremental and
+-- resumable. Each extracted batch is upserted here; a retry skips pages that
+-- already exist (real resume, not a full re-process).
+CREATE TABLE IF NOT EXISTS public.document_page_texts (
+  document_id  UUID        NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  page_number  INTEGER     NOT NULL CHECK (page_number >= 1),
+  page_text    TEXT        NOT NULL DEFAULT '',
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (document_id, page_number)
+);
+
+ALTER TABLE public.document_page_texts ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view page texts in their workspaces"
+  ON public.document_page_texts FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.documents d
+      WHERE d.id = document_page_texts.document_id
+        AND d.workspace_id IN (SELECT public.get_user_workspace_ids())
+    )
+  );
+
+CREATE POLICY "Service role manages page texts"
+  ON public.document_page_texts FOR ALL
+  TO service_role USING (true) WITH CHECK (true);
+
 -- Backfill: ready documents already have their text
 UPDATE public.documents
 SET text_status = CASE

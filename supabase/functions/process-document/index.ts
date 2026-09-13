@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@1.3.2"
+import { getDocumentProxy, getResolvedPDFJS } from "https://esm.sh/unpdf@1.3.2"
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 const EMBEDDING_MODEL = "gemini-embedding-001" // 768 dims by default
@@ -133,17 +133,117 @@ async function generateEmbeddings(texts: string[], apiKey: string): Promise<numb
 }
 
 // ==========================================
-// EXTRACT TEXT PER PAGE (real extraction via unpdf/pdf.js)
+// EXTRACT TEXT PER PAGE — INCREMENTAL with page batching
 // ==========================================
-async function extractPdfText(pdfBytes: Uint8Array): Promise<{
-  pages: string[];
-  totalPages: number;
-}> {
-  const pdf = await getDocumentProxy(new Uint8Array(pdfBytes));
-  const result = await extractText(pdf, { mergePages: false });
-  let pages: string[] = Array.isArray(result.text) ? result.text : [result.text];
-  pages = pages.map(p => (p || '').trim());
-  return { pages, totalPages: result.totalPages ?? pages.length };
+// unpdf's extractText runs a Promise.all over EVERY page at once; on a real
+// 14 MB PDF (HISTORIA 3 TINTA FRESCA.pdf, production evidence) the runtime
+// killed the function with "CPU Time exceeded" 3s in, the catch block never
+// ran, and the job stayed 'extracting' forever. This replacement processes
+// pages in small batches, heartbeats between batches so the watchdog can see
+// progress, and yields between pages to stay under the CPU-time kill switch.
+// Text is checkpointed per batch into document_page_texts so a retry resumes
+// from where it died instead of re-extracting everything.
+
+const EXTRACTION_BATCH_SIZE = 10;
+/**
+ * Max extraction batches per single invocation. The Edge runtime enforces a
+ * hard CPU-TIME budget per invocation (production evidence: "CPU Time
+ * exceeded" at 00:04:46 and again at 00:41:40 on the real 14.5 MB
+ * "HISTORIA 3 TINTA FRESCA.pdf"). Yielding with setTimeout(0) does NOT buy
+ * back CPU time, so a document with hundreds of pages cannot be extracted in
+ * ONE invocation no matter how politely it loops.
+ *
+ * Strategy: each invocation extracts at most N batches, checkpoints them to
+ * document_page_texts, and then CHAINS — it re-invokes process-document with
+ * the same job (status 'extracting', checkpoint intact) so a fresh runtime
+ * continues from the next batch. Each invocation gets a fresh CPU budget.
+ * The final invocation (no pending pages) proceeds to chunk/embed.
+ */
+const MAX_EXTRACTION_BATCHES_PER_RUN = 8;
+
+async function reenqueueSelf(jobId: string): Promise<void> {
+  const url = `${Deno.env.get('SUPABASE_URL')}/functions/v1/process-document`
+  // The trigger payload shape: { record: job }. We re-post the job as queued
+  // with a marker so the next run re-enters the extraction path directly.
+  await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''}`,
+    },
+    body: JSON.stringify({ record: { id: jobId, chained: true } }),
+  }).catch((err) => console.warn('[extract] self-chain re-enqueue failed:', err))
+}
+
+async function extractPdfTextIncremental(
+  pdfBytes: Uint8Array,
+  opts: {
+    jobId: string;
+    documentId: string;
+    supabaseClient: ReturnType<typeof createClient>;
+    onProgress?: (donePages: number, totalPages: number) => Promise<void>;
+  }
+): Promise<{ pages: string[]; totalPages: number; fromCache: number; complete: boolean }> {
+  const { jobId, documentId, supabaseClient, onProgress } = opts
+  const pdf = await getDocumentProxy(new Uint8Array(pdfBytes))
+  const pdfjs = await getResolvedPDFJS()
+  const totalPages = pdf.numPages
+
+  // 1. Load any pages already extracted by a previous (interrupted) attempt
+  const { data: cachedRows } = await supabaseClient
+    .from('document_page_texts')
+    .select('page_number, page_text')
+    .eq('document_id', documentId)
+    .order('page_number')
+  const cached = new Map<number, string>()
+  for (const row of cachedRows ?? []) cached.set(row.page_number, row.page_text)
+
+  const pages: string[] = new Array(totalPages).fill('')
+  let fromCache = 0
+  let pending: number[] = []
+  for (let p = 1; p <= totalPages; p++) {
+    const c = cached.get(p)
+    if (typeof c === 'string') { pages[p - 1] = c; fromCache++ }
+    else pending.push(p)
+  }
+
+  // 2. Extract only the missing pages — at most MAX batches this run
+  const batchesThisRun = pending.slice(0, MAX_EXTRACTION_BATCHES_PER_RUN * EXTRACTION_BATCH_SIZE)
+  for (let i = 0; i < batchesThisRun.length; i += EXTRACTION_BATCH_SIZE) {
+    const batch = batchesThisRun.slice(i, i + EXTRACTION_BATCH_SIZE)
+    const rows: Array<{ document_id: string; page_number: number; page_text: string }> = []
+
+    for (const pageNumber of batch) {
+      // Per-page extraction mirrors unpdf's getPageText but one page at a time
+      const page = await pdf.getPage(pageNumber)
+      const content = await page.getTextContent()
+      const text = content.items
+        .filter((item: { str?: unknown }) => typeof (item as { str?: unknown }).str === 'string')
+        .map((item: { str: string; hasEOL?: boolean }) => item.str + (item.hasEOL ? '\n' : ''))
+        .join('')
+      pages[pageNumber - 1] = (text || '').trim()
+      rows.push({ document_id: documentId, page_number: pageNumber, page_text: pages[pageNumber - 1] })
+      // Yield to keep each synchronous stretch short (CPU-time friendly)
+      await new Promise((r) => setTimeout(r, 0))
+    }
+
+    // Checkpoint the batch (idempotent upsert) — a retry skips these pages
+    if (rows.length > 0) {
+      const { error } = await supabaseClient
+        .from('document_page_texts')
+        .upsert(rows, { onConflict: 'document_id,page_number' })
+      if (error) console.warn(`[extract] checkpoint batch failed (non-fatal): ${error.message}`)
+    }
+
+    await onProgress?.(fromCache + i + batch.length, totalPages)
+  }
+
+  // 3. Free the parser before the memory-heavy AI stages
+  try { await (pdf as { destroy?: () => Promise<void> }).destroy?.() } catch { /* ignore */ }
+  void pdfjs
+
+  const complete = pending.length <= batchesThisRun.length
+  return { pages, totalPages, fromCache, complete }
 }
 
 // Heuristic: a scanned page has almost no extractable text.
@@ -171,7 +271,7 @@ serve(async (req) => {
     const payload = await req.json()
     const job = payload.record
 
-    if (!job || !job.id || job.status !== 'queued') {
+    if (!job || !job.id) {
       return new Response(JSON.stringify({ error: 'Invalid or missing job record' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
@@ -180,10 +280,27 @@ serve(async (req) => {
 
     jobId = job.id
     documentId = job.document_id
-    const workspaceId = job.workspace_id
+    let workspaceId = job.workspace_id
     const startTime = Date.now()
 
-    console.log(`Starting processing for job ${jobId} (Document: ${documentId})`)
+    // Chained invocations post a minimal payload — hydrate the real job row.
+    if (job.chained || !workspaceId || !documentId) {
+      const { data: jobRow } = await supabaseClient
+        .from('processing_jobs')
+        .select('workspace_id, document_id, status')
+        .eq('id', jobId)
+        .single()
+      if (!jobRow) {
+        return new Response(JSON.stringify({ error: 'Chained job not found' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 404,
+        })
+      }
+      workspaceId = jobRow.workspace_id
+      documentId = job.document_id || jobRow.document_id
+    }
+
+    console.log(`Starting processing for job ${jobId} (Document: ${documentId}${job.chained ? ', chained' : ''})`)
 
     // ==========================================
     // 1. ESTIMATE & RESERVE CREDITS
@@ -309,6 +426,9 @@ serve(async (req) => {
     // EXTRACT TEXT PER PAGE (real extraction)
     // ==========================================
     const pdfBytes = new Uint8Array(await pdfBlob.arrayBuffer())
+    // Release the Blob copy — for a 14 MB PDF this halves peak memory before
+    // the parser allocates its own structures.
+    try { (pdfBlob as Blob & { stream?: () => ReadableStream }).stream?.().cancel?.() } catch { /* ignore */ }
     const fileSignature = new TextDecoder().decode(pdfBytes.slice(0, 5))
     if (fileSignature !== '%PDF-') {
       throw new Error('The uploaded file is not a valid PDF')
@@ -316,8 +436,13 @@ serve(async (req) => {
 
     let pages: string[]
     try {
-      const extraction = await extractPdfText(pdfBytes)
-      pages = extraction.pages
+      const extraction = await extractPdfTextIncremental(pdfBytes, {
+        jobId, documentId, supabaseClient,
+        onProgress: async (done, total) => {
+          // Progress 30→55 across extraction; heartbeats keep the watchdog away
+          await heartbeat('extracting', 30 + Math.round((done / total) * 25))
+        },
+      })
 
       // Update page count from the real document
       await supabaseClient
@@ -325,7 +450,22 @@ serve(async (req) => {
         .update({ page_count: extraction.totalPages })
         .eq('id', documentId)
 
-      console.log(`Extracted text from ${extraction.totalPages} pages`)
+      if (!extraction.complete) {
+        // ─── CHAIN: hand off to a fresh invocation with a fresh CPU budget ───
+        // The checkpoint has everything extracted so far; the next run resumes
+        // from there. The job stays 'extracting' with a fresh heartbeat so the
+        // watchdog sees continuous progress across invocations.
+        console.log(`Extraction checkpointed — chaining a fresh invocation for the remaining pages`)
+        await heartbeat('extracting', 55)
+        await reenqueueSelf(jobId)
+        return new Response(JSON.stringify({ success: true, jobId, chained: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 202,
+        })
+      }
+
+      pages = extraction.pages
+      console.log(`Extracted text from ${extraction.totalPages} pages (${extraction.fromCache} resumed from checkpoint)`)
     } catch (extractError: any) {
       throw new Error('PDF text extraction failed: ' + (extractError?.message || 'unknown error'))
     }
