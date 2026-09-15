@@ -361,6 +361,38 @@ export type Database = {
           },
         ]
       }
+      document_page_texts: {
+        Row: {
+          document_id: string
+          page_number: number
+          page_text: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          document_id: string
+          page_number: number
+          page_text?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          document_id?: string
+          page_number?: number
+          page_text?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_page_texts_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_page_segments: {
         Row: {
           id: string

@@ -17,10 +17,12 @@ interface ChatStoreState {
   selectedModel: string;
   isGenerating: boolean;
   isLoadingSession: boolean;
+  abortController: AbortController | null;
 
   // Actions
   loadSession: (documentId: string, workspaceId: string) => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
+  stopGenerating: () => void;
   setSelectedModel: (modelCode: string) => void;
   appendStreamChunk: (messageId: string, chunk: string) => void;
   clearSession: () => Promise<void>;
@@ -38,6 +40,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   selectedModel: 'gemini-flash-latest',
   isGenerating: false,
   isLoadingSession: false,
+  abortController: null,
 
   loadSession: async (documentId, workspaceId) => {
     set({ isLoadingSession: true });
@@ -109,21 +112,36 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         },
       }));
 
-      // 5. Stream AI response
+      // 5. Stream AI response (abortable via stopGenerating)
+      const abortController = new AbortController();
+      set({ abortController });
       let accumulated = '';
-      await AIGateway.generateStream(text, context, selectedModel, (chunk) => {
-        accumulated += chunk;
-        get().appendStreamChunk(assistantMsg.id, chunk);
-      });
+      try {
+        await AIGateway.generateStream(text, context, selectedModel, (chunk) => {
+          accumulated += chunk;
+          get().appendStreamChunk(assistantMsg.id, chunk);
+        }, abortController.signal);
+      } catch (streamErr: any) {
+        if (streamErr?.name === 'AbortError') {
+          // User stopped generation — keep partial content as the final message
+          if (!accumulated) {
+            accumulated = '⚠️ Generation stopped.';
+          }
+        } else {
+          throw streamErr;
+        }
+      }
 
       // 6. Persist final assistant content to DB
       await ChatRepository.updateMessage(assistantMsg.id, accumulated);
     } catch (err: any) {
       console.error('[ChatStore] Error sending message:', err);
 
-      let userFacingError = 'AI service is not configured for this environment or is currently unavailable.';
-      if (err?.status === 402 || err?.message?.toLowerCase().includes('credit')) {
-        userFacingError = 'You do not have enough AI credits to perform this request. Please upgrade to Pro or buy additional credits in Billing.';
+      let userFacingError = 'The AI service is temporarily unavailable. Please try again in a moment.';
+      if (err?.status === 429) {
+        userFacingError = 'The AI service is at capacity right now. Try again in a few seconds.';
+      } else if (err?.name === 'AbortError') {
+        userFacingError = 'Generation stopped.';
       } else if (err?.message?.includes('GEMINI_API_KEY') || err?.message?.includes('API key')) {
         userFacingError = 'AI service is not configured for this environment.';
       }
@@ -141,8 +159,14 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         await ChatRepository.updateMessage(assistantMsgId, `⚠️ ${userFacingError}`).catch(() => undefined);
       }
     } finally {
-      set({ isGenerating: false });
+      set({ isGenerating: false, abortController: null });
     }
+  },
+
+  stopGenerating: () => {
+    const { abortController } = get();
+    abortController?.abort();
+    set({ abortController: null });
   },
 
   appendStreamChunk: (messageId, chunk) => {
@@ -186,6 +210,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     selectedModel: 'gemini-flash-latest',
     isGenerating: false,
     isLoadingSession: false,
+    abortController: null,
   }),
 
   getActiveMessages: () => {
@@ -244,10 +269,27 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
   const selectedText = viewerStore.selectedText ?? '';
   const selectedTextPageIndex = viewerStore.selectedTextPageIndex ?? -1;
 
-  // Get document text for current page (from page registry)
+  // Get document text for current page — unified native + OCR. Native text
+  // comes from document_page_texts (chained extraction checkpoint); OCR text
+  // from the page registry. Scanned and native pages are indistinguishable
+  // to the model.
   const pageRegistry = usePageRegistryStore.getState();
   const currentPageData = pageRegistry.pages[currentPage - 1];
-  const documentText = currentPageData?.ocrData?.data?.text || '';
+  let documentText = currentPageData?.ocrData?.data?.text || '';
+
+  if (!documentText && documentId) {
+    try {
+      const { data: pageTextRow } = await supabase
+        .from('document_page_texts')
+        .select('page_text')
+        .eq('document_id', documentId)
+        .eq('page_number', currentPage)
+        .maybeSingle();
+      if (pageTextRow?.page_text) documentText = pageTextRow.page_text;
+    } catch {
+      // Non-fatal: chat works without page text
+    }
+  }
 
   // Get selection rects from viewer
   const selectionRects = viewerStore.selectionRects ?? [];
@@ -290,6 +332,16 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
     // RAG retrieval results for context
     ragChunks: ragChunks.length > 0 ? ragChunks : undefined,
   };
+}
+
+/**
+ * Ask about the current page without RAG — the page text is the context.
+ * Used by the "Ask about this page" action where the query clearly refers
+ * to what the user is looking at.
+ */
+export async function askAboutPage(question: string): Promise<void> {
+  const store = useChatStore.getState();
+  await store.sendMessage(question);
 }
 
 // RAG Retrieval function - calls the rag-retrieve edge function

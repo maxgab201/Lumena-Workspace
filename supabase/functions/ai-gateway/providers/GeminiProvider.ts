@@ -1,3 +1,5 @@
+import type { AIProviderOptions } from "./Provider.ts";
+
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 export interface AIProviderResult {
@@ -53,7 +55,7 @@ export class GeminiProvider {
     this.apiKey = apiKey;
   }
 
-  async generate(modelCode: string, prompt: string): Promise<AIProviderResult> {
+  async generate(modelCode: string, prompt: string, options?: AIProviderOptions): Promise<AIProviderResult> {
     const res = await fetchWithRetry(
       `${GEMINI_API_BASE}/models/${modelCode}:generateContent?key=${this.apiKey}`,
       {
@@ -61,6 +63,7 @@ export class GeminiProvider {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
+          ...(options?.systemPrompt ? { systemInstruction: { parts: [{ text: options.systemPrompt }] } } : {}),
         }),
       },
     );
@@ -89,6 +92,7 @@ export class GeminiProvider {
   async *generateStream(
     modelCode: string,
     prompt: string,
+    options?: AIProviderOptions,
   ): AsyncIterable<AIProviderStreamResult> {
     const res = await fetchWithRetry(
       `${GEMINI_API_BASE}/models/${modelCode}:streamGenerateContent?alt=sse&key=${this.apiKey}`,
@@ -97,6 +101,7 @@ export class GeminiProvider {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
+          ...(options?.systemPrompt ? { systemInstruction: { parts: [{ text: options.systemPrompt }] } } : {}),
         }),
       },
     );

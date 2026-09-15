@@ -38,6 +38,7 @@ export const ChatSidebar = () => {
     selectedModel,
     setSelectedModel,
     sendMessage,
+    stopGenerating,
     getActiveMessages,
   } = useChatStore(useShallow(state => ({
     isGenerating: state.isGenerating,
@@ -45,6 +46,7 @@ export const ChatSidebar = () => {
     selectedModel: state.selectedModel,
     setSelectedModel: state.setSelectedModel,
     sendMessage: state.sendMessage,
+    stopGenerating: state.stopGenerating,
     getActiveMessages: state.getActiveMessages,
   })));
 
@@ -191,7 +193,7 @@ export const ChatSidebar = () => {
 
       {/* Input */}
       <div className="shrink-0">
-        <ChatInput onSend={handleSend} disabled={isGenerating || isLoadingSession} />
+        <ChatInput onSend={handleSend} onStop={stopGenerating} disabled={isLoadingSession} isGenerating={isGenerating} />
       </div>
     </div>
   );

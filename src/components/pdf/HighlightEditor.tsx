@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
-import { X, MessageSquarePlus, Highlighter } from 'lucide-react';
+import { X, MessageSquarePlus, Highlighter, Sparkles } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useHighlightStore } from '../../stores/highlightStore';
 import { useViewerStore } from '../../stores/viewerStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { useUiStore } from '../../stores/uiStore';
 import { HighlightEngine } from '../../lib/processing/HighlightEngine';
 import { HighlightDetailPopover } from './HighlightDetailPopover';
 import type { NormalizedRect } from '../../types/highlights';
@@ -77,8 +78,13 @@ export const HighlightEditor = ({ workspaceId }: { workspaceId?: string }) => {
           });
           setIsAddingNote(false);
           setNoteText('');
+          // Sync selection to the viewer store so Chat can reference "this text"
+          const viewer = useViewerStore.getState();
+          viewer.setSelectedText(extracted.text, extracted.pageIndex);
+          viewer.setSelectionRects(extracted.rects);
         } else {
           setSelectionData(null);
+          useViewerStore.getState().clearSelection();
         }
       }, 10);
     };
@@ -222,6 +228,23 @@ export const HighlightEditor = ({ workspaceId }: { workspaceId?: string }) => {
               >
                 <MessageSquarePlus className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Nota</span>
+              </Button>
+
+              {/* Ask AI about this selection */}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs px-2 gap-1"
+                onClick={() => {
+                  const ui = useUiStore.getState();
+                  ui.setActiveRightPanel('chat');
+                  setSelectionData(null);
+                }}
+                title="Preguntar a la IA sobre este texto"
+                data-testid="selection-ask-ai-btn"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-accent" />
+                <span className="hidden sm:inline">Ask AI</span>
               </Button>
 
               {/* Cancel Button */}
