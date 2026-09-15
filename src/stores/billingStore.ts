@@ -35,15 +35,17 @@ interface CreditPackage {
   stripe_price_id: string | null;
 }
 
+type PaymentsConfigured = 'unknown' | 'yes' | 'no';
+
 interface BillingStore {
   subscription: Subscription | null;
   account: CreditAccount | null;
   transactions: LedgerEntry[];
   packages: CreditPackage[];
+  paymentsConfigured: PaymentsConfigured;
   loading: boolean;
   error: string | null;
   fetchBillingData: () => Promise<void>;
-  upgradeToPro: () => Promise<void>;
   checkoutPackage: (packageId: string) => Promise<void>;
 }
 
@@ -52,6 +54,7 @@ export const useBillingStore = create<BillingStore>((set) => ({
   account: null,
   transactions: [],
   packages: [],
+  paymentsConfigured: 'unknown',
   loading: false,
   error: null,
 
@@ -87,33 +90,37 @@ export const useBillingStore = create<BillingStore>((set) => ({
     }
   },
 
-  upgradeToPro: async () => {
-    const workspace = useWorkspaceStore.getState().activeWorkspace;
-    if (!workspace) return;
-    
-    set({ loading: true, error: null });
-    try {
-      // In a real scenario with subscription plans mapped to packages, we could pass the correct packageId
-      // For now, this is a placeholder or relies on the backend to know it's a subscription upgrade
-      alert('Upgrading to Pro will redirect to Stripe Checkout in the final implementation.');
-      set({ loading: false });
-    } catch (err: any) {
-      set({ error: err.message, loading: false });
-    }
-  },
-
+  /**
+   * Start a real Stripe Checkout session for a one-time credit package.
+   * If Stripe is not configured server-side the function answers 503 with
+   * code 'stripe_not_configured' — surfaced to the UI as an honest notice.
+   */
   checkoutPackage: async (packageId: string) => {
     const workspace = useWorkspaceStore.getState().activeWorkspace;
     if (!workspace) return;
-    
+
     set({ loading: true, error: null });
     try {
       const response = await BillingRepository.createCheckoutSession(workspace.id, packageId);
-      if (response && response.url) {
+      if (response?.url) {
         window.location.href = response.url;
+        return;
       }
+      set({ loading: false });
     } catch (err: any) {
+      // FunctionsHttpError carries the Edge Function response body in `context`
+      const body = err?.context;
+      const code = body?.code ?? (typeof body?.json === 'object' ? body.json?.code : undefined);
+      if (code === 'stripe_not_configured') {
+        set({ paymentsConfigured: 'no', loading: false });
+        return;
+      }
+      if (code === 'price_not_provisioned') {
+        set({ loading: false });
+        throw new Error('PRICE_NOT_PROVISIONED');
+      }
       set({ error: err.message, loading: false });
+      throw err;
     }
   },
 }));

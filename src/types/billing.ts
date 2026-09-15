@@ -1,4 +1,4 @@
-export type PlanType = 'free' | 'pro';
+export type PlanType = 'free' | 'go' | 'pro' | 'max';
 
 export interface SubscriptionPlan {
   id: PlanType;
@@ -23,7 +23,13 @@ export interface BillingState {
   transactions: Transaction[];
 }
 
-export const PLANS: Record<PlanType, SubscriptionPlan> = {
+// ─── Product definition (PROVISIONAL pricing) ────────────────────────
+// Only the Free tier's $0 and 0 AI credits are confirmed product decisions.
+// 'go' and 'max' exist in the plans table but have no confirmed product
+// definition yet — they are intentionally absent here until defined.
+// Features listed are those that exist in the product today; no unshipped
+// promises. Pricing owners must confirm before any real checkout goes live.
+export const PLANS: Partial<Record<PlanType, SubscriptionPlan>> = {
   free: {
     id: 'free',
     name: 'Free',
@@ -31,24 +37,23 @@ export const PLANS: Record<PlanType, SubscriptionPlan> = {
     monthlyCredits: 0,
     allowedModels: [],
     features: [
-      'Standard PDF reading & viewing',
+      'PDF reading & viewer',
       'Manual highlights & notes',
-      'Up to 3 Workspaces',
+      'Works with zero AI credits',
       'No included AI credits'
     ]
   },
   pro: {
     id: 'pro',
     name: 'Pro',
-    price: 15,
+    price: 15, // PROVISIONAL — unconfirmed pricing
     monthlyCredits: 1000,
     allowedModels: ['gemini-flash-latest', 'gemini-pro-latest'],
     features: [
       '1,000 AI Credits / month',
-      'Unlimited Workspaces',
-      'Priority Processing',
-      'AI Highlights & Analysis',
-      'Gemini 1.5 Pro & Flash access'
+      'AI Highlights (semantic)',
+      'AI chat with your documents',
+      'Everything in Free'
     ]
   }
 };

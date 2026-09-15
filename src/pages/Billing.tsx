@@ -4,17 +4,16 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from "../components/ui/Button";
 import { useBillingStore } from "../stores/billingStore";
 import { PLANS, type PlanType } from "../types/billing";
-import { CheckIcon, Zap, Activity, PieChart, FileText, MessageSquare, ImageIcon, Sparkles } from "lucide-react";
+import { CheckIcon, Zap, Activity, CreditCard, Sparkles, Info } from "lucide-react";
 import { UpgradeModal } from "../components/billing/UpgradeModal";
 import { cn } from "../lib/utils";
-import { motion } from "framer-motion";
 import { t } from "../i18n";
 import { useLanguage } from "../hooks/useLanguage";
 import { toast } from "sonner";
 
 export const Billing = () => {
   useLanguage();
-  const { subscription, account, transactions, packages, fetchBillingData } = useBillingStore();
+  const { subscription, account, transactions, packages, paymentsConfigured, checkoutPackage, fetchBillingData } = useBillingStore();
 
   useEffect(() => {
     fetchBillingData();
@@ -25,25 +24,27 @@ export const Billing = () => {
   const creditsConsumed = account?.consumed || 0;
   const creditsReserved = account?.reserved || 0;
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
-  const [billingCycle, setBillingCycle] = useState<"monthly" | "annual">("monthly");
 
-  const plan = PLANS[currentPlan] || PLANS.free;
+  const plan = PLANS[currentPlan] ?? PLANS.free!;
   const isFreePlan = currentPlan === "free";
   const creditsTotal = plan.monthlyCredits || 0;
   const usagePercentage = creditsTotal > 0
     ? Math.min(100, Math.max(0, (creditsConsumed / creditsTotal) * 100))
     : 0;
 
-  const handleCheckout = () => {
-    toast.info("Payment processing (Stripe) is under development.");
-  };
+  const paymentsUnavailable = paymentsConfigured === 'no';
 
-  // Usage breakdown data
-  const breakdown = [
-    { label: t("billing.ocrProcessing"), value: 45, icon: <FileText size={14} />, color: "bg-blue-500" },
-    { label: t("billing.chatEngine"), value: 30, icon: <MessageSquare size={14} />, color: "bg-purple-500" },
-    { label: t("billing.visionAi"), value: 25, icon: <ImageIcon size={14} />, color: "bg-emerald-500" }
-  ];
+  const handleBuyPackage = async (packageId: string) => {
+    try {
+      await checkoutPackage(packageId);
+    } catch (err: any) {
+      if (err?.message === 'PRICE_NOT_PROVISIONED') {
+        toast.info(t('billing.notAvailableYet'), { description: t('billing.notAvailableYetDesc') });
+      } else {
+        toast.error(t('billing.checkoutError'), { description: err?.message });
+      }
+    }
+  };
 
   return (
     <PageContainer>
@@ -51,6 +52,17 @@ export const Billing = () => {
         <h1 className="text-3xl font-heading font-semibold tracking-tight">{t("billing.title")}</h1>
         <p className="text-muted-foreground">{t("billing.description")}</p>
       </header>
+
+      {/* Honest payments-availability notice (alpha stage) */}
+      {paymentsUnavailable && (
+        <div className="mb-6 flex items-start gap-3 p-4 rounded-xl bg-secondary/20 border border-white/5" data-testid="payments-unavailable-notice">
+          <Info size={18} className="text-accent shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-foreground">{t("billing.paymentsUnavailable")}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("billing.paymentsUnavailableDesc")}</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-12 mb-8">
         {/* Current Plan Card */}
@@ -68,7 +80,7 @@ export const Billing = () => {
             <div className="text-5xl font-bold mb-6 font-heading tracking-tight">
               ${plan.price}<span className="text-lg text-muted-foreground font-normal">/mo</span>
             </div>
-            
+
             {isFreePlan ? (
               <div className="p-4 rounded-xl bg-secondary/20 border border-white/5 space-y-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -89,14 +101,12 @@ export const Billing = () => {
                     </span>
                   </div>
                   <div data-testid="credit-progress-bar" className="h-3 w-full bg-secondary/40 overflow-hidden rounded-full border border-white/5 mb-2">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${usagePercentage}%` }}
-                      transition={{ duration: 1, ease: "easeOut" }}
+                    <div
                       className={cn(
-                        "h-full rounded-full shadow-inner",
+                        "h-full rounded-full shadow-inner transition-[width]",
                         usagePercentage > 90 ? "bg-destructive" : usagePercentage > 75 ? "bg-orange-500" : "bg-accent"
                       )}
+                      style={{ width: `${usagePercentage}%` }}
                     />
                   </div>
                   <div className="flex flex-col mt-2 gap-1 text-xs text-muted-foreground">
@@ -130,43 +140,36 @@ export const Billing = () => {
           </CardFooter>
         </Card>
 
-        {/* Usage Breakdown */}
+        {/* What Core includes — always relevant, especially on Free */}
         <Card className="border-white/5 bg-card/40 backdrop-blur-md shadow-sm md:col-span-8 flex flex-col justify-between">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <PieChart size={18} className="text-muted-foreground" /> {t("billing.usageBreakdown")}
+              <CreditCard size={18} className="text-muted-foreground" /> {t("billing.coreIncluded")}
             </CardTitle>
-            <CardDescription>{t("billing.usageBreakdownDesc")}</CardDescription>
+            <CardDescription>{t("billing.coreIncludedDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 flex flex-col justify-center pb-8">
-            <div className="space-y-6">
-              {/* Visual Bar */}
-              <div className="flex h-6 rounded-full overflow-hidden border border-white/5 bg-secondary/20 w-full mb-8">
-                {breakdown.map((item, i) => (
-                  <motion.div
-                    key={i}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${item.value}%` }}
-                    transition={{ delay: 0.2 * i, duration: 0.8, ease: "easeOut" }}
-                    className={item.color}
-                    title={`${item.label} (${item.value}%)`}
-                  />
-                ))}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="flex flex-col space-y-2 p-4 rounded-xl border border-white/5 bg-secondary/10">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <span className="text-accent"><CheckIcon size={16} /></span>
+                  {t("billing.coreReading")}
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{t("billing.coreReadingDesc")}</p>
               </div>
-
-              {/* Legend */}
-              <div className="grid grid-cols-3 gap-4">
-                {breakdown.map((item, i) => (
-                  <div key={i} className="flex flex-col space-y-2 p-3 rounded-xl border border-white/5 bg-secondary/10">
-                    <div className="flex items-center space-x-2 text-sm font-medium text-foreground">
-                      <div className={cn("w-6 h-6 rounded-md flex items-center justify-center text-white", item.color)}>
-                        {item.icon}
-                      </div>
-                      <span>{item.label}</span>
-                    </div>
-                    <div className="text-2xl font-bold font-mono text-muted-foreground ml-8">{item.value}%</div>
-                  </div>
-                ))}
+              <div className="flex flex-col space-y-2 p-4 rounded-xl border border-white/5 bg-secondary/10">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <span className="text-accent"><CheckIcon size={16} /></span>
+                  {t("billing.coreHighlights")}
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{t("billing.coreHighlightsDesc")}</p>
+              </div>
+              <div className="flex flex-col space-y-2 p-4 rounded-xl border border-white/5 bg-secondary/10">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <span className="text-accent"><CheckIcon size={16} /></span>
+                  {t("billing.coreFree")}
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">{t("billing.coreFreeDesc")}</p>
               </div>
             </div>
           </CardContent>
@@ -175,31 +178,14 @@ export const Billing = () => {
 
       {/* Plan Comparison Section */}
       <section className="mb-8 border border-white/5 bg-card/20 rounded-3xl p-8 backdrop-blur-md shadow-lg">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-          <div>
-            <h2 className="text-2xl font-heading font-bold">{t("billing.comparePlans")}</h2>
-            <p className="text-muted-foreground text-sm mt-1">{t("billing.comparePlansDesc")}</p>
-          </div>
-
-          <div className="inline-flex bg-secondary/50 rounded-full p-1 border border-white/5 self-start">
-            <button
-              onClick={() => setBillingCycle("monthly")}
-              className={cn("px-4 py-1.5 rounded-full text-sm font-medium transition-colors", billingCycle === "monthly" ? "bg-background text-foreground shadow-sm border border-white/5" : "text-muted-foreground hover:text-foreground")}
-            >
-              {t("billing.monthly")}
-            </button>
-            <button
-              onClick={() => setBillingCycle("annual")}
-              className={cn("px-4 py-1.5 rounded-full text-sm font-medium transition-colors flex items-center space-x-1.5", billingCycle === "annual" ? "bg-background text-foreground shadow-sm border border-white/5" : "text-muted-foreground hover:text-foreground")}
-            >
-              <span>{t("billing.annual")}</span>
-              <span className="text-[9px] bg-accent/20 text-accent uppercase font-bold px-1.5 py-0.5 rounded">{t("billing.savePercent")}</span>
-            </button>
-          </div>
+        <div className="mb-8">
+          <h2 className="text-2xl font-heading font-bold">{t("billing.comparePlans")}</h2>
+          <p className="text-muted-foreground text-sm mt-1">{t("billing.comparePlansDesc")}</p>
         </div>
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="p-6 rounded-2xl border border-white/5 bg-background/40">
+            {PLANS.free && <>
             <h4 className="font-semibold text-lg mb-4">{PLANS.free.name}</h4>
             <div className="text-3xl font-bold font-heading mb-6">$0<span className="text-sm font-normal text-muted-foreground">/mo</span></div>
             <ul className="space-y-3">
@@ -210,18 +196,19 @@ export const Billing = () => {
                 </li>
               ))}
             </ul>
+            </>}
           </div>
 
           <div className="p-6 rounded-2xl border border-accent/30 bg-accent/5 shadow-[0_0_20px_rgba(var(--accent-hsl),0.05)] relative overflow-hidden">
             <div className="absolute top-0 right-0 w-32 h-32 bg-accent/20 rounded-full blur-3xl pointer-events-none" />
-            <div className="relative z-10">
+            <div className="relative z-10" data-plan="pro">
+              {PLANS.pro && <>
               <h4 className="font-semibold text-lg mb-4 text-foreground flex items-center justify-between">
                 {PLANS.pro.name}
                 <span className="text-[10px] bg-accent text-white uppercase font-bold tracking-widest px-2 py-0.5 rounded-full">Pro</span>
               </h4>
               <div className="text-3xl font-bold font-heading mb-6">
-                ${billingCycle === "monthly" ? PLANS.pro.price : Math.floor(PLANS.pro.price * 0.8)}<span className="text-sm font-normal text-muted-foreground">/mo</span>
-                {billingCycle === "annual" && <span className="block text-xs font-normal text-accent mt-1">{t("billing.billedAnnually") || "Billed annually"}</span>}
+                ${PLANS.pro.price}<span className="text-sm font-normal text-muted-foreground">/mo</span>
               </div>
               <ul className="space-y-3">
                 {PLANS.pro.features.map((feature, i) => (
@@ -231,6 +218,15 @@ export const Billing = () => {
                   </li>
                 ))}
               </ul>
+              <Button
+                className="w-full mt-6 bg-accent hover:bg-accent/90 text-accent-foreground"
+                disabled
+                title={t("billing.paymentsUnavailable")}
+                data-testid="pro-checkout-disabled"
+              >
+                {t("billing.notAvailableYet")}
+              </Button>
+              </>}
             </div>
           </div>
         </div>
@@ -322,7 +318,10 @@ export const Billing = () => {
               <CardFooter>
                 <Button
                   className="w-full bg-secondary hover:bg-secondary/80 text-foreground"
-                  onClick={handleCheckout}
+                  onClick={() => handleBuyPackage(pkg.id)}
+                  disabled={paymentsUnavailable}
+                  title={paymentsUnavailable ? t("billing.paymentsUnavailable") : undefined}
+                  data-testid={`buy-package-${pkg.id}`}
                 >
                   {t("billing.buyNow")}
                 </Button>
