@@ -50,7 +50,7 @@ export const ChatSidebar = () => {
 
   const { subscription } = useBillingStore(useShallow(state => ({ subscription: state.subscription })));
   const currentPlan = (subscription?.plan?.code || 'free') as PlanType;
-  const planConfig = PLANS[currentPlan] ?? PLANS.free;
+  const planConfig = PLANS[currentPlan] ?? PLANS.free!;
 
   const messages = getActiveMessages();
   const scrollRef = useRef<HTMLDivElement>(null);

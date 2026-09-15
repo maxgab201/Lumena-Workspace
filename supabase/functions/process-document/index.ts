@@ -178,13 +178,13 @@ async function reenqueueSelf(jobId: string): Promise<void> {
 async function extractPdfTextIncremental(
   pdfBytes: Uint8Array,
   opts: {
-    jobId: string;
+    jobId: string; // reserved for future per-job instrumentation
     documentId: string;
     supabaseClient: ReturnType<typeof createClient>;
     onProgress?: (donePages: number, totalPages: number) => Promise<void>;
   }
 ): Promise<{ pages: string[]; totalPages: number; fromCache: number; complete: boolean }> {
-  const { jobId, documentId, supabaseClient, onProgress } = opts
+  const { documentId, supabaseClient, onProgress } = opts
   const pdf = await getDocumentProxy(new Uint8Array(pdfBytes))
   const pdfjs = await getResolvedPDFJS()
   const totalPages = pdf.numPages
