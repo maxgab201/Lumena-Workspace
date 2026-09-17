@@ -50,8 +50,8 @@ export class GeminiProvider {
   private apiKey: string;
 
   constructor() {
-    const apiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
+    const apiKey = Deno.env.get("GEMINI_API_KEY") ?? '';
+    if (!apiKey) console.warn('[GeminiProvider] GEMINI_API_KEY missing — Gemini unavailable');
     this.apiKey = apiKey;
   }
 
