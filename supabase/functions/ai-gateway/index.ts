@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 import { ProviderRouter } from "./router.ts"
 import type { AIProvider } from "./providers/Provider.ts"
+import { getCatalog, tierOf, FREE_DAILY_LIMIT, DEFAULT_CHAT_FREE_MODEL, DEFAULT_HIGHLIGHT_FREE_MODEL } from "../_shared/modelCatalog.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -147,56 +148,44 @@ serve(async (req) => {
     }
 
     // ==========================================
-    // PLAN ENFORCEMENT: Fetch subscription
+    // MODEL CATALOG + TIER + DAILY QUOTA (Free only)
     // ==========================================
     const { data: subscription } = await supabaseClient
       .from('subscriptions')
       .select('plan_code')
       .eq('workspace_id', workspace_id)
       .single()
-
     const planCode: string = subscription?.plan_code ?? 'free'
 
-    // Define plan capabilities
-    const PLAN_MODELS: Record<string, string[]> = {
-      free: ['gemini-3.6-flash'],
-      pro: ['gemini-3.6-flash', 'gemini-3.6-pro'],
-    }
-    const PLAN_MONTHLY_CREDIT_QUOTA: Record<string, number> = {
-      free: 50,
-      pro: 1000,
-    }
-
-    const allowedModels = PLAN_MODELS[planCode] ?? PLAN_MODELS['free']
-    const monthlyQuota = PLAN_MONTHLY_CREDIT_QUOTA[planCode] ?? 50
-
-    // Block access to restricted models
-    if (!allowedModels.includes(model_code)) {
+    // Resolve tier from the single source of truth (catalog module)
+    const modelTier = tierOf(model_code)
+    if (planCode === 'free' && modelTier === 'pro') {
       return new Response(JSON.stringify({
-        error: `Model "${model_code}" is not available on the ${planCode} plan. Please upgrade to access advanced models.`,
+        error: `Model "${model_code}" is not available on the free plan. Please upgrade to access advanced models.`,
         plan_required: 'pro',
-        current_plan: planCode,
-      }), { status: 403, headers: corsHeaders })
+        current_plan: 'free',
+        request_id,
+      }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    // Enforce monthly credit quota
-    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
-    const { data: monthlyUsage } = await supabaseClient
-      .from('credit_ledger')
-      .select('amount')
-      .eq('workspace_id', workspace_id)
-      .eq('entry_type', 'consume')
-      .gte('created_at', monthStart)
-
-    const totalConsumedThisMonth = monthlyUsage
-      ? monthlyUsage.reduce((acc: number, row: any) => acc + row.amount, 0)
-      : 0
-
-    if (totalConsumedThisMonth >= monthlyQuota) {
-      return new Response(JSON.stringify({
-        error: `Monthly credit quota of ${monthlyQuota} credits reached for your ${planCode} plan. Please upgrade or purchase additional credits.`,
-        quota: monthlyQuota,
-        consumed: totalConsumedThisMonth,
+    // Free daily quota: 50 combined Chat + AI Highlight requests (atomic, server-side)
+    if (planCode === 'free') {
+      const { data: quotaResult } = await supabaseClient
+        .rpc('consume_ai_request', {
+          p_workspace_id: workspace_id,
+          p_action: 'chat',
+          p_limit: FREE_DAILY_LIMIT,
+        })
+      const allowed = quotaResult?.allowed ?? false
+      const used = (quotaResult?.chat_count ?? 0) + (quotaResult?.highlight_count ?? 0)
+      if (!allowed) {
+        return new Response(JSON.stringify({
+          error: `Daily AI request limit reached (${used}/${FREE_DAILY_LIMIT}). Resets at ${quotaResult?.resets_at ? new Date(quotaResult.resets_at).toISOString() : 'midnight UTC'}.`,
+          quota: { used, limit: FREE_DAILY_LIMIT, resets_at: quotaResult?.resets_at ?? new Date().toISOString() },
+          request_id,
+        }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+    }
         plan_required: planCode === 'free' ? 'pro' : null,
       }), { status: 402, headers: corsHeaders })
     }
@@ -379,9 +368,10 @@ ${userPrompt}`;
     // Build enhanced prompt with RAG context if available
     const enhancedPrompt = buildPromptWithRAG(prompt, context);
 
-    const OPENROUTER_CHAT_MODEL = Deno.env.get("OPENROUTER_CHAT_MODEL") || "meta-llama/llama-3.1-8b-instruct:free";
+    const OPENROUTER_CHAT_MODEL = Deno.env.get("OPENROUTER_CHAT_MODEL") || "nex-agi/nex-n2.5-pro:free";
     const OPENROUTER_FALLBACK_MODELS = (Deno.env.get("OPENROUTER_FALLBACK_MODELS") || "").split(",").map(m => m.trim()).filter(Boolean);
-    const chain = fallback_models || [model_code, OPENROUTER_CHAT_MODEL, ...OPENROUTER_FALLBACK_MODELS];
+    const rawChain = fallback_models || [model_code, OPENROUTER_CHAT_MODEL, ...OPENROUTER_FALLBACK_MODELS];
+    const chain = planCode === 'free' ? rawChain.filter((m: string) => tierOf(m) === 'free') : rawChain;
 
     console.log(`[AI Gateway] Request: workspace_id=${workspace_id}, action=${action_type}, stream=${stream ? "yes" : "no"}, model_code=${model_code}, prompt_length=${prompt.length}`);
 

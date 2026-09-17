@@ -5,12 +5,59 @@ import { Button } from '../ui/Button';
 import { useChatStore } from '../../stores/chatStore';
 import { useBillingStore } from '../../stores/billingStore';
 import { useViewerStore } from '../../stores/viewerStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { KnowledgeSearch } from './KnowledgeSearch';
 import { useUiStore } from '../../stores/uiStore';
 import { useShallow } from 'zustand/react/shallow';
-import { AVAILABLE_MODELS, PLANS, type PlanType } from '../../types/billing';
+import { fetchAiConfig, type CatalogModelUI, FREE_LIMIT } from '../../lib/modelCatalog';
+import { useEffect, useMemo, useState } from 'react';
+
+function ModelSelectorPanel({ selectedModel, onChange, plan }: { selectedModel: string; onChange: (m: string) => void; plan: string }) {
+  const [catalog, setCatalog] = useState<CatalogModelUI[] | null>(null)
+  const [quota, setQuota] = useState<{ used: number; limit: number; resets_at: string } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    const wsId = (useViewerStore.getState().activeWorkspace?.id || useWorkspaceStore.getState().activeWorkspace?.id || '')
+    fetchAiConfig(wsId).then((cfg) => { if (!cancelled) { setCatalog(cfg.models); setQuota(cfg.quota); } })
+    return () => { cancelled = true }
+  }, [])
+  const freeList = catalog?.filter((m) => m.tier === 'free') ?? []
+  const proList = catalog?.filter((m) => m.tier === 'pro') ?? []
+  const display = (list: CatalogModelUI[]) =>
+    list.map((m) => (
+      <button
+        key={m.model_id}
+        disabled={plan === 'free' && m.tier === 'pro'}
+        onClick={() => onChange(m.model_id)}
+        title={m.display_name + (m.tier === 'pro' ? ' (Pro)' : ' (Free)')}
+        className={`flex items-center justify-between text-xs px-3 py-2 rounded-lg border transition-all ${
+          selectedModel === m.model_id
+            ? 'border-accent/50 bg-accent/10 text-accent font-medium'
+            : m.tier === 'pro' && plan === 'free'
+            ? 'border-white/5 bg-secondary/10 text-muted-foreground/40 cursor-not-allowed'
+            : 'border-white/5 bg-secondary/20 text-muted-foreground hover:text-foreground hover:border-white/20'
+        }`}
+      >
+        <span className="flex items-center gap-1.5">{m.display_name}</span>
+        {m.tier === 'free' ? <span className="text-[10px] font-semibold text-emerald-400">FREE</span> : <span className="flex items-center gap-1 text-[10px] text-accent/70 font-semibold"><Lock className="w-3 h-3" /> Pro</span>}
+      </button>
+    ))
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1">
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Gratuito</p>
+        {display(freeList)}
+        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mt-1">Pro</p>
+        {display(proList)}
+      </div>
+      {quota ? (
+        <p className="text-[10px] text-muted-foreground/60 mt-0.5">{quota.used} / {quota.limit} AI requests today · resets {new Date(quota.resets_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} UTC</p>
+      ) : null}
+    </div>
+  )
+}
 
 export const ChatSidebar = () => {
   const { setActiveRightPanel } = useUiStore();
@@ -68,11 +115,11 @@ export const ChatSidebar = () => {
   };
 
   const handleModelChange = (modelCode: string) => {
-    const model = AVAILABLE_MODELS.find(m => m.code === modelCode);
-    if (!model) return;
-    const isLocked = !planConfig.allowedModels.includes(modelCode);
-    if (isLocked) return; // Silently ignore — button is disabled
+    // Client guard: free plan cannot pick pro-tier models (mirrors server tierOf).
+    const isPro = modelCode === 'gemini-3.6-flash' || modelCode === 'gemini-3.6-pro'
+    if (currentPlan === 'free' && isPro) return;
     setSelectedModel(modelCode);
+    try { localStorage.setItem('lumena.chat.model', modelCode) } catch { /* ignore */ }
   };
 
   const [showSearch, setShowSearch] = useState(false);
@@ -99,40 +146,13 @@ export const ChatSidebar = () => {
           </Button>
         </div>
 
-        {/* Plan-aware Model Selector */}
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-col gap-1">
-            {AVAILABLE_MODELS.map((model) => {
-              const isLocked = !planConfig.allowedModels.includes(model.code);
-              const isActive = selectedModel === model.code;
-              return (
-                <button
-                  key={model.code}
-                  disabled={isLocked || isGenerating || isLoadingSession}
-                  onClick={() => handleModelChange(model.code)}
-                  className={`flex items-center justify-between text-xs px-3 py-2 rounded-lg border transition-all ${
-                    isActive
-                      ? 'border-accent/50 bg-accent/10 text-accent font-medium'
-                      : isLocked
-                      ? 'border-white/5 bg-secondary/10 text-muted-foreground/40 cursor-not-allowed'
-                      : 'border-white/5 bg-secondary/20 text-muted-foreground hover:text-foreground hover:border-white/20'
-                  }`}
-                >
-                  <span>{model.name}</span>
-                  {isLocked && (
-                    <span className="flex items-center gap-1 text-[10px] text-accent/70 font-semibold">
-                      <Lock className="w-3 h-3" /> Pro
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {currentPlan === 'free' && (
-            <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-              Upgrade to Pro to unlock advanced models.
-            </p>
-          )}
+        {/* Plan-aware Catalog Model Selector */}
+        <ModelSelectorPanel
+          selectedModel={selectedModel}
+          onChange={handleModelChange}
+          plan={currentPlan}
+        />
+        <p className="text-[10px] text-muted-foreground/50 mt-0.5">{currentPlan === 'free' ? 'Upgrade to Pro to unlock advanced models.' : 'Pro plan active — all models available.'}</p>
 
           {/* Knowledge Search Toggle */}
           <button
