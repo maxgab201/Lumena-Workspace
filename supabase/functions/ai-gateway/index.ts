@@ -12,8 +12,9 @@ const corsHeaders = {
 const MAX_PROMPT_LENGTH = 50000;
 const MIN_PROMPT_LENGTH = 1;
 
-// Provider call timeout (ms)
-const PROVIDER_TIMEOUT_MS = 60000;
+// Provider call timeout (ms) — short enough that the Gemini→Nex fallback
+// starts quickly on 503/high-demand hangs instead of a 60s+ wait.
+const PROVIDER_TIMEOUT_MS = 25000;
 
 // Helper to execute with timeout
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {

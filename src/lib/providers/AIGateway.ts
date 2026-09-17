@@ -69,8 +69,18 @@ export class AIGateway {
   ): Promise<{ text: string; usage?: any }> {
     // Viewer routes can be opened directly, before the dashboard has hydrated
     // the workspace store. The chat context already carries the session's
-    // workspace, so use it as the authoritative fallback for streaming.
-    const workspaceId = useWorkspaceStore.getState().activeWorkspace?.id ?? context?.workspaceId ?? context?.workspace_id ?? 'workspace-1';
+    // workspace, so use it as the authoritative fallback for streaming. If
+    // both are missing, hydrate the store once before giving up — never send
+    // a placeholder id, the backend's usage_jobs FK would reject it.
+    let workspaceId = useWorkspaceStore.getState().activeWorkspace?.id ?? context?.workspaceId ?? context?.workspace_id;
+    if (!workspaceId) {
+      try {
+        await useWorkspaceStore.getState().fetchWorkspaces();
+      } catch {
+        // Non-fatal: the explicit error below is the useful signal
+      }
+      workspaceId = useWorkspaceStore.getState().activeWorkspace?.id ?? context?.workspaceId ?? context?.workspace_id;
+    }
 
     if (!workspaceId) {
       throw new Error('No active workspace selected.');
@@ -105,6 +115,11 @@ export class AIGateway {
       const errorData = await response.json().catch(() => ({}));
       const error = new Error(errorData.error || `HTTP ${response.status}`);
       (error as any).status = response.status;
+      // Propagate the backend's request_id so failures can be traced server-side
+      if (errorData.request_id) {
+        (error as any).request_id = errorData.request_id;
+        console.error('[AIGateway] Request failed — request_id:', errorData.request_id);
+      }
       if (response.status === 402) {
         (error as any).status = 402;
       }
