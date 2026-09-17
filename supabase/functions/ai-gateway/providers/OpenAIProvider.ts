@@ -17,7 +17,7 @@ async function fetchWithRetry(
   return lastRes!;
 }
 
-export class OpenRouterProvider implements AIProvider {
+export class OpenAIProvider implements AIProvider {
   readonly id = 'openrouter';
   private apiKey: string;
   private chatModel: string;
@@ -25,7 +25,7 @@ export class OpenRouterProvider implements AIProvider {
 
   constructor() {
     const key = Deno.env.get('OPENROUTER_API_KEY') ?? '';
-    if (!key) console.warn('[OpenRouterProvider] OPENROUTER_API_KEY missing — OpenRouter unavailable');
+    if (!key) console.warn('[OpenAIProvider] OPENROUTER_API_KEY missing — OpenRouter unavailable');
     this.apiKey = key;
 
     this.chatModel = Deno.env.get('OPENROUTER_CHAT_MODEL') || 'nex-agi/nex-n2.5-pro:free';
