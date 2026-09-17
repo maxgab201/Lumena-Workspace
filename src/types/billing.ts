@@ -48,7 +48,7 @@ export const PLANS: Partial<Record<PlanType, SubscriptionPlan>> = {
     name: 'Pro',
     price: 15, // PROVISIONAL — unconfirmed pricing
     monthlyCredits: 1000,
-    allowedModels: ['gemini-flash-latest', 'gemini-pro-latest'],
+    allowedModels: ['gemini-3.6-flash', 'gemini-3.6-pro'],
     features: [
       '1,000 AI Credits / month',
       'AI Highlights (semantic)',
@@ -59,6 +59,6 @@ export const PLANS: Partial<Record<PlanType, SubscriptionPlan>> = {
 };
 
 export const AVAILABLE_MODELS: { code: string; name: string; requiredPlan: PlanType }[] = [
-  { code: 'gemini-flash-latest', name: 'Gemini Flash (Fast)', requiredPlan: 'free' },
-  { code: 'gemini-pro-latest', name: 'Gemini Pro (Advanced)', requiredPlan: 'pro' },
+  { code: 'gemini-3.6-flash', name: 'Gemini Flash (Fast)', requiredPlan: 'free' },
+  { code: 'gemini-3.6-pro', name: 'Gemini Pro (Advanced)', requiredPlan: 'pro' },
 ];

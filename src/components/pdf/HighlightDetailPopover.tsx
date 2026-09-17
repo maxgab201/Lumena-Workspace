@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Trash2, Edit3, MessageSquarePlus, Check } from 'lucide-react';
+import { X, Trash2, Edit3, MessageSquarePlus, Check, Sparkles } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useHighlightStore } from '../../stores/highlightStore';
+import { useChatStore } from '../../stores/chatStore';
+import { useUiStore } from '../../stores/uiStore';
 import { cn } from '../../lib/utils';
 
 const HIGHLIGHT_COLORS = [
@@ -250,15 +252,32 @@ export const HighlightDetailPopover = () => {
             </p>
           </div>
         ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full h-8 text-xs flex items-center justify-center gap-1.5 border-dashed hover:border-primary/50"
-            onClick={() => setIsEditingNote(true)}
-          >
-            <MessageSquarePlus className="w-3.5 h-3.5" />
-            Añadir nota
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full h-8 text-xs flex items-center justify-center gap-1.5 border-dashed hover:border-primary/50"
+              onClick={() => {
+                const msg = activeHighlight?.note
+                  ? `Explica este subrayado y esta nota: "${activeHighlight.text}". Nota: "${activeHighlight.note}".`
+                  : `Explica este subrayado: "${activeHighlight.text}".`;
+                useChatStore.getState().sendMessage(msg);
+                useUiStore.getState().setActiveRightPanel('chat');
+              }}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Explicar subrayado
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full h-8 text-xs flex items-center justify-center gap-1.5 border-dashed hover:border-primary/50"
+              onClick={() => setIsEditingNote(true)}
+            >
+              <MessageSquarePlus className="w-3.5 h-3.5" />
+              Añadir nota
+            </Button>
+          </div>
         )}
       </div>
     </div>

@@ -127,7 +127,7 @@ serve(async (req) => {
     }
 
     const payload = await req.json()
-    const { prompt, workspace_id, action_type = 'chat', model_code = 'gemini-flash-latest', fallback_models, document_id = null, stream = false, context = null } = payload
+    const { prompt, workspace_id, action_type = 'chat', model_code = 'gemini-3.6-flash', fallback_models, document_id = null, stream = false, context = null } = payload
 
     if (!prompt || !workspace_id) {
       return new Response(JSON.stringify({ error: 'Missing prompt or workspace_id' }), { status: 400, headers: corsHeaders })
@@ -150,8 +150,8 @@ serve(async (req) => {
 
     // Define plan capabilities
     const PLAN_MODELS: Record<string, string[]> = {
-      free: ['gemini-flash-latest'],
-      pro: ['gemini-flash-latest', 'gemini-pro-latest'],
+      free: ['gemini-3.6-flash'],
+      pro: ['gemini-3.6-flash', 'gemini-3.6-pro'],
     }
     const PLAN_MONTHLY_CREDIT_QUOTA: Record<string, number> = {
       free: 50,
@@ -370,7 +370,7 @@ ${userPrompt}`;
     // Build enhanced prompt with RAG context if available
     const enhancedPrompt = buildPromptWithRAG(prompt, context);
 
-    const chain = fallback_models || [model_code, 'gemini-flash-latest']
+    const chain = fallback_models || [model_code, 'gemini-3.6-flash']
 
     const { result, usedModel } = await router.routeWithFallback(
       chain,
@@ -470,14 +470,33 @@ ${userPrompt}`;
               try {
                 send({ type: 'start', model: currentModelCode })
 
-                for await (const chunk of provider.generateStream!(currentModelCode, enhancedPrompt, { systemPrompt: CHAT_SYSTEM_PROMPT })) {
-                  if (chunk.text) {
-                    accumulatedText += chunk.text
-                    send({ chunk: chunk.text })
+                let streamStarted = false
+                try {
+                  for await (const chunk of provider.generateStream!(currentModelCode, enhancedPrompt, { systemPrompt: CHAT_SYSTEM_PROMPT })) {
+                    streamStarted = true
+                    if (chunk.text) {
+                      accumulatedText += chunk.text
+                      send({ chunk: chunk.text })
+                    }
+                    if (chunk.done && chunk.usage) {
+                      finalUsage = chunk.usage
+                    }
                   }
-                  if (chunk.done && chunk.usage) {
-                    finalUsage = chunk.usage
-                  }
+                } catch (streamErr: any) {
+                  // ─── Streaming fallback ───
+                  // Gemini's streamGenerateContent has its own (much smaller)
+                  // free-tier quota that runs out while generateContent still
+                  // has capacity. If the stream failed BEFORE producing any
+                  // token, retry once with the non-streaming path and deliver
+                  // the whole answer as a single chunk — the user keeps a
+                  // working chat instead of a dead request. If tokens were
+                  // already streamed, surface the error (can't rewind).
+                  if (streamStarted) throw streamErr
+                  console.warn(`Stream failed before first token (${streamErr.message?.substring(0, 120)}) — falling back to non-streaming generate`)
+                  const fallbackResult = await provider.generate(currentModelCode, enhancedPrompt, { systemPrompt: CHAT_SYSTEM_PROMPT })
+                  accumulatedText = fallbackResult.text
+                  finalUsage = fallbackResult.usage
+                  send({ chunk: fallbackResult.text })
                 }
 
                 const inputTokens = finalUsage?.inputTokens ?? estimatedInputTokens
