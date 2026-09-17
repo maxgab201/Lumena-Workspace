@@ -8,7 +8,7 @@ export class AIGateway {
    * This now routes securely through the Supabase Edge Function 'ai-gateway'
    * to ensure accurate cost metering, credit reservation, and consumption.
    */
-  static async generate(prompt: string, context?: any, modelCode: string = 'gemini-flash-latest'): Promise<{ text: string, usage?: any }> {
+  static async generate(prompt: string, context?: any, modelCode: string = 'gemini-3.6-flash'): Promise<{ text: string, usage?: any }> {
     const account = useBillingStore.getState().account;
     const workspaceId = useWorkspaceStore.getState().activeWorkspace?.id;
 
@@ -63,7 +63,7 @@ export class AIGateway {
   static async generateStream(
     prompt: string,
     context: any | undefined,
-    modelCode: string = 'gemini-flash-latest',
+    modelCode: string = 'gemini-3.6-flash',
     onChunk: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<{ text: string; usage?: any }> {
