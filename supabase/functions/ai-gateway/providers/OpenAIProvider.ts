@@ -142,6 +142,11 @@ export class OpenRouterProvider implements AIProvider {
             const data = JSON.parse(dataStr);
             const delta = data.choices?.[0]?.delta;
             const chunkText = delta?.content ?? '';
+            const finishReason = delta?.finish_reason ?? null;
+            if (finishReason) {
+              yield { text: chunkText || '', done: true, usage: lastUsage };
+              return;
+            }
             if (chunkText) {
               yield { text: chunkText, done: false, usage: lastUsage };
             }
