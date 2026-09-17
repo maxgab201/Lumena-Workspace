@@ -69,6 +69,7 @@ export class AiHighlightService {
     scope: AiScope;
     pageNumber?: number;
     density: AiDensity;
+    modelId?: string;
     onProgress?: (p: AiHighlightProgress) => void;
   }): Promise<AiHighlightSummary> {
     const { file, documentId, workspaceId, scope, density, onProgress } = params;
@@ -169,6 +170,7 @@ export class AiHighlightService {
             page_number: pageNumber,
             sentences: inventory,
             density,
+            model_id: (params as any).modelId || 'gemini-3.5-flash-lite',
           }),
         });
 

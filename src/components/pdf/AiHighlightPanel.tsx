@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, X, FileText, ScanText, AlertTriangle } from 'lucide-react';
+import { Sparkles, Loader2, X, FileText, ScanText, AlertTriangle, ChevronDown } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { AiHighlightService, type AiDensity, type AiScope, type AiHighlightProgress } from '../../lib/ai/AiHighlightService';
 import { cn } from '../../lib/utils';
@@ -20,6 +20,7 @@ interface AiHighlightPanelProps {
 export const AiHighlightPanel = ({ documentId, workspaceId, fileUrl, currentPage, onClose }: AiHighlightPanelProps) => {
   const [scope, setScope] = useState<AiScope>('document');
   const [density, setDensity] = useState<AiDensity>('normal');
+  const [selectedModel, setSelectedModel] = useState('gemini-3.5-flash-lite');
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<AiHighlightProgress | null>(null);
   const [result, setResult] = useState<{ created: number; failedPages: Array<{ page: number; error: string }>; ocrPages: number; nativePages: number } | null>(null);
@@ -42,6 +43,7 @@ export const AiHighlightPanel = ({ documentId, workspaceId, fileUrl, currentPage
         scope,
         pageNumber: scope === 'page' ? currentPage : undefined,
         density,
+        modelId: selectedModel,
         onProgress: setProgress,
       });
 
@@ -143,6 +145,19 @@ export const AiHighlightPanel = ({ documentId, workspaceId, fileUrl, currentPage
               </p>
             </div>
 
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Modelo de IA para análisis"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full text-xs px-2 py-1.5 rounded-md bg-secondary/20 border border-white/10 text-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
+              >
+                <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash Lite — FREE</option>
+                <option value="nex-agi/nex-n2.5-pro:free">Nex N2.5 Pro (Free) — FREE</option>
+                <option value="gemini-3.6-flash">Gemini 3.6 Flash — PRO</option>
+              </select>
+              <span className="text-[10px] text-muted-foreground">{selectedModel.endsWith(':free') || selectedModel.includes('flash-lite') ? 'FREE' : 'PRO'}</span>
+            </div>
             <Button
               className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
               onClick={handleRun}

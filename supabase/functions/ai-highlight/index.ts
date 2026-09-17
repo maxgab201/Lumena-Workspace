@@ -24,6 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
+import { tierOf, FREE_DAILY_LIMIT, DEFAULT_HIGHLIGHT_FREE_MODEL } from "../_shared/modelCatalog.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,11 +32,12 @@ const corsHeaders = {
 }
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-const GENERATION_MODEL = "gemini-flash-latest"
-const FALLBACK_MODEL = "gemini-3.6-flash" // stable model for high-demand periods
+const GENERATION_MODEL = "gemini-3.5-flash-lite" // default Free tier
+const FALLBACK_MODEL = "gemini-3.6-flash" // stable when free tier is under high demand
 
 /** Call Gemini with one retry on transient errors (429/500/503). */
-async function callGemini(apiKey: string, prompt: string): Promise<{ ok: boolean; status: number; text: string }> {
+async function callGemini(apiKey: string, prompt: string, model?: string): Promise<{ ok: boolean; status: number; text: string }> {
+  const m = model || GENERATION_MODEL
   const attempt = async (model: string) => {
     const res = await fetch(
       `${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`,
@@ -52,25 +54,22 @@ async function callGemini(apiKey: string, prompt: string): Promise<{ ok: boolean
     return { res, bodyText }
   }
 
-  let { res, bodyText } = await attempt(GENERATION_MODEL)
+  let { res, bodyText } = await attempt(m)
   // High-demand windows can last a few seconds — retry with growing backoff.
   if (!res.ok && [429, 500, 503].includes(res.status)) {
     await new Promise((r) => setTimeout(r, 2000))
-    const retry = await attempt(GENERATION_MODEL)
-    res = retry.res
-    bodyText = retry.bodyText
+    const retry = await attempt(m)
+    res = retry.res; bodyText = retry.bodyText
   }
   if (!res.ok && [429, 500, 503].includes(res.status)) {
     await new Promise((r) => setTimeout(r, 4000))
-    const retry2 = await attempt(GENERATION_MODEL)
-    res = retry2.res
-    bodyText = retry2.bodyText
+    const retry2 = await attempt(m)
+    res = retry2.res; bodyText = retry2.bodyText
   }
   // Model-level fallback: try the stable alias before giving up
   if (!res.ok && [429, 500, 503].includes(res.status)) {
     const fb = await attempt(FALLBACK_MODEL)
-    res = fb.res
-    bodyText = fb.bodyText
+    res = fb.res; bodyText = fb.bodyText
   }
   return { ok: res.ok, status: res.status, text: bodyText }
 }
@@ -341,7 +340,8 @@ serve(async (req) => {
     }
 
     const payload: AIHighlightRequest = await req.json()
-    const { document_id, workspace_id, sentences, density = 'normal' } = payload
+    const { document_id, workspace_id, sentences, density = 'normal', model_id } = payload
+    const selectedModel = model_id || DEFAULT_HIGHLIGHT_FREE_MODEL
 
     if (!document_id || !workspace_id || !Array.isArray(sentences)) {
       return new Response(JSON.stringify({ error: 'Missing required fields: document_id, workspace_id, sentences' }), {
@@ -373,6 +373,19 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Document not found' }), { status: 404, headers: corsHeaders })
     }
 
+    // ─── Catalog tier + daily quota (shared Chat + AI Highlight) ───
+    const { data: subData } = await supabaseClient.from('subscriptions').select('plan_code').eq('workspace_id', workspace_id).single()
+    const planCode = subData?.plan_code ?? 'free'
+    if (planCode === 'free' && tierOf(selectedModel) === 'pro') {
+      return new Response(JSON.stringify({ error: `Model "${selectedModel}" not allowed on free plan`, plan_required: 'pro', current_plan: 'free' }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+    if (planCode === 'free') {
+      const { data: qRes } = await supabaseClient.rpc('consume_ai_request', { p_workspace_id: workspace_id, p_action: 'ai_highlight', p_limit: FREE_DAILY_LIMIT })
+      if (!qRes || !qRes.allowed) {
+        return new Response(JSON.stringify({ error: 'Daily AI request limit reached (50/day).', quota: { used: (qRes?.chat_count || 0) + (qRes?.highlight_count || 0), limit: FREE_DAILY_LIMIT, resets_at: qRes?.resets_at || new Date().toISOString() }, request_id: crypto.randomUUID?.() || 'unknown' }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+    }
+
     // ─── Pre-filter noise, cap prompt size ───
     const contentful = sentences.filter((s) => !isNoise(s.text))
     const MAX_SENTENCES = 220
@@ -391,7 +404,7 @@ serve(async (req) => {
     }
 
     const prompt = buildPrompt({ ...payload, sentences: inventory })
-    const gen = await callGemini(apiKey, prompt)
+    const gen = await callGemini(apiKey, prompt, selectedModel)
     if (!gen.ok) {
       console.error('ai-highlight Gemini error:', gen.status, gen.text.slice(0, 300))
       const quota = gen.status === 429

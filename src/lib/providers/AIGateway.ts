@@ -63,7 +63,7 @@ export class AIGateway {
   static async generateStream(
     prompt: string,
     context: any | undefined,
-    modelCode: string = 'gemini-3.6-flash',
+    modelCode: string = 'gemini-3.5-flash-lite',
     onChunk: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<{ text: string; usage?: any }> {

@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 import { ProviderRouter } from "./router.ts"
 import type { AIProvider } from "./providers/Provider.ts"
-import { getCatalog, tierOf, FREE_DAILY_LIMIT, DEFAULT_CHAT_FREE_MODEL, DEFAULT_HIGHLIGHT_FREE_MODEL } from "../_shared/modelCatalog.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -13,9 +12,8 @@ const corsHeaders = {
 const MAX_PROMPT_LENGTH = 50000;
 const MIN_PROMPT_LENGTH = 1;
 
-// Provider call timeout (ms) — short enough that the Gemini→Nex fallback
-// starts quickly on 503/high-demand hangs instead of a 60s+ wait.
-const PROVIDER_TIMEOUT_MS = 25000;
+// Provider call timeout (ms)
+const PROVIDER_TIMEOUT_MS = 60000;
 
 // Helper to execute with timeout
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -30,8 +28,8 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   }
 }
 
-let router: ProviderRouter | undefined
-try { router = new ProviderRouter() } catch (e) { console.error("ProviderRouter init failed:", (e as any).message || e); router = undefined }
+let router: ProviderRouter
+try { router = new ProviderRouter() } catch (e) { console.error("ProviderRouter init failed:", (e as any).message || e); router = new ProviderRouter(); }
 
 type Pricing = {
   input_price_per_1k: number
@@ -108,11 +106,6 @@ async function refundReservation(
 }
 
 serve(async (req) => {
-  const request_id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
-  if (!router) {
-    console.log(JSON.stringify({ request_id, auth: 'FAIL', workspace_id: null, action_type: null, provider_intent: null, model: null, status_upstream: null, fallback_reason: 'router_uninitialized', duration_ms: 0 }));
-    return new Response(JSON.stringify({ error: "AI Gateway init failed: ProviderRouter not initialized", request_id }), { status: 500, headers: {...corsHeaders, "Content-Type": "application/json"} })
-  }
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -125,15 +118,13 @@ serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      console.log(JSON.stringify({ request_id, auth: 'FAIL', workspace_id: null, action_type: null, provider_intent: null, model: null, status_upstream: null, fallback_reason: 'missing_auth_header', duration_ms: 0 }));
-      return new Response(JSON.stringify({ error: 'Missing Authorization header', request_id }), { status: 401, headers: {...corsHeaders, "Content-Type": "application/json"} })
+      return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { status: 401, headers: corsHeaders })
     }
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
 
     if (authError || !user) {
-      console.log(JSON.stringify({ request_id, auth: 'FAIL', workspace_id: null, action_type: null, provider_intent: null, model: null, status_upstream: null, fallback_reason: 'invalid_token', duration_ms: 0 }));
-      return new Response(JSON.stringify({ error: 'Unauthorized', request_id }), { status: 401, headers: {...corsHeaders, "Content-Type": "application/json"} })
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
     }
 
     const payload = await req.json()
@@ -148,43 +139,58 @@ serve(async (req) => {
     }
 
     // ==========================================
-    // MODEL CATALOG + TIER + DAILY QUOTA (Free only)
+    // PLAN ENFORCEMENT: Fetch subscription
     // ==========================================
     const { data: subscription } = await supabaseClient
       .from('subscriptions')
       .select('plan_code')
       .eq('workspace_id', workspace_id)
       .single()
+
     const planCode: string = subscription?.plan_code ?? 'free'
 
-    // Resolve tier from the single source of truth (catalog module)
-    const modelTier = tierOf(model_code)
-    if (planCode === 'free' && modelTier === 'pro') {
-      return new Response(JSON.stringify({
-        error: `Model "${model_code}" is not available on the free plan. Please upgrade to access advanced models.`,
-        plan_required: 'pro',
-        current_plan: 'free',
-        request_id,
-      }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    // Define plan capabilities
+    const PLAN_MODELS: Record<string, string[]> = {
+      free: ['gemini-3.6-flash'],
+      pro: ['gemini-3.6-flash', 'gemini-3.6-pro'],
+    }
+    const PLAN_MONTHLY_CREDIT_QUOTA: Record<string, number> = {
+      free: 50,
+      pro: 1000,
     }
 
-    // Free daily quota: 50 combined Chat + AI Highlight requests (atomic, server-side)
-    if (planCode === 'free') {
-      const quotaRaw = await supabaseClient.rpc('consume_ai_request', {
-        p_workspace_id: workspace_id,
-        p_action: 'chat',
-        p_limit: FREE_DAILY_LIMIT,
-      })
-      const quotaResult = Array.isArray(quotaRaw?.data) ? quotaRaw.data[0] : quotaRaw?.data
-      const allowed = quotaResult?.allowed ?? false
-      const used = (quotaResult?.chat_count ?? 0) + (quotaResult?.highlight_count ?? 0)
-      if (!allowed) {
-        return new Response(JSON.stringify({
-          error: `Daily AI request limit reached (${used}/${FREE_DAILY_LIMIT}). Resets at ${quotaResult?.resets_at ? new Date(quotaResult.resets_at).toISOString() : 'midnight UTC'}.`,
-          quota: { used, limit: FREE_DAILY_LIMIT, resets_at: quotaResult?.resets_at ?? new Date().toISOString() },
-          request_id,
-        }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-      }
+    const allowedModels = PLAN_MODELS[planCode] ?? PLAN_MODELS['free']
+    const monthlyQuota = PLAN_MONTHLY_CREDIT_QUOTA[planCode] ?? 50
+
+    // Block access to restricted models
+    if (!allowedModels.includes(model_code)) {
+      return new Response(JSON.stringify({
+        error: `Model "${model_code}" is not available on the ${planCode} plan. Please upgrade to access advanced models.`,
+        plan_required: 'pro',
+        current_plan: planCode,
+      }), { status: 403, headers: corsHeaders })
+    }
+
+    // Enforce monthly credit quota
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+    const { data: monthlyUsage } = await supabaseClient
+      .from('credit_ledger')
+      .select('amount')
+      .eq('workspace_id', workspace_id)
+      .eq('entry_type', 'consume')
+      .gte('created_at', monthStart)
+
+    const totalConsumedThisMonth = monthlyUsage
+      ? monthlyUsage.reduce((acc: number, row: any) => acc + row.amount, 0)
+      : 0
+
+    if (totalConsumedThisMonth >= monthlyQuota) {
+      return new Response(JSON.stringify({
+        error: `Monthly credit quota of ${monthlyQuota} credits reached for your ${planCode} plan. Please upgrade or purchase additional credits.`,
+        quota: monthlyQuota,
+        consumed: totalConsumedThisMonth,
+        plan_required: planCode === 'free' ? 'pro' : null,
+      }), { status: 402, headers: corsHeaders })
     }
 
     // ==========================================
@@ -365,10 +371,9 @@ ${userPrompt}`;
     // Build enhanced prompt with RAG context if available
     const enhancedPrompt = buildPromptWithRAG(prompt, context);
 
-    const OPENROUTER_CHAT_MODEL = Deno.env.get("OPENROUTER_CHAT_MODEL") || "nex-agi/nex-n2.5-pro:free";
+    const OPENROUTER_CHAT_MODEL = Deno.env.get("OPENROUTER_CHAT_MODEL") || "meta-llama/llama-3.1-8b-instruct:free";
     const OPENROUTER_FALLBACK_MODELS = (Deno.env.get("OPENROUTER_FALLBACK_MODELS") || "").split(",").map(m => m.trim()).filter(Boolean);
-    const rawChain = fallback_models || [model_code, OPENROUTER_CHAT_MODEL, ...OPENROUTER_FALLBACK_MODELS];
-    const chain = planCode === 'free' ? rawChain.filter((m: string) => tierOf(m) === 'free') : rawChain;
+    const chain = fallback_models || [model_code, OPENROUTER_CHAT_MODEL, ...OPENROUTER_FALLBACK_MODELS];
 
     console.log(`[AI Gateway] Request: workspace_id=${workspace_id}, action=${action_type}, stream=${stream ? "yes" : "no"}, model_code=${model_code}, prompt_length=${prompt.length}`);
 
@@ -553,25 +558,23 @@ ${userPrompt}`;
     return new Response(JSON.stringify({
       text: result.text,
       usage: result.usage,
-      usedModel,
-      request_id
+      usedModel
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     })
 
   } catch (err: any) {
-    console.error('AI Gateway error:', { request_id, error: err.message || err, workspace_id: null, action_type: null, model: null, fallback_reason: err.message || 'unknown', duration_ms: 0 })
+    console.error('AI Gateway error:', err)
 
     if (err.status === 402) {
       return new Response(JSON.stringify({
         error: err.message,
         required: err.required,
-        available: err.available,
-        request_id
-      }), { status: 402, headers: {...corsHeaders, 'Content-Type': 'application/json'} })
+        available: err.available
+      }), { status: 402, headers: corsHeaders })
     }
 
-    return new Response(JSON.stringify({ error: err.message, request_id }), { status: err.status || 500, headers: {...corsHeaders, 'Content-Type': 'application/json'} })
+    return new Response(JSON.stringify({ error: err.message }), { status: err.status || 500, headers: corsHeaders })
   }
 })
