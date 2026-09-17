@@ -263,7 +263,23 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
 
   const activeWorkspace = workspaceStore.activeWorkspace;
   const activeSession = activeSessionId ? chatStore.sessions[activeSessionId] : undefined;
-  const workspaceId = activeWorkspace?.id ?? activeSession?.workspace_id;
+  let workspaceId = activeWorkspace?.id ?? activeSession?.workspace_id;
+
+  // Direct navigation to a viewer route can beat workspace-store hydration.
+  // The document is the source of truth for its workspace — resolve it there
+  // so chat (and RAG) never run with a missing or fake workspace id.
+  if (!workspaceId && documentId) {
+    try {
+      const { data: docRow } = await supabase
+        .from('documents')
+        .select('workspace_id')
+        .eq('id', documentId)
+        .maybeSingle();
+      if (docRow?.workspace_id) workspaceId = docRow.workspace_id;
+    } catch {
+      // Non-fatal: chat still works, backend will surface a clear error
+    }
+  }
 
   // Get selected text from viewer
   const selectedText = viewerStore.selectedText ?? '';
