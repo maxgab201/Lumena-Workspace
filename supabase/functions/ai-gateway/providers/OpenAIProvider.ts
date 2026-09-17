@@ -140,9 +140,8 @@ export class OpenAIProvider implements AIProvider {
           }
           try {
             const data = JSON.parse(dataStr);
-            const delta = data.choices?.[0]?.delta;
-            const chunkText = delta?.content ?? '';
-            const finishReason = delta?.finish_reason ?? null;
+            const chunkText = data.choices?.[0]?.delta?.content ?? '';
+            const finishReason = data.choices?.[0]?.finish_reason ?? null;
             if (finishReason) {
               yield { text: chunkText || '', done: true, usage: lastUsage };
               return;

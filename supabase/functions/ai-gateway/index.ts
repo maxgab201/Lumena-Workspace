@@ -106,8 +106,10 @@ async function refundReservation(
 }
 
 serve(async (req) => {
+  const request_id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36);
   if (!router) {
-    return new Response(JSON.stringify({ error: "AI Gateway init failed: ProviderRouter not initialized" }), { status: 500, headers: {...corsHeaders, "Content-Type": "application/json"} })
+    console.log(JSON.stringify({ request_id, auth: 'FAIL', workspace_id: null, action_type: null, provider_intent: null, model: null, status_upstream: null, fallback_reason: 'router_uninitialized', duration_ms: 0 }));
+    return new Response(JSON.stringify({ error: "AI Gateway init failed: ProviderRouter not initialized", request_id }), { status: 500, headers: {...corsHeaders, "Content-Type": "application/json"} })
   }
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -121,13 +123,15 @@ serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Missing Authorization header' }), { status: 401, headers: corsHeaders })
+      console.log(JSON.stringify({ request_id, auth: 'FAIL', workspace_id: null, action_type: null, provider_intent: null, model: null, status_upstream: null, fallback_reason: 'missing_auth_header', duration_ms: 0 }));
+      return new Response(JSON.stringify({ error: 'Missing Authorization header', request_id }), { status: 401, headers: {...corsHeaders, "Content-Type": "application/json"} })
     }
     const token = authHeader.replace('Bearer ', '')
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
 
     if (authError || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
+      console.log(JSON.stringify({ request_id, auth: 'FAIL', workspace_id: null, action_type: null, provider_intent: null, model: null, status_upstream: null, fallback_reason: 'invalid_token', duration_ms: 0 }));
+      return new Response(JSON.stringify({ error: 'Unauthorized', request_id }), { status: 401, headers: {...corsHeaders, "Content-Type": "application/json"} })
     }
 
     const payload = await req.json()
@@ -561,23 +565,25 @@ ${userPrompt}`;
     return new Response(JSON.stringify({
       text: result.text,
       usage: result.usage,
-      usedModel
+      usedModel,
+      request_id
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     })
 
   } catch (err: any) {
-    console.error('AI Gateway error:', err)
+    console.error('AI Gateway error:', { request_id, error: err.message || err, workspace_id: null, action_type: null, model: null, fallback_reason: err.message || 'unknown', duration_ms: 0 })
 
     if (err.status === 402) {
       return new Response(JSON.stringify({
         error: err.message,
         required: err.required,
-        available: err.available
-      }), { status: 402, headers: corsHeaders })
+        available: err.available,
+        request_id
+      }), { status: 402, headers: {...corsHeaders, 'Content-Type': 'application/json'} })
     }
 
-    return new Response(JSON.stringify({ error: err.message }), { status: err.status || 500, headers: corsHeaders })
+    return new Response(JSON.stringify({ error: err.message, request_id }), { status: err.status || 500, headers: {...corsHeaders, 'Content-Type': 'application/json'} })
   }
 })
