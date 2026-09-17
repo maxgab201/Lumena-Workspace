@@ -8,6 +8,7 @@ import { useViewerStore } from '../../stores/viewerStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { KnowledgeSearch } from './KnowledgeSearch';
+import { ModelSelectorPanel } from './ModelSelectorPanel';
 import { useUiStore } from '../../stores/uiStore';
 import { useShallow } from 'zustand/react/shallow';
 import { AVAILABLE_MODELS, PLANS, type PlanType } from '../../types/billing';
@@ -99,40 +100,13 @@ export const ChatSidebar = () => {
           </Button>
         </div>
 
-        {/* Plan-aware Model Selector */}
-        <div className="flex flex-col gap-1">
-          <div className="flex flex-col gap-1">
-            {AVAILABLE_MODELS.map((model) => {
-              const isLocked = !planConfig.allowedModels.includes(model.code);
-              const isActive = selectedModel === model.code;
-              return (
-                <button
-                  key={model.code}
-                  disabled={isLocked || isGenerating || isLoadingSession}
-                  onClick={() => handleModelChange(model.code)}
-                  className={`flex items-center justify-between text-xs px-3 py-2 rounded-lg border transition-all ${
-                    isActive
-                      ? 'border-accent/50 bg-accent/10 text-accent font-medium'
-                      : isLocked
-                      ? 'border-white/5 bg-secondary/10 text-muted-foreground/40 cursor-not-allowed'
-                      : 'border-white/5 bg-secondary/20 text-muted-foreground hover:text-foreground hover:border-white/20'
-                  }`}
-                >
-                  <span>{model.name}</span>
-                  {isLocked && (
-                    <span className="flex items-center gap-1 text-[10px] text-accent/70 font-semibold">
-                      <Lock className="w-3 h-3" /> Pro
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {currentPlan === 'free' && (
-            <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-              Upgrade to Pro to unlock advanced models.
-            </p>
-          )}
+        {/* Plan-aware Catalog Model Selector */}
+        <ModelSelectorPanel
+          selectedModel={selectedModel}
+          onChange={handleModelChange}
+          plan={currentPlan}
+        />
+        <p className="text-[10px] text-muted-foreground/50 mt-0.5">{currentPlan === 'free' ? 'Upgrade to Pro to unlock advanced models.' : 'Pro plan active — all models available.'}</p>
 
           {/* Knowledge Search Toggle */}
           <button

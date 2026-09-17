@@ -35,6 +35,13 @@ const STATIC_UI: CatalogModelUI[] = [
   { provider: 'google', model_id: 'gemini-3.6-pro', display_name: 'Gemini 3.6 Pro', tier: 'pro', capabilities: ['chat', 'ai_highlight'], available: true },
 ]
 
+export const STATIC_UI = STATIC_CATALOG.map((m) => ({
+  ...m,
+  locked: false,
+  freeBadge: m.tier === 'free',
+  proBadge: m.tier === 'pro',
+}))
+
 export async function fetchAiConfig(workspaceId?: string, signal?: AbortSignal): Promise<AiConfigResponse> {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-config?workspace_id=${encodeURIComponent(workspaceId ?? '')}`
   try {
