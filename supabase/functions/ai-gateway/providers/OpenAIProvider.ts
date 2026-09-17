@@ -24,11 +24,11 @@ export class OpenRouterProvider implements AIProvider {
   private fallbackModels: string[];
 
   constructor() {
-    const key = Deno.env.get('OPENROUTER_API_KEY');
-    if (!key) throw new Error('OPENROUTER_API_KEY is not configured.');
+    const key = Deno.env.get('OPENROUTER_API_KEY') ?? '';
+    if (!key) console.warn('[OpenRouterProvider] OPENROUTER_API_KEY missing — OpenRouter unavailable');
     this.apiKey = key;
 
-    this.chatModel = Deno.env.get('OPENROUTER_CHAT_MODEL') || 'meta-llama/llama-3.1-8b-instruct:free';
+    this.chatModel = Deno.env.get('OPENROUTER_CHAT_MODEL') || 'nex-agi/nex-n2.5-pro:free';
     const fallbackRaw = Deno.env.get('OPENROUTER_FALLBACK_MODELS') || '';
     this.fallbackModels = fallbackRaw.split(',').map((m) => m.trim()).filter((m) => !!m);
   }
