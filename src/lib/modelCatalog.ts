@@ -27,13 +27,20 @@ export interface AiConfigResponse {
 
 export const FREE_LIMIT = 50
 
-const STATIC_UI: CatalogModelUI[] = [
+const STATIC_CATALOG: CatalogModelUI[] = [
   { provider: 'google', model_id: 'gemini-3.1-flash-lite', display_name: 'Gemini 3.1 Flash Lite', tier: 'free', capabilities: ['chat', 'ai_highlight'], available: true },
   { provider: 'google', model_id: 'gemini-3.5-flash-lite', display_name: 'Gemini 3.5 Flash Lite', tier: 'free', capabilities: ['chat', 'ai_highlight'], available: true },
   { provider: 'openrouter', model_id: 'nex-agi/nex-n2.5-pro:free', display_name: 'Nex N2.5 Pro (Free)', tier: 'free', capabilities: ['chat'], available: true },
   { provider: 'google', model_id: 'gemini-3.6-flash', display_name: 'Gemini 3.6 Flash', tier: 'pro', capabilities: ['chat', 'ai_highlight'], available: true },
   { provider: 'google', model_id: 'gemini-3.6-pro', display_name: 'Gemini 3.6 Pro', tier: 'pro', capabilities: ['chat', 'ai_highlight'], available: true },
 ]
+
+export const STATIC_UI = STATIC_CATALOG.map((m) => ({
+  ...m,
+  locked: false,
+  freeBadge: m.tier === 'free',
+  proBadge: m.tier === 'pro',
+}))
 
 export async function fetchAiConfig(workspaceId?: string, signal?: AbortSignal): Promise<AiConfigResponse> {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-config?workspace_id=${encodeURIComponent(workspaceId ?? '')}`

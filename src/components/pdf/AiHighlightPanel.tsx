@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, Loader2, X, FileText, ScanText, AlertTriangle, ChevronDown } from 'lucide-react';
+import { Sparkles, Loader2, X, FileText, ScanText, AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { AiHighlightService, type AiDensity, type AiScope, type AiHighlightProgress } from '../../lib/ai/AiHighlightService';
 import { cn } from '../../lib/utils';
