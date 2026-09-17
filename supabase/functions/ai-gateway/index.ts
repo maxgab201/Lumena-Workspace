@@ -29,7 +29,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 }
 
 let router: ProviderRouter
-try { router = new ProviderRouter() } catch (e) { console.error("ProviderRouter init failed:", (e as any).message || e); throw new Error("AI Gateway init failed: " + (((e as any).message) || "unknown")); }
+try { router = new ProviderRouter() } catch (e) { console.error("ProviderRouter init failed:", (e as any).message || e); router = new ProviderRouter(); }
 
 type Pricing = {
   input_price_per_1k: number
