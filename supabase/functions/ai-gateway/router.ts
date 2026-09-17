@@ -15,7 +15,7 @@ export class ProviderRouter {
     }
 
     try {
-      this.providers.set('openai', new OpenAIProvider());
+      this.providers.set('openrouter', new OpenAIProvider());
     } catch (e) {
       console.warn('Failed to initialize OpenAIProvider:', e);
     }
@@ -44,9 +44,9 @@ export class ProviderRouter {
     for (const modelCode of fallbackChain) {
       // Determine provider based on model code prefix, or from DB (executeAction will handle DB checks)
       // For simplicity in routing, we map known prefixes to provider IDs.
-      let providerId = 'google';
-      if (modelCode.startsWith('gpt-')) {
-        providerId = 'openai';
+      let providerId = 'openrouter';
+      if (modelCode.startsWith('gemini-')) {
+        providerId = 'google';
       }
 
       const provider = this.providers.get(providerId);

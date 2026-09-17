@@ -370,7 +370,11 @@ ${userPrompt}`;
     // Build enhanced prompt with RAG context if available
     const enhancedPrompt = buildPromptWithRAG(prompt, context);
 
-    const chain = fallback_models || [model_code, 'gemini-3.6-flash']
+    const OPENROUTER_CHAT_MODEL = Deno.env.get("OPENROUTER_CHAT_MODEL") || "meta-llama/llama-3.1-8b-instruct:free";
+    const OPENROUTER_FALLBACK_MODELS = (Deno.env.get("OPENROUTER_FALLBACK_MODELS") || "").split(",").map(m => m.trim()).filter(Boolean);
+    const chain = fallback_models || [model_code, OPENROUTER_CHAT_MODEL, ...OPENROUTER_FALLBACK_MODELS];
+
+    console.log(`[AI Gateway] Request: workspace_id=${workspace_id}, action=${action_type}, stream=${stream ? "yes" : "no"}, model_code=${model_code}, prompt_length=${prompt.length}`);
 
     const { result, usedModel } = await router.routeWithFallback(
       chain,
