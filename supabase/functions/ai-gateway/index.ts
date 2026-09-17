@@ -29,7 +29,7 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 }
 
 let router: ProviderRouter
-try { router = new ProviderRouter() } catch (e) { console.error("ProviderRouter init failed:", (e as any).message || e); return new Response(JSON.stringify({ error: "AI Gateway init failed: " + (((e as any).message) || "unknown") }), { status: 500, headers: {...corsHeaders, "Content-Type": "application/json"} }) }
+try { router = new ProviderRouter() } catch (e) { console.error("ProviderRouter init failed:", (e as any).message || e); return new Response(JSON.stringify({ error: "AI Gateway init failed: " + (((e as any).message) || "unknown") }), { headers: {...corsHeaders, "Content-Type": "application/json"}, status: 500 }) }
 
 type Pricing = {
   input_price_per_1k: number
