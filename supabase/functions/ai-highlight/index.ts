@@ -105,6 +105,7 @@ interface AIHighlightRequest {
   model_id?: string
   instruction?: string
   quota_run_token?: string | null
+  quota_scope?: 'page' | 'document'
 }
 
 const COMMON_NOISE = [
@@ -121,6 +122,11 @@ function isNoise(text: string): boolean {
   const letters = t.replace(/[^a-záéíóúñüäöß]/g, '')
   if (letters.length < t.length * 0.5) return true // mostly numbers/symbols
   return false
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 function buildPrompt(req: AIHighlightRequest): string {
@@ -385,12 +391,27 @@ serve(async (req) => {
 
     const { data: doc } = await supabaseClient
       .from('documents')
-      .select('id, workspace_id, name')
+      .select('id, workspace_id, name, page_count')
       .eq('id', document_id)
       .single()
     if (!doc || doc.workspace_id !== workspace_id) {
       return new Response(JSON.stringify({ error: 'Document not found' }), { status: 404, headers: corsHeaders })
     }
+
+    const pageNumber = Number(payload.page_number)
+    if (!Number.isInteger(pageNumber) || pageNumber < 1 || (doc.page_count && pageNumber > doc.page_count)) {
+      return new Response(JSON.stringify({ error: 'Invalid page_number for this document' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    const quotaScope = payload.quota_scope === 'document' ? 'document' : 'page'
+    const quotaActionHash = await sha256Hex([
+      quotaScope,
+      quotaScope === 'page' ? String(pageNumber) : 'document',
+      density,
+      payload.instruction?.trim() || '',
+    ].join('\n'))
 
     // ─── Catalog capability + tier + daily quota ───
     const [catalog, planCode] = await Promise.all([
@@ -435,25 +456,10 @@ serve(async (req) => {
     }
 
     // A user action may span many PDF pages. Charge once on the first
-    // contentful page and reuse the opaque run token for subsequent pages.
+    // contentful page. Every page then atomically claims its slot in a short-
+    // lived run token bound to user + document + model + action fingerprint.
     if (planCode === 'free') {
-      if (quotaRunToken) {
-        const today = new Date().toISOString().slice(0, 10)
-        const { data: quotaRun } = await supabaseClient
-          .from('ai_quota_runs')
-          .select('id')
-          .eq('id', quotaRunToken)
-          .eq('workspace_id', workspace_id)
-          .eq('day', today)
-          .maybeSingle()
-
-        if (!quotaRun) {
-          return new Response(JSON.stringify({ error: 'Invalid or expired AI quota run token.' }), {
-            status: 400,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          })
-        }
-      } else {
+      if (!quotaRunToken) {
         const quotaRaw = await supabaseClient.rpc('consume_ai_request', {
           p_workspace_id: workspace_id,
           p_action: 'ai_highlight',
@@ -472,6 +478,34 @@ serve(async (req) => {
           }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
         }
         quotaRunToken = typeof qRes?.run_token === 'string' ? qRes.run_token : null
+      }
+
+      if (!quotaRunToken) {
+        return new Response(JSON.stringify({ error: 'AI quota run could not be created.' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
+      const { data: runAllowed, error: runError } = await supabaseClient.rpc(
+        'consume_ai_quota_run_page',
+        {
+          p_run_id: quotaRunToken,
+          p_workspace_id: workspace_id,
+          p_user_id: user.id,
+          p_document_id: document_id,
+          p_model_id: selectedModel,
+          p_action_hash: quotaActionHash,
+          p_page_number: pageNumber,
+        },
+      )
+      if (runError || runAllowed !== true) {
+        return new Response(JSON.stringify({
+          error: 'Invalid, expired, or already-used AI quota run token.',
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
       }
     }
 
