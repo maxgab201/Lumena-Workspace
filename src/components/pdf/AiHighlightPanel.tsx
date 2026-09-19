@@ -163,6 +163,7 @@ export const AiHighlightPanel = ({ documentId, workspaceId, fileUrl, currentPage
               plan={currentPlan}
               capability="ai_highlight"
               disabled={running}
+              workspaceId={workspaceId}
             />
             <Button
               className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
