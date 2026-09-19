@@ -9,6 +9,7 @@ interface ModelSelectorPanelProps {
   plan: string;
   capability?: 'chat' | 'ai_highlight';
   disabled?: boolean;
+  workspaceId?: string;
 }
 
 export function ModelSelectorPanel({
@@ -17,8 +18,10 @@ export function ModelSelectorPanel({
   plan,
   capability = 'chat',
   disabled = false,
+  workspaceId: explicitWorkspaceId,
 }: ModelSelectorPanelProps) {
-  const workspaceId = useWorkspaceStore((state) => state.activeWorkspace?.id ?? '');
+  const storeWorkspaceId = useWorkspaceStore((state) => state.activeWorkspace?.id ?? '');
+  const workspaceId = explicitWorkspaceId ?? storeWorkspaceId;
   const [catalog, setCatalog] = useState<CatalogModelUI[] | null>(null);
   const [quota, setQuota] = useState<{ used: number; limit: number; resets_at: string } | null>(null);
 
