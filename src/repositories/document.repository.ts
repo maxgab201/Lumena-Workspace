@@ -412,10 +412,12 @@ export const DocumentRepository = {
     if (fetchError) throw fetchError;
 
     const movedIds: string[] = [];
-    const rpc = supabase.rpc as unknown as (
-      fn: string,
-      args: Record<string, unknown>,
-    ) => Promise<{ data: unknown; error: { message: string } | null }>;
+    const rpcClient = supabase as unknown as {
+      rpc: (
+        fn: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: unknown; error: { message: string } | null }>;
+    };
 
     for (const doc of docs ?? []) {
       if (!doc.file_hash) throw new Error('Document is missing its file hash.');
@@ -434,7 +436,7 @@ export const DocumentRepository = {
       if (moveError) throw moveError;
 
       try {
-        const { error: rpcError } = await rpc('move_document_workspace', {
+        const { error: rpcError } = await rpcClient.rpc('move_document_workspace', {
           p_document_id: doc.id,
           p_target_workspace_id: targetWorkspaceId,
           p_new_file_path: targetPath,
