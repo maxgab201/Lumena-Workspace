@@ -263,10 +263,15 @@ serve(async (req) => {
   let documentId: string | undefined
 
   try {
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      serviceRoleKey
     )
+
+    const authHeader = req.headers.get('Authorization') ?? ''
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ''
+    const isServiceInvocation = Boolean(serviceRoleKey) && bearerToken === serviceRoleKey
 
     const payload = await req.json()
     const job = payload.record
@@ -282,6 +287,38 @@ serve(async (req) => {
     documentId = job.document_id
     let workspaceId = job.workspace_id
     const startTime = Date.now()
+
+    // Initial invocations originate from the Postgres trigger and carry a
+    // one-time token stored only in the private schema. Chained invocations
+    // are allowed only when authenticated with the service-role JWT.
+    if (job.chained) {
+      if (!isServiceInvocation) {
+        return new Response(JSON.stringify({ error: 'Unauthorized chained invocation' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        })
+      }
+    } else {
+      const dispatchToken = typeof payload.dispatch_token === 'string' ? payload.dispatch_token : ''
+      if (!dispatchToken) {
+        return new Response(JSON.stringify({ error: 'Missing processing dispatch token' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        })
+      }
+
+      const { data: dispatchAllowed, error: dispatchError } = await supabaseClient.rpc(
+        'consume_processing_dispatch',
+        { p_job_id: job.id, p_token: dispatchToken },
+      )
+      if (dispatchError || dispatchAllowed !== true) {
+        console.warn('Rejected processing dispatch', job.id, dispatchError?.message ?? 'invalid token')
+        return new Response(JSON.stringify({ error: 'Invalid or expired processing dispatch' }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 401,
+        })
+      }
+    }
 
     // Chained invocations post a minimal payload — hydrate the real job row.
     if (job.chained || !workspaceId || !documentId) {
