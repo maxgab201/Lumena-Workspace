@@ -91,18 +91,19 @@ export const ChatSidebar = ({ fileUrl, documentId, workspaceId }: ChatSidebarPro
     }
 
     let cancelled = false;
-    supabase
-      .from('document_page_texts')
-      .select('page_text')
-      .eq('document_id', id)
-      .eq('page_number', currentPage)
-      .maybeSingle()
-      .then(({ data }) => {
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('document_page_texts')
+          .select('page_text')
+          .eq('document_id', id)
+          .eq('page_number', currentPage)
+          .maybeSingle();
         if (!cancelled) setCurrentPageText(data?.page_text ?? '');
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setCurrentPageText('');
-      });
+      }
+    })();
 
     return () => { cancelled = true; };
   }, [currentDocumentId, documentId, currentPage]);
@@ -115,20 +116,21 @@ export const ChatSidebar = ({ fileUrl, documentId, workspaceId }: ChatSidebarPro
     }
 
     let cancelled = false;
-    supabase
-      .from('document_page_texts')
-      .select('page_text')
-      .eq('document_id', id)
-      .order('page_number', { ascending: true })
-      .limit(3)
-      .then(({ data }) => {
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('document_page_texts')
+          .select('page_text')
+          .eq('document_id', id)
+          .order('page_number', { ascending: true })
+          .limit(3);
         if (!cancelled) {
           setDocumentLanguageSample((data ?? []).map((row) => row.page_text ?? '').join('\n').slice(0, 6000));
         }
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setDocumentLanguageSample('');
-      });
+      }
+    })();
 
     return () => { cancelled = true; };
   }, [currentDocumentId, documentId]);
