@@ -109,29 +109,3 @@ jobs:
           name: dist
           path: dist/
           retention-days: 7
-
-  deploy:
-    name: Deploy Preview
-    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
-    needs: [build, test_e2e]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run build
-      # Deploy to Vercel preview / staging
-      # - uses: amondnet/vercel-action@v25
-      #   if: ${{ secrets.VERCEL_TOKEN != '' }}
-      #   with:
-      #     vercel-token: ${{ secrets.VERCEL_TOKEN }}
-      #     vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-      #     vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-      #     vercel-args: '--prod=false'
-      - name: Deploy to Vercel (placeholder)
-        run: echo "Deploy step would run here with proper secrets configured"
