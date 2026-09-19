@@ -1529,6 +1529,10 @@ export type Database = {
           dashboard_view_mode: string
           id: string
           sidebar_collapsed: boolean
+          lang: string
+          email_notifications: boolean
+          desktop_notifications: boolean
+          weekly_digest: boolean
           sort_by: string
           sort_order: string
           theme: string
@@ -1542,6 +1546,10 @@ export type Database = {
           dashboard_view_mode?: string
           id: string
           sidebar_collapsed?: boolean
+          lang?: string
+          email_notifications?: boolean
+          desktop_notifications?: boolean
+          weekly_digest?: boolean
           sort_by?: string
           sort_order?: string
           theme?: string
@@ -1555,6 +1563,10 @@ export type Database = {
           dashboard_view_mode?: string
           id?: string
           sidebar_collapsed?: boolean
+          lang?: string
+          email_notifications?: boolean
+          desktop_notifications?: boolean
+          weekly_digest?: boolean
           sort_by?: string
           sort_order?: string
           theme?: string
