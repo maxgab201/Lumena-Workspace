@@ -141,7 +141,7 @@ export const ChatSidebar = () => {
           >
             <div className="flex items-center gap-2">
               <Search className="h-3.5 w-3.5" />
-              <span>Search Knowledge</span>
+              <span>Buscar conocimiento</span>
             </div>
             {showSearch ? (
               <ChevronUp className="h-3.5 w-3.5" />
@@ -170,12 +170,12 @@ export const ChatSidebar = () => {
       <div className="flex-1 overflow-y-auto" ref={scrollRef}>
         {isLoadingSession ? (
           <div className="flex flex-col items-center justify-center h-full text-center p-6 text-muted-foreground">
-            <p className="text-sm">Loading conversation...</p>
+            <p className="text-sm">Cargando conversación...</p>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center p-6 text-muted-foreground">
-            <p className="text-sm">No messages yet.</p>
-            <p className="text-xs mt-2">Ask a question about the document.</p>
+            <p className="text-sm">No hay mensajes aún.</p>
+            <p className="text-xs mt-2">Hacé una pregunta sobre el documento.</p>
           </div>
         ) : (
           <div className="flex flex-col pb-4">
