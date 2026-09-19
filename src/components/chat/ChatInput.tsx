@@ -21,9 +21,10 @@ export const ChatInput = ({ onSend, onStop, disabled, isGenerating, language }: 
     currentPage: state.currentPage,
     documentId: state.documentId,
   })));
-  const pageHighlights = useHighlightStore((state) =>
-    documentId ? (state.highlights[documentId] ?? []).filter((h) => h.page_index === currentPage - 1) : []
+  const documentHighlights = useHighlightStore((state) =>
+    documentId ? state.highlights[documentId] : undefined
   );
+  const hasHighlights = (documentHighlights ?? []).some((h) => h.page_index === currentPage - 1);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +43,7 @@ export const ChatInput = ({ onSend, onStop, disabled, isGenerating, language }: 
   const hasSelection = Boolean(selectedText?.trim());
   const quickActions = quickActionsForLanguage(language, {
     hasSelection,
-    hasHighlights: pageHighlights.length > 0,
+    hasHighlights,
   });
   const copy = chatCopy(language);
 
