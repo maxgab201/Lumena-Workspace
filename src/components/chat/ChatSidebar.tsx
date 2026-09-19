@@ -177,6 +177,7 @@ export const ChatSidebar = ({ fileUrl, documentId, workspaceId }: ChatSidebarPro
           plan={currentPlan}
           capability="chat"
           disabled={isGenerating || isLoadingSession}
+          workspaceId={workspaceId}
         />
 
         <button
