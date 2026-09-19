@@ -71,11 +71,16 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Build application
         run: pnpm run build
+        env:
+          # Public frontend test configuration only. Requests are intercepted by
+          # Playwright; no real Supabase credential is used in deterministic CI.
+          VITE_SUPABASE_URL: https://nsjetmjtwbhellqasggw.supabase.co
+          VITE_SUPABASE_ANON_KEY: lumena-e2e-dummy-anon-key
       - name: Run E2E tests
         run: npx playwright test --reporter=github
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: https://nsjetmjtwbhellqasggw.supabase.co
+          VITE_SUPABASE_ANON_KEY: lumena-e2e-dummy-anon-key
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
