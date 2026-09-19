@@ -38,41 +38,38 @@ export interface ChatSession {
   messages?: ChatMessage[];
 }
 
+export interface ChatHighlightContext {
+  text: string;
+  page: number;
+  color: string;
+  category?: string;
+  note?: string;
+  source?: 'manual' | 'ai';
+}
+
 export interface ChatContext {
   documentId?: string;
   workspaceId?: string;
   currentPage: number;
-  activeHighlights: Array<{
-    text: string;
-    page: number;
-    color: string;
-    category?: string;
-    note?: string;
-  }>;
+  activeHighlights: ChatHighlightContext[];
   recentMessages: Array<{
     role: string;
     content: string;
   }>;
   documentName?: string;
   workspaceName?: string;
-  // Enhanced context for RAG
   selectedText?: string;
   selectedTextPageIndex?: number;
   documentText?: string;
-  allHighlights?: Array<{
-    text: string;
-    page: number;
-    color: string;
-    category?: string;
-    note?: string;
-  }>;
+  allHighlights?: ChatHighlightContext[];
   selectionRects?: Array<{
     x: number;
     y: number;
     width: number;
     height: number;
   }>;
-  // RAG retrieved chunks for context
+  language?: string;
+  selectedModel?: string;
   ragChunks?: Array<{
     document_id: string;
     document_name: string;
