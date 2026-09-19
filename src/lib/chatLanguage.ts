@@ -1,12 +1,12 @@
 export type ChatLanguage = 'es' | 'en' | 'fr' | 'pt' | 'de' | 'it';
 
 const WORDS: Record<ChatLanguage, string[]> = {
-  es: ['el','la','los','las','de','del','que','y','en','para','con','por','una','un','esta','este','qué','como','cómo','explica','resumir'],
-  en: ['the','of','and','to','in','for','with','this','that','what','how','explain','summarize','page','document'],
-  fr: ['le','la','les','de','des','et','dans','pour','avec','ce','cette','que','quoi','comment','résumer','page'],
-  pt: ['o','a','os','as','de','do','da','e','em','para','com','esta','este','que','como','resumir','página'],
-  de: ['der','die','das','und','von','in','für','mit','diese','dieser','was','wie','erkläre','seite','dokument'],
-  it: ['il','lo','la','i','gli','le','di','del','e','in','per','con','questo','questa','che','come','pagina','documento'],
+  es: ['el','la','los','las','de','del','que','y','en','para','con','por','una','un','esta','este','es','son','se','su','sus','qué','como','cómo','explica','resumir'],
+  en: ['the','of','and','to','in','for','with','this','that','what','how','is','are','from','on','as','explain','summarize','page','document'],
+  fr: ['le','la','les','de','des','du','et','en','dans','pour','avec','ce','cette','ces','que','qui','quoi','comment','un','une','est','sont','au','aux','sur','résumer','page'],
+  pt: ['o','a','os','as','de','do','da','e','em','para','com','esta','este','que','como','um','uma','é','são','no','na','resumir','página'],
+  de: ['der','die','das','und','von','in','für','mit','diese','dieser','was','wie','ist','sind','auf','ein','eine','erkläre','seite','dokument'],
+  it: ['il','lo','la','i','gli','le','di','del','della','e','in','per','con','questo','questa','che','come','un','una','è','sono','pagina','documento'],
 };
 
 function words(text: string): string[] {
@@ -21,12 +21,28 @@ export function detectLanguage(text?: string | null): ChatLanguage | null {
   const tokens = words(text);
   if (tokens.length === 0) return null;
 
+  const tokenLanguageCount = new Map<string, number>();
+  for (const common of Object.values(WORDS)) {
+    for (const token of new Set(common)) {
+      tokenLanguageCount.set(token, (tokenLanguageCount.get(token) ?? 0) + 1);
+    }
+  }
+
   const scores = Object.entries(WORDS).map(([lang, common]) => {
     const set = new Set(common);
-    let score = tokens.reduce((n, token) => n + (set.has(token) ? 1 : 0), 0);
-    if (lang === 'es' && /[¿¡ñáéíóú]/i.test(text)) score += 2;
-    if (lang === 'fr' && /[àâçéèêëîïôùûüÿœ]/i.test(text)) score += 2;
-    if (lang === 'pt' && /[ãõç]/i.test(text)) score += 2;
+    let score = tokens.reduce((total, token) => {
+      if (!set.has(token)) return total;
+      const languageCount = tokenLanguageCount.get(token) ?? 1;
+      return total + (languageCount === 1 ? 2 : 1 / languageCount);
+    }, 0);
+
+    // Only award strong bonuses for characters that are genuinely
+    // discriminative. Plain "é" appears in several Romance languages.
+    if (lang === 'es' && /[¿¡ñ]/i.test(text)) score += 2;
+    if (lang === 'es' && /[áíóú]/i.test(text)) score += 1;
+    if (lang === 'fr' && /[àâèêëîïôùûÿœ]/i.test(text)) score += 2;
+    if (lang === 'pt' && /[ãõ]/i.test(text)) score += 2;
+    if (lang === 'pt' && /ç/i.test(text)) score += 1;
     if (lang === 'de' && /[äöüß]/i.test(text)) score += 2;
     if (lang === 'it' && /\b(che|gli|della|questo|questa)\b/i.test(text)) score += 1;
     return [lang as ChatLanguage, score] as const;
