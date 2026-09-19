@@ -11,11 +11,7 @@ export class KnowledgeExtractor {
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('[KnowledgeExtractor] Flashcard extraction failed:', e);
-      // Fallback mock
-      return [
-        { front: 'What is the main topic?', back: 'Document context is required.' },
-        { front: 'Key term 1', back: 'Definition 1' }
-      ];
+      return [];
     }
   }
 
@@ -29,11 +25,7 @@ export class KnowledgeExtractor {
       return Array.isArray(parsed) ? parsed : [];
     } catch (e) {
       console.error('[KnowledgeExtractor] Glossary extraction failed:', e);
-      // Fallback mock
-      return [
-        { term: 'Term A', definition: 'Definition A' },
-        { term: 'Term B', definition: 'Definition B' }
-      ];
+      return [];
     }
   }
 }
