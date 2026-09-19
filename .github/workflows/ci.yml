@@ -51,7 +51,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+      - run: pnpm test:coverage
 
   test_e2e:
     name: E2E Tests
@@ -68,7 +68,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
       - name: Build application
         run: pnpm run build
         env:
@@ -77,7 +77,7 @@ jobs:
           VITE_SUPABASE_URL: https://nsjetmjtwbhellqasggw.supabase.co
           VITE_SUPABASE_ANON_KEY: lumena-e2e-dummy-anon-key
       - name: Run E2E tests
-        run: npx playwright test --reporter=github
+        run: pnpm exec playwright test --reporter=github
         env:
           VITE_SUPABASE_URL: https://nsjetmjtwbhellqasggw.supabase.co
           VITE_SUPABASE_ANON_KEY: lumena-e2e-dummy-anon-key
