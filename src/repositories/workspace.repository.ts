@@ -2,25 +2,21 @@ import { supabase } from '../lib/supabase';
 
 export const WorkspaceRepository = {
   async createWorkspace(name: string) {
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) throw new Error('Not authenticated');
+    const trimmedName = name.trim();
+    if (!trimmedName) throw new Error('Workspace name is required');
 
-    // Create workspace
-    const { data: workspace, error } = await supabase
-      .from('workspaces')
-      .insert({ name })
-      .select()
-      .single();
-    if (error) throw error;
+    const rpc = supabase.rpc as unknown as (
+      fn: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ data: string | null; error: { message: string } | null }>;
 
-    // Add user as owner (required for RLS storage policies)
-    const { error: memberError } = await supabase
-      .from('workspace_members')
-      .insert({ workspace_id: workspace.id, user_id: user.id, role: 'owner' });
-    if (memberError) throw memberError;
+    const { data: workspaceId, error } = await rpc('create_workspace', {
+      workspace_name: trimmedName,
+    });
+    if (error) throw new Error(error.message);
+    if (!workspaceId) throw new Error('Workspace creation failed');
 
-    return workspace;
+    return this.getWorkspaceById(workspaceId);
   },
 
   async getWorkspaceById(id: string) {

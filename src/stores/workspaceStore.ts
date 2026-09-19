@@ -389,16 +389,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (documentIds.length === 0) return;
     set({ loading: true, error: null });
     try {
-      await DocumentRepository.moveDocumentsBulk(documentIds, targetWorkspaceId);
+      const movedIds = await DocumentRepository.moveDocumentsBulk(documentIds, targetWorkspaceId);
       set((state) => ({
-        documents: state.documents.map((d) =>
-          documentIds.includes(d.id) ? { ...d, workspace_id: targetWorkspaceId } : d
-        ),
+        documents: state.documents.filter((d) => !movedIds.includes(d.id)),
         loading: false,
       }));
       toast.success(`${documentIds.length} document(s) moved`);
     } catch (err: any) {
       set({ error: err.message, loading: false });
+      const workspaceId = get().activeWorkspace?.id;
+      if (workspaceId) void get().fetchDocuments(workspaceId);
       toast.error('Failed to move documents');
       throw err;
     }
@@ -408,14 +408,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (documentIds.length === 0) return;
     set({ loading: true, error: null });
     try {
-      const copies = await DocumentRepository.copyDocumentsBulk(documentIds, targetWorkspaceId);
-      set((state) => ({
-        documents: [...state.documents, ...(copies as WorkspaceDocument[])],
-        loading: false,
-      }));
+      await DocumentRepository.copyDocumentsBulk(documentIds, targetWorkspaceId);
+      set({ loading: false });
       toast.success(`${documentIds.length} document(s) copied`);
     } catch (err: any) {
       set({ error: err.message, loading: false });
+      const workspaceId = get().activeWorkspace?.id;
+      if (workspaceId) void get().fetchDocuments(workspaceId);
       toast.error('Failed to copy documents');
       throw err;
     }

@@ -9,7 +9,19 @@ const dictionaries: Record<Language, Record<TranslationKey, string>> = {
   es,
 };
 
-let currentLang: Language = (localStorage.getItem('lumena-lang') as Language) || 'en';
+function detectInitialLanguage(): Language {
+  if (typeof window === 'undefined') return 'en';
+
+  const stored = window.localStorage.getItem('lumena-lang');
+  if (stored === 'en' || stored === 'es') return stored;
+
+  return window.navigator.language.toLowerCase().startsWith('es') ? 'es' : 'en';
+}
+
+let currentLang: Language = detectInitialLanguage();
+if (typeof document !== 'undefined') {
+  document.documentElement.lang = currentLang;
+}
 
 export function getLanguage(): Language {
   return currentLang;
@@ -17,9 +29,13 @@ export function getLanguage(): Language {
 
 export function setLanguage(lang: Language): void {
   currentLang = lang;
-  localStorage.setItem('lumena-lang', lang);
-  document.documentElement.lang = lang;
-  window.dispatchEvent(new CustomEvent('languagechange', { detail: { lang } }));
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem('lumena-lang', lang);
+    window.dispatchEvent(new CustomEvent('languagechange', { detail: { lang } }));
+  }
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = lang;
+  }
 }
 
 export function t(key: TranslationKey, params?: Record<string, string | number>): string {

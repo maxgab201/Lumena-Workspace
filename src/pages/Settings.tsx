@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '../lib/utils';
 import { PageContainer } from '../components/ui/PageContainer';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/ui/Card';
@@ -26,20 +26,73 @@ import { useLanguage } from '../hooks/useLanguage';
 
 export const Settings = () => {
   useLanguage();
-  const { user, profile } = useUserStore();
-  const { theme, setTheme } = useUiStore();
+  const { user, profile, updateProfile, uploadAvatar, removeAvatar } = useUserStore();
+  const {
+    theme,
+    setTheme,
+    emailNotifications,
+    desktopNotifications,
+    weeklyDigest,
+    setEmailNotifications,
+    setDesktopNotifications,
+    setWeeklyDigest,
+  } = useUiStore();
   const [activeTab, setActiveTab] = useState<'profile' | 'appearance' | 'notifications' | 'shortcuts' | 'about'>('profile');
   const userName = profile?.name || user?.email?.split('@')[0] || 'User';
   const [name, setName] = useState(userName);
-  const [email, setEmail] = useState(user?.email || 'user@example.com');
+  const [email, setEmail] = useState(user?.email || '');
   const [isSaved, setIsSaved] = useState(false);
-  const [emailNotifications, setEmailNotifications] = useState(true);
-  const [desktopNotifications, setDesktopNotifications] = useState(true);
-  const [weeklyDigest, setWeeklyDigest] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSaveProfile = () => {
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 3000);
+  useEffect(() => {
+    setName(userName);
+    setEmail(user?.email || '');
+  }, [userName, user?.email]);
+
+  const handleSaveProfile = async () => {
+    setIsSavingProfile(true);
+    try {
+      const result = await updateProfile(name, email);
+      setIsSaved(true);
+      window.setTimeout(() => setIsSaved(false), 3000);
+      toast.success(
+        result.emailConfirmationRequired
+          ? 'Profile saved. Check your inbox to confirm the new email.'
+          : t('settings.profileUpdated'),
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not save profile');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleAvatarFile = async (file?: File) => {
+    if (!file) return;
+    setIsSavingAvatar(true);
+    try {
+      await uploadAvatar(file);
+      toast.success('Profile picture updated');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not upload profile picture');
+    } finally {
+      setIsSavingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setIsSavingAvatar(true);
+    try {
+      await removeAvatar();
+      toast.success('Profile picture removed');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not remove profile picture');
+    } finally {
+      setIsSavingAvatar(false);
+    }
   };
 
   const tabs = [
@@ -101,16 +154,29 @@ export const Settings = () => {
                             name.charAt(0).toUpperCase()
                           )}
                         </div>
-                        <button className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer" aria-label="Upload photo">
+                        <button
+                          type="button"
+                          onClick={() => avatarInputRef.current?.click()}
+                          disabled={isSavingAvatar}
+                          className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer disabled:cursor-wait"
+                          aria-label="Upload photo"
+                        >
                           <Camera size={18} className="text-white" />
                         </button>
+                        <input
+                          ref={avatarInputRef}
+                          type="file"
+                          accept="image/png,image/jpeg,image/gif,image/webp"
+                          className="hidden"
+                          onChange={(event) => void handleAvatarFile(event.target.files?.[0])}
+                        />
                       </div>
                       <div className="space-y-1">
                         <h4 className="text-sm font-semibold text-foreground">{t('settings.profilePicture')}</h4>
                         <p className="text-xs text-muted-foreground">{t('settings.profilePictureDesc')}</p>
                         <div className="flex space-x-2 pt-1">
-                          <Button size="sm" variant="outline" className="h-8 text-xs border-white/5 bg-secondary/30" onClick={() => toast.info('Avatar upload not yet implemented')}>{t('settings.upload')}</Button>
-                          <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground hover:text-foreground" onClick={() => toast.info('Avatar removal not yet implemented')}>{t('settings.remove')}</Button>
+                          <Button size="sm" variant="outline" className="h-8 text-xs border-white/5 bg-secondary/30" disabled={isSavingAvatar} onClick={() => avatarInputRef.current?.click()}>{t('settings.upload')}</Button>
+                          <Button size="sm" variant="ghost" className="h-8 text-xs text-muted-foreground hover:text-foreground" disabled={isSavingAvatar || !profile?.avatar_url} onClick={() => void handleRemoveAvatar()}>{t('settings.remove')}</Button>
                         </div>
                       </div>
                     </div>
@@ -125,7 +191,7 @@ export const Settings = () => {
                       </div>
                     </div>
                     <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                      <Button onClick={handleSaveProfile} disabled={isSaved} className="px-6 shadow-md shadow-accent/15">
+                      <Button onClick={() => void handleSaveProfile()} disabled={isSaved || isSavingProfile} className="px-6 shadow-md shadow-accent/15">
                         {isSaved ? (<><Check className="w-4 h-4 mr-2" /> {t('settings.saved')}</>) : t('settings.saveChanges')}
                       </Button>
                       {isSaved && (<span className="text-xs text-accent font-medium">{t('settings.profileUpdated')}</span>)}
@@ -185,21 +251,21 @@ export const Settings = () => {
                           <p className="text-sm font-semibold text-foreground">{t('settings.emailNotifications')}</p>
                           <p className="text-xs text-muted-foreground">{t('settings.emailNotificationsDesc')}</p>
                         </div>
-                        <input type="checkbox" checked={emailNotifications} onChange={(e) => setEmailNotifications(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-accent focus:ring-accent bg-secondary/50 cursor-pointer" />
+                        <input type="checkbox" checked={emailNotifications} onChange={(e) => void setEmailNotifications(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-accent focus:ring-accent bg-secondary/50 cursor-pointer" />
                       </div>
                       <div className="flex items-start justify-between p-3.5 rounded-xl bg-secondary/15 border border-white/5">
                         <div className="space-y-0.5">
                           <p className="text-sm font-semibold text-foreground">{t('settings.desktopNotifications')}</p>
                           <p className="text-xs text-muted-foreground">{t('settings.desktopNotificationsDesc')}</p>
                         </div>
-                        <input type="checkbox" checked={desktopNotifications} onChange={(e) => setDesktopNotifications(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-accent focus:ring-accent bg-secondary/50 cursor-pointer" />
+                        <input type="checkbox" checked={desktopNotifications} onChange={(e) => void setDesktopNotifications(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-accent focus:ring-accent bg-secondary/50 cursor-pointer" />
                       </div>
                       <div className="flex items-start justify-between p-3.5 rounded-xl bg-secondary/15 border border-white/5">
                         <div className="space-y-0.5">
                           <p className="text-sm font-semibold text-foreground">{t('settings.weeklyDigest')}</p>
                           <p className="text-xs text-muted-foreground">{t('settings.weeklyDigestDesc')}</p>
                         </div>
-                        <input type="checkbox" checked={weeklyDigest} onChange={(e) => setWeeklyDigest(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-accent focus:ring-accent bg-secondary/50 cursor-pointer" />
+                        <input type="checkbox" checked={weeklyDigest} onChange={(e) => void setWeeklyDigest(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-accent focus:ring-accent bg-secondary/50 cursor-pointer" />
                       </div>
                     </div>
                   </CardContent>
