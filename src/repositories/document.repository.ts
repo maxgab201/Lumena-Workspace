@@ -398,47 +398,119 @@ export const DocumentRepository = {
   },
 
   /**
-   * Move multiple documents to a different workspace.
+   * Move documents to another workspace without leaving Storage and DB out of sync.
+   * Storage is moved first; the DB half is committed atomically by the hardened RPC.
+   * If the DB step fails, Storage is moved back best-effort.
    */
-  async moveDocumentsBulk(ids: string[], targetWorkspaceId: string) {
-    if (ids.length === 0) return;
+  async moveDocumentsBulk(ids: string[], targetWorkspaceId: string): Promise<string[]> {
+    if (ids.length === 0) return [];
 
-    const { error } = await supabase
-      .from('documents')
-      .update({ workspace_id: targetWorkspaceId })
-      .in('id', ids);
-    if (error) throw error;
-  },
-
-  /**
-   * Copy documents to a different workspace.
-   */
-  async copyDocumentsBulk(ids: string[], targetWorkspaceId: string) {
-    if (ids.length === 0) return;
-
-    // Get documents to copy
     const { data: docs, error: fetchError } = await supabase
       .from('documents')
-      .select('*')
+      .select('id, workspace_id, file_path, file_hash')
       .in('id', ids);
     if (fetchError) throw fetchError;
 
-    // Create copies in target workspace
-    const copies = docs.map(doc => ({
-      workspace_id: targetWorkspaceId,
-      name: doc.name,
-      size_bytes: doc.size_bytes,
-      file_path: doc.file_path,
-      mime_type: doc.mime_type,
-      page_count: doc.page_count,
-      status: doc.status,
-    }));
+    const movedIds: string[] = [];
+    const rpcClient = supabase as unknown as {
+      rpc: (
+        fn: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: unknown; error: { message: string } | null }>;
+    };
 
-    const { data, error } = await supabase
+    for (const doc of docs ?? []) {
+      if (!doc.file_hash) throw new Error('Document is missing its file hash.');
+
+      const duplicate = await this.findDocumentByHash(targetWorkspaceId, doc.file_hash);
+      if (duplicate && duplicate.id !== doc.id) {
+        throw new Error(`“${duplicate.name}” already exists in the target workspace.`);
+      }
+
+      const fileName = doc.file_path.split('/').pop() || `${doc.file_hash}.pdf`;
+      const targetPath = `${targetWorkspaceId}/${fileName}`;
+
+      const { error: moveError } = await supabase.storage
+        .from(BUCKET)
+        .move(doc.file_path, targetPath);
+      if (moveError) throw moveError;
+
+      try {
+        const { error: rpcError } = await rpcClient.rpc('move_document_workspace', {
+          p_document_id: doc.id,
+          p_target_workspace_id: targetWorkspaceId,
+          p_new_file_path: targetPath,
+        });
+        if (rpcError) throw new Error(rpcError.message);
+        movedIds.push(doc.id);
+      } catch (error) {
+        const rollback = await supabase.storage
+          .from(BUCKET)
+          .move(targetPath, doc.file_path);
+        if (rollback.error) {
+          console.error('[DocumentRepository] Failed to roll back Storage move:', rollback.error);
+        }
+        throw error;
+      }
+    }
+
+    return movedIds;
+  },
+
+  /**
+   * Copy the physical PDF to the target workspace, create a new document row,
+   * and re-run processing there. Derived AI/annotation data is intentionally
+   * regenerated instead of pointing the target workspace at source-owned data.
+   */
+  async copyDocumentsBulk(ids: string[], targetWorkspaceId: string) {
+    if (ids.length === 0) return [];
+
+    const { data: docs, error: fetchError } = await supabase
       .from('documents')
-      .insert(copies)
-      .select();
-    if (error) throw error;
-    return data;
+      .select('id, name, size_bytes, file_path, file_hash, mime_type')
+      .in('id', ids);
+    if (fetchError) throw fetchError;
+
+    const copies: WorkspaceDocument[] = [];
+
+    for (const doc of docs ?? []) {
+      if (!doc.file_hash) throw new Error('Document is missing its file hash.');
+
+      const duplicate = await this.findDocumentByHash(targetWorkspaceId, doc.file_hash);
+      if (duplicate) {
+        throw new Error(`“${doc.name}” already exists in the target workspace.`);
+      }
+
+      const fileName = doc.file_path.split('/').pop() || `${doc.file_hash}.pdf`;
+      const targetPath = `${targetWorkspaceId}/${fileName}`;
+
+      const { error: copyError } = await supabase.storage
+        .from(BUCKET)
+        .copy(doc.file_path, targetPath);
+      if (copyError) throw copyError;
+
+      let created: WorkspaceDocument | null = null;
+      try {
+        created = await this.createDocumentRecord({
+          workspace_id: targetWorkspaceId,
+          name: doc.name,
+          size_bytes: doc.size_bytes,
+          file_path: targetPath,
+          file_hash: doc.file_hash,
+          mime_type: doc.mime_type ?? 'application/pdf',
+        }) as WorkspaceDocument;
+
+        await this.createProcessingJob(targetWorkspaceId, created.id);
+        copies.push(created);
+      } catch (error) {
+        if (created) {
+          await supabase.from('documents').delete().eq('id', created.id);
+        }
+        await supabase.storage.from(BUCKET).remove([targetPath]);
+        throw error;
+      }
+    }
+
+    return copies;
   },
 };

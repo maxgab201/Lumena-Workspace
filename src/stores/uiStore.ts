@@ -10,6 +10,9 @@ interface UiStore {
   sortBy: 'date' | 'name' | 'size';
   sortOrder: 'asc' | 'desc';
   sidebarCollapsed: boolean;
+  emailNotifications: boolean;
+  desktopNotifications: boolean;
+  weeklyDigest: boolean;
   mobileSidebarOpen: boolean;
   commandPaletteOpen: boolean;
   activeRightPanel: 'chat' | 'activity' | 'knowledge' | 'annotations' | 'ai' | 'none' | null;
@@ -18,8 +21,11 @@ interface UiStore {
   setViewMode: (mode: 'grid' | 'list') => Promise<void>;
   setSortBy: (sort: 'date' | 'name' | 'size') => Promise<void>;
   toggleSortOrder: () => Promise<void>;
-  setSidebarCollapsed: (collapsed: boolean) => void;
-  toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => Promise<void>;
+  toggleSidebar: () => Promise<void>;
+  setEmailNotifications: (enabled: boolean) => Promise<void>;
+  setDesktopNotifications: (enabled: boolean) => Promise<void>;
+  setWeeklyDigest: (enabled: boolean) => Promise<void>;
   setMobileSidebarOpen: (open: boolean) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   setActiveRightPanel: (panel: 'chat' | 'activity' | 'knowledge' | 'annotations' | 'ai' | 'none' | null) => void;
@@ -46,6 +52,9 @@ export const useUiStore = create<UiStore>((set, get) => ({
   sortBy: 'date',
   sortOrder: 'desc',
   sidebarCollapsed: false,
+  emailNotifications: true,
+  desktopNotifications: true,
+  weeklyDigest: false,
   mobileSidebarOpen: false,
   commandPaletteOpen: false,
   activeRightPanel: null,
@@ -90,8 +99,27 @@ export const useUiStore = create<UiStore>((set, get) => ({
     await persistSettingsIfAuthenticated({ sort_order: newOrder });
   },
 
-  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  setSidebarCollapsed: async (collapsed) => {
+    set({ sidebarCollapsed: collapsed });
+    await persistSettingsIfAuthenticated({ sidebar_collapsed: collapsed });
+  },
+  toggleSidebar: async () => {
+    const collapsed = !get().sidebarCollapsed;
+    set({ sidebarCollapsed: collapsed });
+    await persistSettingsIfAuthenticated({ sidebar_collapsed: collapsed });
+  },
+  setEmailNotifications: async (enabled) => {
+    set({ emailNotifications: enabled });
+    await persistSettingsIfAuthenticated({ email_notifications: enabled });
+  },
+  setDesktopNotifications: async (enabled) => {
+    set({ desktopNotifications: enabled });
+    await persistSettingsIfAuthenticated({ desktop_notifications: enabled });
+  },
+  setWeeklyDigest: async (enabled) => {
+    set({ weeklyDigest: enabled });
+    await persistSettingsIfAuthenticated({ weekly_digest: enabled });
+  },
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
   setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
   setActiveRightPanel: (panel) => set({ activeRightPanel: panel }),
@@ -106,6 +134,13 @@ export const useUiStore = create<UiStore>((set, get) => ({
           const viewMode = (settings.view_mode as 'grid' | 'list') ?? 'grid';
           const sortBy = (settings.sort_by as 'date' | 'name' | 'size') ?? 'date';
           const sortOrder = (settings.sort_order as 'asc' | 'desc') ?? 'desc';
+          const sidebarCollapsed = Boolean(settings.sidebar_collapsed);
+          const lang = settings.lang === 'es' ? 'es' : 'en';
+          const emailNotifications = settings.email_notifications ?? true;
+          const desktopNotifications = settings.desktop_notifications ?? true;
+          const weeklyDigest = settings.weekly_digest ?? false;
+
+          setLanguage(lang);
 
           // Apply theme to DOM
           const root = window.document.documentElement;
@@ -119,7 +154,17 @@ export const useUiStore = create<UiStore>((set, get) => ({
             root.classList.add(theme);
           }
 
-          set({ theme, viewMode, sortBy, sortOrder });
+          set({
+            theme,
+            lang,
+            viewMode,
+            sortBy,
+            sortOrder,
+            sidebarCollapsed,
+            emailNotifications,
+            desktopNotifications,
+            weeklyDigest,
+          });
           return;
         }
       } catch (err) {

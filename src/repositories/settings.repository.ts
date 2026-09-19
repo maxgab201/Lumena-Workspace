@@ -16,6 +16,10 @@ export const SettingsRepository = {
     sort_by?: string;
     sort_order?: string;
     sidebar_collapsed?: boolean;
+    lang?: 'en' | 'es';
+    email_notifications?: boolean;
+    desktop_notifications?: boolean;
+    weekly_digest?: boolean;
     // Legacy column names (keep for backward compat until migration is applied)
     dashboard_view_mode?: string;
     dashboard_sort_by?: string;

@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import type { Provider } from '@supabase/supabase-js';
+import type { Provider, UserAttributes } from '@supabase/supabase-js';
 
 export const AuthRepository = {
   async signUp(email: string, password: string, options?: any) {
@@ -57,7 +57,7 @@ export const AuthRepository = {
     return data;
   },
 
-  async updateUser(attributes: { password?: string; data?: any }) {
+  async updateUser(attributes: UserAttributes) {
     const { data, error } = await supabase.auth.updateUser(attributes);
     if (error) throw error;
     return data;

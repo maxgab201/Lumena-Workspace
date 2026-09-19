@@ -18,8 +18,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    useUserStore.getState().initialize();
-    useUiStore.getState().loadSettings();
+    const cleanupAuth = useUserStore.getState().initialize();
+    void useUiStore.getState().loadSettings();
+
+    return () => {
+      cleanupAuth();
+    };
   }, []);
 
   return <AppProviders />;
