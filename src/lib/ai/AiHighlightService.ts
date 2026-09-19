@@ -179,6 +179,7 @@ export class AiHighlightService {
             model_id: params.modelId || 'gemini-3.5-flash-lite',
             instruction: params.instruction?.trim() || undefined,
             quota_run_token: quotaRunToken || undefined,
+            quota_scope: scope,
           }),
         });
 
