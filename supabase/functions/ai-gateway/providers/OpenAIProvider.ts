@@ -21,7 +21,6 @@ export class OpenAIProvider implements AIProvider {
   readonly id = 'openrouter';
   private apiKey: string;
   private chatModel: string;
-  private fallbackModels: string[];
 
   constructor() {
     const key = Deno.env.get('OPENROUTER_API_KEY') ?? '';
@@ -29,8 +28,6 @@ export class OpenAIProvider implements AIProvider {
     this.apiKey = key;
 
     this.chatModel = Deno.env.get('OPENROUTER_CHAT_MODEL') || 'nex-agi/nex-n2.5-pro:free';
-    const fallbackRaw = Deno.env.get('OPENROUTER_FALLBACK_MODELS') || '';
-    this.fallbackModels = fallbackRaw.split(',').map((m) => m.trim()).filter((m) => !!m);
   }
 
   private baseUrl = 'https://openrouter.ai/api/v1';
@@ -53,7 +50,7 @@ export class OpenAIProvider implements AIProvider {
     prompt: string,
     options?: AIProviderOptions,
   ): Promise<AIProviderResult> {
-    const model = this.chatModel || modelCode || 'meta-llama/llama-3.1-8b-instruct:free';
+    const model = modelCode || this.chatModel || 'meta-llama/llama-3.1-8b-instruct:free';
     const res = await fetchWithRetry(
       `${this.baseUrl}/chat/completions`,
       {
@@ -94,7 +91,7 @@ export class OpenAIProvider implements AIProvider {
     prompt: string,
     options?: AIProviderOptions,
   ): AsyncIterable<AIProviderStreamResult> {
-    const model = this.chatModel || modelCode || 'meta-llama/llama-3.1-8b-instruct:free';
+    const model = modelCode || this.chatModel || 'meta-llama/llama-3.1-8b-instruct:free';
     const res = await fetchWithRetry(
       `${this.baseUrl}/chat/completions`,
       {
