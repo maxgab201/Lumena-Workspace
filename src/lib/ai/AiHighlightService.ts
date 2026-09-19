@@ -153,6 +153,8 @@ export class AiHighlightService {
       }
     }
 
+    let quotaRunToken: string | null = null;
+
     for (const pageNumber of pageBlocks) {
       const pageSentences = sentencesByPage.get(pageNumber) ?? [];
       if (pageSentences.length === 0) continue;
@@ -176,10 +178,14 @@ export class AiHighlightService {
             density,
             model_id: params.modelId || 'gemini-3.5-flash-lite',
             instruction: params.instruction?.trim() || undefined,
+            quota_run_token: quotaRunToken || undefined,
           }),
         });
 
         const data = await res.json().catch(() => ({}));
+        if (typeof data?.quota_run_token === 'string' && data.quota_run_token) {
+          quotaRunToken = data.quota_run_token;
+        }
         if (!res.ok) {
           failedPages.push({ page: pageNumber, error: data?.error || `AI request failed (${res.status})` });
           continue;
