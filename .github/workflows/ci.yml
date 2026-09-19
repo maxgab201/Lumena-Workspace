@@ -51,7 +51,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: pnpm install --frozen-lockfile
-      - run: npx vitest run --coverage
+      - run: pnpm test
 
   test_e2e:
     name: E2E Tests
