@@ -22,7 +22,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run typecheck
 
@@ -37,7 +36,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run lint
 
@@ -52,7 +50,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: npx vitest run --coverage
 
@@ -68,7 +65,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Install Playwright browsers
@@ -107,7 +103,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - name: Upload build artifacts
@@ -130,7 +125,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       # Deploy to Vercel preview / staging
