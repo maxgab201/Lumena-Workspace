@@ -276,7 +276,13 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
             onClose={() => setActiveRightPanel('none')}
           />
         )}
-        {activeRightPanel === 'chat' && <ChatSidebar />}
+        {activeRightPanel === 'chat' && (
+          <ChatSidebar
+            fileUrl={fileUrl}
+            documentId={documentId}
+            workspaceId={workspaceId}
+          />
+        )}
         {activeRightPanel === 'knowledge' && (
           <KnowledgeSidebar 
             documentId={documentId ?? fileUrl}

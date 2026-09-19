@@ -4,6 +4,7 @@
  * endpoint is unreachable (never breaks Chat/Highlight).
  */
 import { getConfigCache, setConfigCache } from './modelCache'
+import { supabase } from './supabase'
 
 export interface CatalogModelUI {
   provider: 'google' | 'openrouter'
@@ -45,11 +46,15 @@ export const STATIC_UI = STATIC_CATALOG.map((m) => ({
 export async function fetchAiConfig(workspaceId?: string, signal?: AbortSignal): Promise<AiConfigResponse> {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-config?workspace_id=${encodeURIComponent(workspaceId ?? '')}`
   try {
-    const res = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' }, signal })
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
+
+    const res = await fetch(url, { method: 'GET', headers, signal })
     if (!res.ok) throw new Error(`ai-config ${res.status}`)
-    const data = (await res.json()) as Partial<AiConfigResponse>
-    setConfigCache(data as AiConfigResponse)
-    return data as AiConfigResponse
+    const data = (await res.json()) as AiConfigResponse
+    setConfigCache(data)
+    return data
   } catch {
     return getConfigCache() ?? {
       plan: 'free',

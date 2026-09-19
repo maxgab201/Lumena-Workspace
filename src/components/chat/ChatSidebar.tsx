@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { X, Sparkles, Lock, Search, ChevronDown, ChevronUp } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { X, Sparkles, Search, ChevronDown, ChevronUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { useChatStore } from '../../stores/chatStore';
@@ -11,13 +11,29 @@ import { ModelSelectorPanel } from './ModelSelectorPanel';
 import { KnowledgeSearch } from './KnowledgeSearch';
 import { useUiStore } from '../../stores/uiStore';
 import { useShallow } from 'zustand/react/shallow';
-import { AVAILABLE_MODELS, PLANS, type PlanType } from '../../types/billing';
+import { supabase } from '../../lib/supabase';
+import { resolveChatLanguage } from '../../lib/chatLanguage';
 
-export const ChatSidebar = () => {
+interface ChatSidebarProps {
+  fileUrl?: string;
+  documentId?: string;
+  workspaceId?: string;
+}
+
+export const ChatSidebar = ({ fileUrl, documentId, workspaceId }: ChatSidebarProps) => {
   const { setActiveRightPanel } = useUiStore();
   const navigate = useNavigate();
-  const setCurrentPage = useViewerStore(state => state.setCurrentPage);
-  const currentDocumentId = useViewerStore(state => state.documentId);
+  const {
+    setCurrentPage,
+    currentDocumentId,
+    currentPage,
+    selectedText,
+  } = useViewerStore(useShallow((state) => ({
+    setCurrentPage: state.setCurrentPage,
+    currentDocumentId: state.documentId,
+    currentPage: state.currentPage,
+    selectedText: state.selectedText,
+  })));
 
   const navigateToCitationPage = (pageNumber: number) => {
     if (pageNumber && pageNumber > 0) {
@@ -26,13 +42,14 @@ export const ChatSidebar = () => {
     }
   };
 
-  const openCitationDocument = (documentId: string) => {
-    if (documentId !== currentDocumentId) {
-      navigate(`/viewer/${documentId}`);
+  const openCitationDocument = (targetDocumentId: string) => {
+    if (targetDocumentId !== currentDocumentId) {
+      navigate(`/viewer/${targetDocumentId}`);
     } else {
       setActiveRightPanel(null);
     }
   };
+
   const {
     isGenerating,
     isLoadingSession,
@@ -41,7 +58,7 @@ export const ChatSidebar = () => {
     sendMessage,
     stopGenerating,
     getActiveMessages,
-  } = useChatStore(useShallow(state => ({
+  } = useChatStore(useShallow((state) => ({
     isGenerating: state.isGenerating,
     isLoadingSession: state.isLoadingSession,
     selectedModel: state.selectedModel,
@@ -51,12 +68,14 @@ export const ChatSidebar = () => {
     getActiveMessages: state.getActiveMessages,
   })));
 
-  const { subscription } = useBillingStore(useShallow(state => ({ subscription: state.subscription })));
-  const currentPlan = (subscription?.plan?.code || 'free') as PlanType;
-  const planConfig = PLANS[currentPlan] ?? PLANS.free!;
+  const { subscription } = useBillingStore(useShallow((state) => ({ subscription: state.subscription })));
+  const currentPlan = subscription?.plan?.code === 'pro' ? 'pro' : 'free';
 
   const messages = getActiveMessages();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [showSearch, setShowSearch] = useState(false);
+  const [currentPageText, setCurrentPageText] = useState('');
+  const [documentLanguageSample, setDocumentLanguageSample] = useState('');
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -64,19 +83,73 @@ export const ChatSidebar = () => {
     }
   }, [messages]);
 
+  useEffect(() => {
+    const id = currentDocumentId ?? documentId;
+    if (!id || !currentPage) {
+      setCurrentPageText('');
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('document_page_texts')
+          .select('page_text')
+          .eq('document_id', id)
+          .eq('page_number', currentPage)
+          .maybeSingle();
+        if (!cancelled) setCurrentPageText(data?.page_text ?? '');
+      } catch {
+        if (!cancelled) setCurrentPageText('');
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [currentDocumentId, documentId, currentPage]);
+
+  useEffect(() => {
+    const id = currentDocumentId ?? documentId;
+    if (!id) {
+      setDocumentLanguageSample('');
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('document_page_texts')
+          .select('page_text')
+          .eq('document_id', id)
+          .order('page_number', { ascending: true })
+          .limit(3);
+        if (!cancelled) {
+          setDocumentLanguageSample((data ?? []).map((row) => row.page_text ?? '').join('\n').slice(0, 6000));
+        }
+      } catch {
+        if (!cancelled) setDocumentLanguageSample('');
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [currentDocumentId, documentId]);
+
+  const language = useMemo(() => resolveChatLanguage({
+    recentUserMessages: messages.filter((m) => m.role === 'user').slice(-4).map((m) => m.content),
+    currentPageText: currentPageText || selectedText,
+    documentText: documentLanguageSample,
+    locale: typeof navigator !== 'undefined' ? navigator.language : 'en',
+  }), [messages, currentPageText, selectedText, documentLanguageSample]);
+
   const handleSend = async (text: string) => {
-    await sendMessage(text);
+    await sendMessage(text, {
+      fileUrl,
+      documentId: currentDocumentId ?? documentId,
+      workspaceId,
+      currentPage,
+    });
   };
-
-  const handleModelChange = (modelCode: string) => {
-    const model = AVAILABLE_MODELS.find(m => m.code === modelCode);
-    if (!model) return;
-    const isLocked = !planConfig.allowedModels.includes(modelCode);
-    if (isLocked) return; // Silently ignore — button is disabled
-    setSelectedModel(modelCode);
-  };
-
-  const [showSearch, setShowSearch] = useState(false);
 
   return (
     <div
@@ -100,78 +173,46 @@ export const ChatSidebar = () => {
           </Button>
         </div>
 
-        {/* Plan-aware Catalog Model Selector */}
         <ModelSelectorPanel
           selectedModel={selectedModel}
-          onChange={handleModelChange}
+          onChange={setSelectedModel}
           plan={currentPlan}
+          capability="chat"
+          disabled={isGenerating || isLoadingSession}
+          workspaceId={workspaceId}
         />
-          <div className="flex flex-col gap-1">
-            {AVAILABLE_MODELS.map((model) => {
-              const isLocked = !planConfig.allowedModels.includes(model.code);
-              const isActive = selectedModel === model.code;
-              return (
-                <button
-                  key={model.code}
-                  disabled={isLocked || isGenerating || isLoadingSession}
-                  onClick={() => handleModelChange(model.code)}
-                  className={`flex items-center justify-between text-xs px-3 py-2 rounded-lg border transition-all ${
-                    isActive
-                      ? 'border-accent/50 bg-accent/10 text-accent font-medium'
-                      : isLocked
-                      ? 'border-white/5 bg-secondary/10 text-muted-foreground/40 cursor-not-allowed'
-                      : 'border-white/5 bg-secondary/20 text-muted-foreground hover:text-foreground hover:border-white/20'
-                  }`}
-                >
-                  <span>{model.name}</span>
-                  {isLocked && (
-                    <span className="flex items-center gap-1 text-[10px] text-accent/70 font-semibold">
-                      <Lock className="w-3 h-3" /> Pro
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+
+        <button
+          onClick={() => setShowSearch(!showSearch)}
+          className="flex items-center justify-between text-xs px-3 py-2 rounded-lg border border-white/5 bg-secondary/10 text-muted-foreground hover:text-foreground hover:border-white/10 hover:bg-secondary/20 transition-colors w-full"
+          type="button"
+        >
+          <div className="flex items-center gap-2">
+            <Search className="h-3.5 w-3.5" />
+            <span>Buscar conocimiento</span>
           </div>
-          {currentPlan === 'free' && (
-            <p className="text-[10px] text-muted-foreground/50 mt-0.5">
-              Upgrade to Pro to unlock advanced models.
-            </p>
+          {showSearch ? (
+            <ChevronUp className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5" />
           )}
+        </button>
 
-          {/* Knowledge Search Toggle */}
-          <button
-            onClick={() => setShowSearch(!showSearch)}
-            className="flex items-center justify-between text-xs px-3 py-2 rounded-lg border border-white/5 bg-secondary/10 text-muted-foreground hover:text-foreground hover:border-white/10 hover:bg-secondary/20 transition-colors w-full"
-          >
-            <div className="flex items-center gap-2">
-              <Search className="h-3.5 w-3.5" />
-              <span>Buscar conocimiento</span>
-            </div>
-            {showSearch ? (
-              <ChevronUp className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronDown className="h-3.5 w-3.5" />
-            )}
-          </button>
-
-          {showSearch && (
-            <div className="pt-2 border-t border-white/5">
-              <KnowledgeSearch
-                onSelectResult={(result) => {
-                  if (result.document_id === currentDocumentId && result.page_number) {
-                    setCurrentPage(result.page_number);
-                  } else if (result.document_id) {
-                    navigate(`/viewer/${result.document_id}`);
-                  }
-                }}
-              />
-            </div>
-          )}
-        </div>
+        {showSearch && (
+          <div className="pt-2 border-t border-white/5">
+            <KnowledgeSearch
+              onSelectResult={(result) => {
+                if (result.document_id === currentDocumentId && result.page_number) {
+                  setCurrentPage(result.page_number);
+                } else if (result.document_id) {
+                  navigate(`/viewer/${result.document_id}`);
+                }
+              }}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto" ref={scrollRef}>
         {isLoadingSession ? (
           <div className="flex flex-col items-center justify-center h-full text-center p-6 text-muted-foreground">
@@ -196,11 +237,15 @@ export const ChatSidebar = () => {
         )}
       </div>
 
-      {/* Input */}
       <div className="shrink-0">
-        <ChatInput onSend={handleSend} onStop={stopGenerating} disabled={isLoadingSession} isGenerating={isGenerating} />
+        <ChatInput
+          onSend={handleSend}
+          onStop={stopGenerating}
+          disabled={isLoadingSession}
+          isGenerating={isGenerating}
+          language={language}
+        />
       </div>
     </div>
   );
 };
-

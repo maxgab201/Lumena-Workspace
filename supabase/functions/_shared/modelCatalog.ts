@@ -104,8 +104,9 @@ async function fetchGeminiAvailable(): Promise<Set<string>> {
 function mergeCatalog(dynamic: CatalogModel[]): CatalogModel[] {
   const byId = new Map<string, CatalogModel>()
   for (const m of STATIC_CATALOG) byId.set(m.model_id, { ...m })
-  for (const m of dynamic) if (!byId.has(m.model_id)) byId.set(m.model_id, m)
-  // Gemini whitelist models must always be present even if ListModels failed.
+  // Dynamic discovery is authoritative when it has information about an id:
+  // this is what lets ListModels mark a static Gemini seed unavailable.
+  for (const m of dynamic) byId.set(m.model_id, { ...m })
   return [...byId.values()]
 }
 

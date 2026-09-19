@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
-import { getCatalog, tierOf, resolvePlan, FREE_DAILY_LIMIT, quotaInfo } from "../_shared/modelCatalog.ts"
+import { getCatalog, resolvePlan, FREE_DAILY_LIMIT, quotaInfo, DEFAULT_CHAT_FREE_MODEL, DEFAULT_HIGHLIGHT_FREE_MODEL } from "../_shared/modelCatalog.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
