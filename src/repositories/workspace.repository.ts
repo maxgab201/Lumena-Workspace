@@ -5,12 +5,14 @@ export const WorkspaceRepository = {
     const trimmedName = name.trim();
     if (!trimmedName) throw new Error('Workspace name is required');
 
-    const rpc = supabase.rpc as unknown as (
-      fn: string,
-      args: Record<string, unknown>,
-    ) => Promise<{ data: string | null; error: { message: string } | null }>;
+    const rpcClient = supabase as unknown as {
+      rpc: (
+        fn: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ data: string | null; error: { message: string } | null }>;
+    };
 
-    const { data: workspaceId, error } = await rpc('create_workspace', {
+    const { data: workspaceId, error } = await rpcClient.rpc('create_workspace', {
       workspace_name: trimmedName,
     });
     if (error) throw new Error(error.message);
