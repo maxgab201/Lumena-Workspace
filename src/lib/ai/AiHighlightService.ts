@@ -70,6 +70,8 @@ export class AiHighlightService {
     pageNumber?: number;
     density: AiDensity;
     modelId?: string;
+    instruction?: string;
+    replaceExisting?: boolean;
     onProgress?: (p: AiHighlightProgress) => void;
   }): Promise<AiHighlightSummary> {
     const { file, documentId, workspaceId, scope, density, onProgress } = params;
@@ -139,13 +141,15 @@ export class AiHighlightService {
     // the analyzed scope (manual highlights are never touched). This prevents
     // duplicates accumulating across repeated runs.
     const store = (await import('../../stores/highlightStore')).useHighlightStore.getState();
-    const removedIds = new Set<string>();
-    for (const h of store.highlights[documentId] ?? []) {
-      if (h.source !== 'ai') continue;
-      const inScope = scope === 'page' ? h.page_index === (params.pageNumber ?? -1) - 1 : true;
-      if (inScope && !removedIds.has(h.id)) {
-        removedIds.add(h.id);
-        await store.removeHighlight(h.id);
+    if (params.replaceExisting !== false) {
+      const removedIds = new Set<string>();
+      for (const h of store.highlights[documentId] ?? []) {
+        if (h.source !== 'ai') continue;
+        const inScope = scope === 'page' ? h.page_index === (params.pageNumber ?? -1) - 1 : true;
+        if (inScope && !removedIds.has(h.id)) {
+          removedIds.add(h.id);
+          await store.removeHighlight(h.id);
+        }
       }
     }
 
@@ -170,7 +174,8 @@ export class AiHighlightService {
             page_number: pageNumber,
             sentences: inventory,
             density,
-            model_id: (params as any).modelId || 'gemini-3.5-flash-lite',
+            model_id: params.modelId || 'gemini-3.5-flash-lite',
+            instruction: params.instruction?.trim() || undefined,
           }),
         });
 
