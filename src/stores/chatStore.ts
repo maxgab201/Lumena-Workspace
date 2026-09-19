@@ -7,6 +7,20 @@ import { useViewerStore } from './viewerStore';
 import { useWorkspaceStore } from './workspaceStore';
 import { usePageRegistryStore } from './pageRegistryStore';
 import { supabase } from '../lib/supabase';
+import { AiHighlightService } from '../lib/ai/AiHighlightService';
+import { parseCreateHighlightsAction, type CreateHighlightsAction } from '../lib/chatActions';
+import { highlightActionResultText, resolveChatLanguage, type ChatLanguage } from '../lib/chatLanguage';
+
+export interface ChatActionRuntime {
+  fileUrl?: string;
+  documentId?: string | null;
+  workspaceId?: string;
+  currentPage?: number;
+}
+
+interface AuthorizedHighlightAction extends CreateHighlightsAction {
+  model_id: string;
+}
 
 interface ChatStoreState {
   // Sessions keyed by document_id
@@ -21,7 +35,7 @@ interface ChatStoreState {
 
   // Actions
   loadSession: (documentId: string, workspaceId: string) => Promise<void>;
-  sendMessage: (text: string) => Promise<void>;
+  sendMessage: (text: string, runtime?: ChatActionRuntime) => Promise<void>;
   stopGenerating: () => void;
   setSelectedModel: (modelCode: string) => void;
   appendStreamChunk: (messageId: string, chunk: string) => void;
@@ -60,7 +74,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     }
   },
 
-  sendMessage: async (text) => {
+  sendMessage: async (text, runtime) => {
     let { activeSessionId, selectedModel } = get();
 
     // Fallback: If no active session, attempt to initialize from current document
@@ -111,6 +125,64 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
           ],
         },
       }));
+
+      // Explicit highlight actions are parsed ONLY from the user's message.
+      // Document/OCR/RAG content can never trigger this branch.
+      const highlightAction = parseCreateHighlightsAction(text, context.currentPage);
+      if (highlightAction) {
+        const documentId = runtime?.documentId ?? context.documentId;
+        const workspaceId = runtime?.workspaceId ?? context.workspaceId;
+        const fileUrl = runtime?.fileUrl;
+        if (!documentId || !workspaceId || !fileUrl) {
+          throw new Error('The PDF viewer context is not ready for highlighting yet.');
+        }
+
+        const preferredHighlightModel = typeof window !== 'undefined'
+          ? (window.localStorage.getItem('lumena.ai-highlight.model') || 'gemini-3.5-flash-lite')
+          : 'gemini-3.5-flash-lite';
+
+        const authorized = await authorizeCreateHighlightsAction(
+          highlightAction,
+          documentId,
+          workspaceId,
+          preferredHighlightModel,
+        );
+
+        const pdfResponse = await fetch(fileUrl);
+        if (!pdfResponse.ok) throw new Error('Could not load the PDF for highlighting.');
+        const blob = await pdfResponse.blob();
+
+        const summary = await AiHighlightService.highlightDocument({
+          file: blob,
+          documentId,
+          workspaceId,
+          scope: authorized.scope === 'document' ? 'document' : 'page',
+          pageNumber: authorized.scope === 'current_page'
+            ? (authorized.page ?? runtime?.currentPage ?? context.currentPage)
+            : undefined,
+          density: 'normal',
+          modelId: authorized.model_id,
+          instruction: authorized.instruction,
+          replaceExisting: false,
+        });
+
+        const resultText = highlightActionResultText(
+          (context.language ?? 'en') as ChatLanguage,
+          summary.created,
+          authorized.scope,
+        );
+
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [activeSessionId!]: (state.messages[activeSessionId!] ?? []).map((m) =>
+              m.id === assistantMsg.id ? { ...m, content: resultText } : m
+            ),
+          },
+        }));
+        await ChatRepository.updateMessage(assistantMsg.id, resultText);
+        return;
+      }
 
       // 5. Stream AI response (abortable via stopGenerating)
       const abortController = new AbortController();
@@ -242,6 +314,7 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
       color: h.color,
       category: h.category_id ?? undefined,
       note: h.note ?? undefined,
+      source: h.source ?? 'manual',
     }));
 
   // Get all highlights for the document
@@ -251,6 +324,7 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
     color: h.color,
     category: h.category_id ?? undefined,
     note: h.note ?? undefined,
+    source: h.source ?? 'manual',
   }));
 
   // Get chat history for context (last 10 messages)
@@ -332,6 +406,16 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
     }
   }
 
+  const language = resolveChatLanguage({
+    recentUserMessages: [
+      ...recentMessages.filter((m) => m.role === 'user').map((m) => m.content),
+      ...(userQuery ? [userQuery] : []),
+    ],
+    currentPageText: documentText,
+    documentText,
+    locale: typeof navigator !== 'undefined' ? navigator.language : 'en',
+  });
+
   return {
     documentId: documentId ?? undefined,
     workspaceId,
@@ -345,9 +429,45 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
     documentText: documentText || undefined,
     allHighlights: allHighlights.length > 0 ? allHighlights : undefined,
     selectionRects: selectionRects.length > 0 ? selectionRects : undefined,
+    language,
+    selectedModel: chatStore.selectedModel,
     // RAG retrieval results for context
     ragChunks: ragChunks.length > 0 ? ragChunks : undefined,
   };
+}
+
+async function authorizeCreateHighlightsAction(
+  action: CreateHighlightsAction,
+  documentId: string,
+  workspaceId: string,
+  modelId: string,
+): Promise<AuthorizedHighlightAction> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Your session expired. Sign in again.');
+
+  const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-highlights`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      document_id: documentId,
+      workspace_id: workspaceId,
+      scope: action.scope,
+      page: action.page,
+      instruction: action.instruction,
+      model_id: modelId,
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.action) {
+    const error = new Error(data?.error || `Highlight action rejected (${response.status})`);
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
+  }
+  return data.action as AuthorizedHighlightAction;
 }
 
 /**
