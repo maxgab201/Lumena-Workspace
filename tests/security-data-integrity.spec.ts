@@ -89,7 +89,10 @@ test.describe('Security/data-integrity hardening', () => {
       ),
     ).toBe(true);
 
-    await page.getByRole('button', { name: /Notifications|Notificaciones/i }).click();
+    await page
+      .getByLabel('Settings navigation')
+      .getByRole('button', { name: /Notifications|Notificaciones/i })
+      .click();
     const toggles = page.getByRole('checkbox');
     await expect(toggles).toHaveCount(3);
     await toggles.nth(2).check();
@@ -118,7 +121,8 @@ test.describe('Security/data-integrity hardening', () => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: json(workspaces) });
     });
 
-    await page.route('**/rest/v1/rpc/create_workspace*', async (route) => {
+    await page.route('**/rest/v1/rpc/**', async (route) => {
+      expect(route.request().url()).toContain('/rest/v1/rpc/create_workspace');
       const body = (route.request().postDataJSON() ?? {}) as Record<string, unknown>;
       rpcBodies.push(body);
       workspaces.push({
@@ -194,7 +198,7 @@ test.describe('Security/data-integrity hardening', () => {
     });
 
     await page.goto('/dashboard');
-    await expect(page.getByText('source.pdf', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('document-card-doc-source')).toBeVisible();
     await page.locator('input[type="checkbox"]').first().check();
     await page.getByRole('button', { name: 'Move to...' }).click();
     await page.getByRole('menuitem', { name: 'Target Workspace' }).click();
@@ -209,7 +213,7 @@ test.describe('Security/data-integrity hardening', () => {
       p_target_workspace_id: 'ws-2',
       p_new_file_path: 'ws-2/hash-source.pdf',
     });
-    await expect(page.getByText('source.pdf', { exact: true })).toBeHidden();
+    await expect(page.getByTestId('document-card-doc-source')).toBeHidden();
   });
 
   test('Bulk copy copies the PDF and creates a fresh processing job in the target workspace', async ({ page }) => {
@@ -276,7 +280,7 @@ test.describe('Security/data-integrity hardening', () => {
     });
 
     await page.goto('/dashboard');
-    await expect(page.getByText('source.pdf', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('document-card-doc-source')).toBeVisible();
     await page.locator('input[type="checkbox"]').first().check();
     await page.getByRole('button', { name: 'Copy to...' }).click();
     await page.getByRole('menuitem', { name: 'Target Workspace' }).click();
@@ -297,7 +301,7 @@ test.describe('Security/data-integrity hardening', () => {
       workspace_id: 'ws-2',
       document_id: 'doc-copy',
     });
-    await expect(page.getByText('source.pdf', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('document-card-doc-source')).toBeVisible();
   });
 
   test('Document-scope AI Highlight reuses one quota token across PDF pages', async ({ page }) => {
