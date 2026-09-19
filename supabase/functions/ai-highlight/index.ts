@@ -104,6 +104,7 @@ interface AIHighlightRequest {
   density?: 'low' | 'normal' | 'high'
   model_id?: string
   instruction?: string
+  quota_run_token?: string | null
 }
 
 const COMMON_NOISE = [
@@ -357,6 +358,9 @@ serve(async (req) => {
     const payload: AIHighlightRequest = await req.json()
     const { document_id, workspace_id, sentences, density = 'normal', model_id } = payload
     const selectedModel = model_id || DEFAULT_HIGHLIGHT_FREE_MODEL
+    let quotaRunToken = typeof payload.quota_run_token === 'string' && payload.quota_run_token
+      ? payload.quota_run_token
+      : null
 
     if (!document_id || !workspace_id || !Array.isArray(sentences)) {
       return new Response(JSON.stringify({ error: 'Missing required fields: document_id, workspace_id, sentences' }), {
@@ -415,34 +419,60 @@ serve(async (req) => {
       m.tier === selectedCatalogModel.tier
     )?.model_id
 
-    if (planCode === 'free') {
-      const quotaRaw = await supabaseClient.rpc('consume_ai_request', {
-        p_workspace_id: workspace_id,
-        p_action: 'ai_highlight',
-        p_limit: FREE_DAILY_LIMIT,
-      })
-      const qRes = Array.isArray(quotaRaw?.data) ? quotaRaw.data[0] : quotaRaw?.data
-      if (!qRes?.allowed) {
-        return new Response(JSON.stringify({
-          error: 'Daily AI request limit reached (50/day).',
-          quota: {
-            used: (qRes?.chat_count || 0) + (qRes?.highlight_count || 0),
-            limit: FREE_DAILY_LIMIT,
-            resets_at: qRes?.resets_at || new Date().toISOString(),
-          },
-          request_id: crypto.randomUUID?.() || 'unknown',
-        }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-      }
-    }
-
     // ─── Pre-filter noise, cap prompt size ───
     const contentful = sentences.filter((s) => !isNoise(s.text))
     const MAX_SENTENCES = 220
     const inventory = contentful.length > MAX_SENTENCES ? contentful.slice(0, MAX_SENTENCES) : contentful
     if (inventory.length === 0) {
-      return new Response(JSON.stringify({ selections: [], model: GENERATION_MODEL, note: 'no contentful sentences' }), {
+      return new Response(JSON.stringify({
+        selections: [],
+        model: GENERATION_MODEL,
+        note: 'no contentful sentences',
+        quota_run_token: quotaRunToken,
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200,
       })
+    }
+
+    // A user action may span many PDF pages. Charge once on the first
+    // contentful page and reuse the opaque run token for subsequent pages.
+    if (planCode === 'free') {
+      if (quotaRunToken) {
+        const today = new Date().toISOString().slice(0, 10)
+        const { data: quotaRun } = await supabaseClient
+          .from('ai_quota_runs')
+          .select('id')
+          .eq('id', quotaRunToken)
+          .eq('workspace_id', workspace_id)
+          .eq('day', today)
+          .maybeSingle()
+
+        if (!quotaRun) {
+          return new Response(JSON.stringify({ error: 'Invalid or expired AI quota run token.' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          })
+        }
+      } else {
+        const quotaRaw = await supabaseClient.rpc('consume_ai_request', {
+          p_workspace_id: workspace_id,
+          p_action: 'ai_highlight',
+          p_limit: FREE_DAILY_LIMIT,
+        })
+        const qRes = Array.isArray(quotaRaw?.data) ? quotaRaw.data[0] : quotaRaw?.data
+        if (!qRes?.allowed) {
+          return new Response(JSON.stringify({
+            error: 'Daily AI request limit reached (50/day).',
+            quota: {
+              used: (qRes?.chat_count || 0) + (qRes?.highlight_count || 0),
+              limit: FREE_DAILY_LIMIT,
+              resets_at: qRes?.resets_at || new Date().toISOString(),
+            },
+            request_id: crypto.randomUUID?.() || 'unknown',
+          }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+        }
+        quotaRunToken = typeof qRes?.run_token === 'string' ? qRes.run_token : null
+      }
     }
 
     const apiKey = Deno.env.get('GEMINI_API_KEY')
@@ -460,7 +490,8 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         error: quota || gen.status === 503
           ? 'El servicio de IA está saturado en este momento. Tu documento sigue siendo totalmente legible — probá de nuevo en unos segundos.'
-          : `AI request failed (${gen.status}).`
+          : `AI request failed (${gen.status}).`,
+        quota_run_token: quotaRunToken,
       }), { status: quota ? 429 : 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
@@ -484,7 +515,10 @@ serve(async (req) => {
       if (!parsed) throw new Error('Expected { highlights: [...] } array')
     } catch {
       console.error('ai-highlight: malformed AI response:', responseText.slice(0, 500))
-      return new Response(JSON.stringify({ error: 'The AI returned an unexpected format. Please try again.' }), {
+      return new Response(JSON.stringify({
+        error: 'The AI returned an unexpected format. Please try again.',
+        quota_run_token: quotaRunToken,
+      }), {
         status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -562,6 +596,7 @@ serve(async (req) => {
       model: selectedModel,
       analyzed_sentences: inventory.length,
       doc_title: doc.name,
+      quota_run_token: quotaRunToken,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
