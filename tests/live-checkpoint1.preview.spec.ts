@@ -4,8 +4,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const previewUrl = 'https://lumena-workspace-staging-a58bpom8v-maxgab201s-projects.vercel.app';
-const testEmail = 'codex.checkpoint1.20260903.1919@example.com';
-const testPassword = 'Lumena-QA-9C3d236!R7v2';
+const testEmail = process.env.LUMENA_PREVIEW_QA_EMAIL;
+const testPassword = process.env.LUMENA_PREVIEW_QA_PASSWORD;
 const bypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
 test.use({
@@ -16,7 +16,10 @@ test.use({
 
 test('Checkpoint 1 live Preview review', async ({ page }) => {
   test.setTimeout(240_000);
-  expect(bypassToken, 'Vercel protection bypass token').toBeTruthy();
+  test.skip(
+    !bypassToken || !testEmail || !testPassword,
+    'Preview QA credentials and Vercel bypass token are required.',
+  );
 
   const outputDir = path.resolve(process.cwd(), 'test-results', 'checkpoint1-live-review');
   fs.mkdirSync(outputDir, { recursive: true });
@@ -72,8 +75,8 @@ test('Checkpoint 1 live Preview review', async ({ page }) => {
 
   try {
     await page.goto(`${previewUrl}/auth`, { waitUntil: 'domcontentloaded' });
-    await page.locator('input[type="email"]').fill(testEmail);
-    await page.locator('input[type="password"]').fill(testPassword);
+    await page.locator('input[type="email"]').fill(testEmail!);
+    await page.locator('input[type="password"]').fill(testPassword!);
     await page.getByRole('button', { name: 'Sign In' }).click();
     await page.waitForURL('**/dashboard', { timeout: 20_000 });
 
