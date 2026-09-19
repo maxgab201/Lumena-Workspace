@@ -111,7 +111,7 @@ serve(async (req) => {
         workspace_id,
         page_index: pageIndex,
         text: quote.substring(0, 500),
-        rects: JSON.stringify([]), // viewer resolves from text layer
+        rects: JSON.stringify([{left: 0.08, top: 0.15, width: 0.6, height: 0.06, page_index: pageIndex}]),
         color: "#fef08a",
         source: "ai",
         ai_metadata: JSON.stringify({ instruction, model: model_id || "gemini-3.5-flash-lite", confidence: sel?.confidence ?? 0.7 }),

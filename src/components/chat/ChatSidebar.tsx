@@ -7,6 +7,7 @@ import { useBillingStore } from '../../stores/billingStore';
 import { useViewerStore } from '../../stores/viewerStore';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
+import { ModelSelectorPanel } from './ModelSelectorPanel';
 import { KnowledgeSearch } from './KnowledgeSearch';
 import { useUiStore } from '../../stores/uiStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -99,8 +100,12 @@ export const ChatSidebar = () => {
           </Button>
         </div>
 
-        {/* Plan-aware Model Selector */}
-        <div className="flex flex-col gap-1">
+        {/* Plan-aware Catalog Model Selector */}
+        <ModelSelectorPanel
+          selectedModel={selectedModel}
+          onChange={handleModelChange}
+          plan={currentPlan}
+        />
           <div className="flex flex-col gap-1">
             {AVAILABLE_MODELS.map((model) => {
               const isLocked = !planConfig.allowedModels.includes(model.code);
