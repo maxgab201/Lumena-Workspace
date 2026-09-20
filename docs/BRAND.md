@@ -2,11 +2,11 @@
 
 Brand Identity Specification
 
-Version: 1.0
+Version: 1.1
 
 Status: Implemented (Dark Theme v1)
 
-Last Updated: 2026-07-27
+Last Updated: 2026-09-20
 
 ---
 
@@ -127,19 +127,20 @@ Transform documents into actionable knowledge through AI, enabling professionals
 
 # 8. Logo
 
-**Current Status**: Text-based placeholder ("Lumena" in Geist Sans Semibold)
+**Current Status**: Implemented geometric “L” mark with Lumena Blue
 
 **Design Intent** (for future designer):
 - Geometric "L" mark suggesting: light beam, document corner, upward arrow
 - Works at 16px (favicon) and 500px (billboard)
-- Single color (teal #00D4AA) on dark, white on light
+- Core mark: white + Lumena Blue (#2773FD) on deep navy (#070B28)
 - No gradients in mark (gradients reserved for UI backgrounds)
 
-**Files** (future):
-- `public/logo.svg` — primary
-- `public/logo-white.svg` — light background
+**Files**:
 - `public/logo-icon.svg` — mark only
-- `public/favicon.svg` — 32x32
+- `public/logo-horizontal.svg` — horizontal lockup
+- `public/logo-vertical.svg` — vertical lockup
+- `public/logo-lockup.svg` — Lumena Workspace lockup
+- `public/favicon.svg` — favicon
 
 ---
 
@@ -187,9 +188,9 @@ Transform documents into actionable knowledge through AI, enabling professionals
   --color-fg-subtle: #71717A;    /* zinc-500 */
 
   /* Brand */
-  --color-primary: #00D4AA;      /* teal-400 */
-  --color-primary-hover: #00B894; /* teal-500 */
-  --color-primary-muted: #00D4AA26; /* teal-400/15 */
+  --color-primary: #2773FD;      /* Lumena Blue */
+  --color-primary-hover: #1F63E9; /* deeper blue */
+  --color-primary-muted: #2773FD26; /* blue/15 */
 
   /* Semantic */
   --color-success: #22C55E;      /* green-500 */
@@ -198,7 +199,7 @@ Transform documents into actionable knowledge through AI, enabling professionals
   --color-info: #3B82F6;         /* blue-500 */
 
   /* Data Visualization */
-  --color-chart-1: #00D4AA;
+  --color-chart-1: #2773FD;
   --color-chart-2: #F59E0B;
   --color-chart-3: #A855F7;
   --color-chart-4: #F43F5E;
@@ -424,7 +425,7 @@ Loaded via `@fontsource/geist` and `@fontsource/geist-mono` in `src/main.tsx`.
 
 # 26. Brand Evolution
 
-**v1 (Current)**: Dark theme, text logo, teal accent, glassmorphism
+**v1.1 (Current)**: Dark theme, geometric Lumena mark, blue accent, glassmorphism
 
 **v2 (Post-Launch)**:
 - Light theme (full token set)
