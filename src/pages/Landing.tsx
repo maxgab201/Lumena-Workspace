@@ -28,9 +28,12 @@ export const Landing = () => {
       {/* Premium Topbar */}
       <header className="h-20 flex items-center justify-between px-6 lg:px-12 w-full z-50 sticky top-0 bg-background/40 backdrop-blur-md border-b border-white/5">
         <div className="flex items-center space-x-3 cursor-pointer">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-accent/60 text-white font-bold flex items-center justify-center shadow-lg shadow-accent/20">
-            L
-          </div>
+          <img
+            src="/logo-icon.svg"
+            alt=""
+            aria-hidden="true"
+            className="w-9 h-9 rounded-xl shadow-lg shadow-accent/20"
+          />
           <span className="font-heading font-semibold text-xl tracking-tight text-foreground">Lumena</span>
         </div>
         <nav className="hidden md:flex items-center space-x-8">
@@ -408,7 +411,7 @@ export const Landing = () => {
         {/* Footer */}
         <footer className="py-12 px-6 border-t border-white/10 text-center flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground max-w-7xl mx-auto w-full z-10">
           <div className="flex items-center space-x-2 mb-4 md:mb-0">
-            <div className="w-6 h-6 rounded bg-accent/20 text-accent flex items-center justify-center font-bold text-xs">L</div>
+            <img src="/logo-icon.svg" alt="" aria-hidden="true" className="w-6 h-6 rounded-md" />
             <span className="font-medium text-foreground">Lumena Workspace</span>
           </div>
           <div className="space-x-6">

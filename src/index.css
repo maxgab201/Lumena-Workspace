@@ -92,7 +92,7 @@
   }
   .coming-soon-card {
     @apply relative overflow-hidden bg-card/20 backdrop-blur-sm border border-white/5 rounded-xl;
-    background-image: linear-gradient(135deg, rgba(192,132,252,0.03) 0%, transparent 50%);
+    background-image: linear-gradient(135deg, rgba(39,115,253,0.04) 0%, transparent 50%);
   }
   .shimmer-loading {
     @apply relative overflow-hidden;
@@ -138,7 +138,7 @@
     --muted: #171717;
     --muted-foreground: #a1a1aa;
     
-    --accent: #c084fc; /* Lumena Purple */
+    --accent: #2773fd; /* Lumena Blue */
     --accent-foreground: #ffffff;
     
     --destructive: #ef4444;
@@ -146,7 +146,7 @@
     
     --border: #27272a;
     --input: #27272a;
-    --ring: #c084fc;
+    --ring: #2773fd;
     
     --radius: 0.5rem;
   }
@@ -170,7 +170,7 @@
     --muted: #f4f4f5;
     --muted-foreground: #71717a;
     
-    --accent: #aa3bff;
+    --accent: #2773fd;
     --accent-foreground: #ffffff;
     
     --destructive: #ef4444;
@@ -178,7 +178,7 @@
     
     --border: #e4e4e7;
     --input: #e4e4e7;
-    --ring: #aa3bff;
+    --ring: #2773fd;
   }
 }
 

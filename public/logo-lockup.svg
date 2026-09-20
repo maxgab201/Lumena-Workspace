@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 260" role="img" aria-labelledby="title">
+  <title id="title">Lumena Workspace brand lockup</title>
+  <g transform="translate(22 22) scale(.42)">
+    <rect x="8" y="8" width="496" height="496" rx="112" fill="#070B28"/>
+    <path fill="#FAFAFA" d="M150 108h54c41 0 68 29 68 70v216h-51c-40 0-71-31-71-71V108Z"/>
+    <path fill="#2773FD" d="M272 308h126v18c0 38-31 68-69 68h-57v-86Z"/>
+  </g>
+  <text x="270" y="155" fill="#F8FAFC" font-family="Inter,Arial,sans-serif" font-size="90" font-weight="700" letter-spacing="-3">Lumena</text>
+  <text x="665" y="155" fill="#2773FD" font-family="Inter,Arial,sans-serif" font-size="58" font-weight="600" letter-spacing="-1">Workspace</text>
+</svg>
