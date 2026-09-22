@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "product": "Lumena Workspace",
+  "lifecycle": "Alpha",
+  "current_focus": "Core Reading Experience",
+  "current_checkpoint": "Page Mapping",
+  "status": "active-development",
+  "completed": [
+    "Workspace and document dashboard foundation",
+    "PDF upload and resilient processing for large documents",
+    "PDF viewer with virtualization, zoom and rotation",
+    "Manual highlights, notes and reactive annotations",
+    "Per-page native-text/OCR inventory",
+    "Semantic AI highlights grounded to real PDF geometry",
+    "Reader-connected AI chat with selection/page context",
+    "Chat-triggered highlight actions",
+    "Persistent profile/settings controls",
+    "Lumena blue brand system, logo lockups and favicon"
+  ],
+  "in_progress": [
+    "Logical page labels and PDF-index mapping",
+    "Reader regression audit and test coverage"
+  ],
+  "next": [
+    "Document search and semantic navigation",
+    "Citation UX using logical page labels",
+    "Knowledge tools completion after the reader core is stable"
+  ],
+  "product_rules": [
+    "Core reading remains usable without AI credits",
+    "AI semantics never invent PDF geometry",
+    "Provider-specific AI logic stays behind the gateway/service layer",
+    "Documentation status is synchronized automatically from this file"
+  ]
+}
