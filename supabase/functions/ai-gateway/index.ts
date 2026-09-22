@@ -314,7 +314,7 @@ Respond in this language unless the user explicitly asks for another one.`);
 
       // ─── 1. Current selection (highest priority referent for "this") ───
       if (ctx?.selectedText) {
-        sections.push(`=== CURRENT SELECTION (logical page ${ctx.currentPageLabel ?? ((ctx.selectedTextPageIndex ?? -1) + 1 || ctx.currentPage ?? '?')}; physical PDF page ${(ctx.selectedTextPageIndex ?? -1) >= 0 ? ctx.selectedTextPageIndex + 1 : ctx.currentPage ?? '?'}) ===
+        sections.push(`=== CURRENT SELECTION (logical page ${ctx.currentPageLabel ?? ((ctx.selectedTextPageIndex ?? -1) >= 0 ? ctx.selectedTextPageIndex + 1 : (ctx.currentPage ?? '?'))}; physical PDF page ${(ctx.selectedTextPageIndex ?? -1) >= 0 ? ctx.selectedTextPageIndex + 1 : ctx.currentPage ?? '?'}) ===
 The user has selected this exact text in the viewer. References to "this", "this part" or "this text" mean the following:
 
 "${String(ctx.selectedText).substring(0, 2000)}"`);
