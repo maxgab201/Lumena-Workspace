@@ -70,7 +70,7 @@ export const Auth = () => {
       >
         <div className="text-center space-y-2">
           <Link to="/" className="inline-flex items-center mx-auto" aria-label="Lumena Workspace home">
-            <BrandLogo variant="horizontal" className="h-12 w-auto max-w-[210px]" />
+            <BrandLogo variant="vertical" className="h-24 w-auto max-w-[150px]" />
           </Link>
           <h2 className="text-3xl font-heading font-bold tracking-tight text-foreground pt-4">
             {isForgotPassword
