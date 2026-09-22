@@ -3,11 +3,11 @@
 <!-- LUMENA_AUTO_STATUS_START -->
 > [!NOTE]
 > **Automated project status — source of truth for current implementation state.**
-> Synced from `docs/project-status.json` at commit [`73ff08b`](https://github.com/maxgab201/Lumena-Workspace/commit/73ff08bc05b79a4f569cb8ed0c025534f0c1ed00) on `2026-09-22T15:50:02-03:00` (branch `feat/page-mapping-doc-sync`). If older prose below conflicts with this block, this generated block wins.
+> Synced from `docs/project-status.json` at commit [`36c4cf1`](https://github.com/maxgab201/Lumena-Workspace/commit/36c4cf1fe64028b5f9af5bcc339cb4d1e4e884ea) on `2026-09-22T15:50:48-03:00` (branch `feat/page-mapping-doc-sync`). If older prose below conflicts with this block, this generated block wins.
 
 - **Lifecycle:** Alpha
 - **Current focus:** Core Reading Experience
-- **Current checkpoint:** Reader Navigation & Logical Pages
+- **Current checkpoint:** Reader Validation & Preview Review
 - **Status:** active-development
 - **Completed:**
   - Workspace and document dashboard foundation
@@ -25,12 +25,13 @@
   - Logical page-aware chat and bounded AI-highlight page ranges
   - Real in-document native-text/OCR search with Ctrl/Cmd+F
   - Citation cards that display logical page labels while navigating physical PDF pages
+  - Persistent logical page corrections deployed to Supabase with workspace-bound RLS
+  - Logical-page AI gateway and page-range highlight authorization deployed to Supabase
 - **In progress:**
-  - Full reader regression audit and Playwright validation
-  - Supabase rollout for persistent logical page corrections and updated AI edge functions
+  - Final preview/manual reader review before merging the feature branch
 - **Next:**
-  - Reader stabilization from preview feedback
-  - Search result highlighting and richer semantic navigation
+  - Search-result text highlighting and richer semantic navigation
+  - Reader polish from preview feedback
   - Knowledge tools completion after the reader core is stable
 - **Product rules:**
   - Core reading remains usable without AI credits
