@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { Settings, Files, Folder, Map, Layers, Podcast, Presentation, Image as ImageIcon, ChevronDown, Plus, Edit2, Trash2, CreditCard, PanelLeftClose } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion } from 'framer-motion';
@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Modal as Dialog, ModalContent as DialogContent, ModalHeader as DialogHeader, ModalTitle as DialogTitle, ModalDescription as DialogDescription } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/Tooltip';
+import { BrandLogo } from '../brand/BrandLogo';
 
 export const Sidebar = () => {
   const location = useLocation();
@@ -59,9 +60,23 @@ export const Sidebar = () => {
   return (
     <>
       <aside className={`${sidebarCollapsed ? 'w-16' : 'w-64'} border-r border-border h-full flex flex-col bg-background z-10 transition-all duration-300 shadow-[1px_0_0_0_rgba(255,255,255,0.02)]`}>
+        {/* Lumena brand */}
+        <div className="h-14 flex items-center border-b border-border bg-background/70 backdrop-blur-sm shrink-0">
+          <Link
+            to="/dashboard"
+            className={`flex items-center ${sidebarCollapsed ? 'justify-center w-full' : 'px-4'} focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset h-full`}
+            aria-label="Lumena Workspace dashboard"
+          >
+            <BrandLogo
+              variant={sidebarCollapsed ? 'icon' : 'horizontal'}
+              className={sidebarCollapsed ? 'w-8 h-8' : 'h-9 w-auto max-w-[165px]'}
+            />
+          </Link>
+        </div>
+
         {/* Workspace Switcher */}
         {!sidebarCollapsed ? (
-          <div className="h-14 flex items-center px-4 border-b border-border bg-background/50 backdrop-blur-sm">
+          <div className="h-12 flex items-center px-3 border-b border-border bg-background/40 backdrop-blur-sm">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center justify-between w-full p-1.5 rounded-lg hover:bg-secondary/80 transition-colors focus:outline-none focus:ring-2 focus:ring-accent group">
@@ -102,8 +117,8 @@ export const Sidebar = () => {
             </DropdownMenu>
           </div>
         ) : (
-          <div className="h-14 flex items-center justify-center border-b border-border bg-background/50 backdrop-blur-sm">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-accent to-accent/70 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+          <div className="h-12 flex items-center justify-center border-b border-border bg-background/40 backdrop-blur-sm">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-accent/70 flex items-center justify-center text-white font-bold text-[10px] shadow-sm" title={activeWorkspace?.name || 'Workspace'}>
               {activeWorkspace?.name?.charAt(0)?.toUpperCase() || 'W'}
             </div>
           </div>
