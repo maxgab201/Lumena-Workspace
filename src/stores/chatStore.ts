@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase';
 import { AiHighlightService } from '../lib/ai/AiHighlightService';
 import { parseCreateHighlightsAction, type CreateHighlightsAction } from '../lib/chatActions';
 import { highlightActionResultText, resolveChatLanguage, type ChatLanguage } from '../lib/chatLanguage';
+import { extractPageReferenceRange, pageLabelFor, resolvePageRange } from '../lib/pageMapping';
 
 export interface ChatActionRuntime {
   fileUrl?: string;
@@ -128,7 +129,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
 
       // Explicit highlight actions are parsed ONLY from the user's message.
       // Document/OCR/RAG content can never trigger this branch.
-      const highlightAction = parseCreateHighlightsAction(text, context.currentPage);
+      const highlightAction = parseCreateHighlightsAction(text, context.currentPage, useViewerStore.getState().resolvePageReference);
       if (highlightAction) {
         const documentId = runtime?.documentId ?? context.documentId;
         const workspaceId = runtime?.workspaceId ?? context.workspaceId;
@@ -156,10 +157,15 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
           file: blob,
           documentId,
           workspaceId,
-          scope: authorized.scope === 'document' ? 'document' : 'page',
+          scope: authorized.scope === 'document'
+            ? 'document'
+            : authorized.scope === 'page_range'
+              ? 'range'
+              : 'page',
           pageNumber: authorized.scope === 'current_page'
             ? (authorized.page ?? runtime?.currentPage ?? context.currentPage)
             : undefined,
+          pageNumbers: authorized.scope === 'page_range' ? authorized.pages : undefined,
           density: 'normal',
           modelId: authorized.model_id,
           instruction: authorized.instruction,
@@ -301,6 +307,7 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
 
   const documentId = viewerStore.documentId;
   const currentPage = viewerStore.currentPage;
+  const currentPageLabel = viewerStore.getPageLabel(currentPage);
 
   // Get highlights for current document
   const highlights = documentId ? highlightStore.getHighlightsForDocument(documentId) : [];
@@ -381,6 +388,42 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
     }
   }
 
+  // Resolve explicit logical page references (e.g. "pages 50-65" or "páginas iv-vii")
+  // into physical PDF indexes, then attach the actual page text. This prevents
+  // the model from confusing printed book numbering with PDF indexes.
+  let requestedPages: Array<{ physicalPage: number; logicalLabel: string; text: string }> = [];
+  if (userQuery && documentId) {
+    const requestedRange = extractPageReferenceRange(userQuery);
+    const resolvedRange = requestedRange
+      ? resolvePageRange(viewerStore.pageLabels, requestedRange, 25)
+      : null;
+
+    if (resolvedRange) {
+      try {
+        const { data: rows } = await supabase
+          .from('document_page_texts')
+          .select('page_number,page_text')
+          .eq('document_id', documentId)
+          .in('page_number', resolvedRange.pages);
+
+        const byPage = new Map((rows ?? []).map((row) => [row.page_number, row.page_text]));
+        requestedPages = resolvedRange.pages
+          .map((physicalPage) => {
+            const registryText = pageRegistry.pages[physicalPage - 1]?.ocrData?.data?.text || '';
+            const text = registryText || byPage.get(physicalPage) || '';
+            return {
+              physicalPage,
+              logicalLabel: pageLabelFor(viewerStore.pageLabels, physicalPage),
+              text,
+            };
+          })
+          .filter((page) => page.text.trim().length > 0);
+      } catch (error) {
+        console.warn('[ChatStore] Could not load explicitly requested logical pages:', error);
+      }
+    }
+  }
+
   // Get selection rects from viewer
   const selectionRects = viewerStore.selectionRects ?? [];
 
@@ -420,6 +463,8 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
     documentId: documentId ?? undefined,
     workspaceId,
     currentPage,
+    currentPageLabel,
+    requestedPages: requestedPages.length > 0 ? requestedPages : undefined,
     activeHighlights,
     recentMessages,
     documentName: viewerStore.documentId ?? undefined,
@@ -456,6 +501,7 @@ async function authorizeCreateHighlightsAction(
       workspace_id: workspaceId,
       scope: action.scope,
       page: action.page,
+      pages: action.pages,
       instruction: action.instruction,
       model_id: modelId,
     }),
