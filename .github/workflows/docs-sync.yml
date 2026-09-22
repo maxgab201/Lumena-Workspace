@@ -1,0 +1,51 @@
+name: Sync documentation status
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feat/**'
+    paths-ignore:
+      - '**/*.md'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: docs-sync-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Synchronize all Markdown status blocks
+        run: node scripts/sync-docs.mjs
+
+      - name: Commit synchronized docs
+        shell: bash
+        run: |
+          if git diff --quiet -- '*.md'; then
+            echo "Documentation already synchronized."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*.md'
+          git commit -m "docs: sync project status [skip docs-sync]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
