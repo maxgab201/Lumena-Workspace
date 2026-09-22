@@ -18,14 +18,18 @@ import {
 } from 'lucide-react';
 import { useUiStore } from '../../stores/uiStore';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/Tooltip';
+import { PageMapEditor } from './PageMapEditor';
+import { hasLogicalPageLabels } from '../../lib/pageMapping';
 
 interface PDFToolbarProps {
   filename?: string;
   fileSize?: number;
   pageCount?: number;
+  documentId?: string;
+  workspaceId?: string;
 }
 
-export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) => {
+export const PDFToolbar = ({ filename, fileSize, pageCount, documentId, workspaceId }: PDFToolbarProps) => {
   const {
     documentId,
     currentPage,
@@ -40,6 +44,8 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
     setCurrentPage,
     setFitMode,
     setScale,
+    pageLabels,
+    resolvePageReference,
   } = useViewerStore();
 
   const { activeRightPanel, setActiveRightPanel } = useUiStore();
@@ -51,12 +57,14 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
 
   const handlePageSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const page = parseInt(pageInput, 10);
-    if (!isNaN(page) && page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-    }
+    const page = resolvePageReference(pageInput);
+    if (page) setCurrentPage(page);
     setPageInput('');
   };
+
+  const currentPageLabel = pageLabels[currentPage - 1] ?? String(currentPage);
+  const lastPageLabel = pageLabels[totalPages - 1] ?? String(totalPages || pageCount || '—');
+  const logicalLabelsActive = hasLogicalPageLabels(pageLabels);
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
@@ -111,16 +119,21 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
           <form onSubmit={handlePageSubmit} className="flex items-center gap-1 px-1">
             <input
               type="text"
-              value={pageInput || currentPage}
+              value={pageInput || currentPageLabel}
               onChange={(e) => setPageInput(e.target.value)}
-              onFocus={() => setPageInput(String(currentPage))}
+              onFocus={() => setPageInput(currentPageLabel)}
               onBlur={() => setPageInput('')}
               className="w-10 h-8 text-center text-sm font-medium rounded-md border-none bg-background/50 backdrop-blur-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all"
               aria-label="Current page"
             />
-            <span className="text-sm text-muted-foreground font-medium px-1">
-              / {totalPages || pageCount || '—'}
+            <span className="text-sm text-muted-foreground font-medium px-1" title={logicalLabelsActive ? `PDF ${currentPage} / ${totalPages}` : undefined}>
+              / {lastPageLabel}
             </span>
+            {logicalLabelsActive && (
+              <span className="hidden lg:inline text-[10px] text-muted-foreground/70 whitespace-nowrap" data-testid="physical-page-indicator">
+                PDF {currentPage}/{totalPages}
+              </span>
+            )}
           </form>
 
           <Tooltip>
@@ -137,6 +150,15 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
               </Button>
             </TooltipTrigger>
             <TooltipContent><p className="flex items-center gap-2">Next page <kbd className="bg-white/10 px-1 rounded">→</kbd></p></TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <PageMapEditor documentId={documentId} workspaceId={workspaceId} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent><p>Corregir numeración del libro</p></TooltipContent>
           </Tooltip>
         </div>
 
