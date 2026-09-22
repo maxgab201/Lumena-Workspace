@@ -27,7 +27,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
  */
 
 export type AiDensity = 'low' | 'normal' | 'high';
-export type AiScope = 'page' | 'document';
+export type AiScope = 'page' | 'range' | 'document';
 
 export interface AiHighlightProgress {
   phase: 'inventory' | 'ocr' | 'analyzing' | 'matching' | 'done';
@@ -68,6 +68,7 @@ export class AiHighlightService {
     workspaceId: string;
     scope: AiScope;
     pageNumber?: number;
+    pageNumbers?: number[];
     density: AiDensity;
     modelId?: string;
     instruction?: string;
@@ -80,7 +81,9 @@ export class AiHighlightService {
     onProgress?.({ phase: 'inventory' });
     const targetPages = scope === 'page' && params.pageNumber
       ? [params.pageNumber]
-      : undefined;
+      : scope === 'range' && params.pageNumbers?.length
+        ? [...new Set(params.pageNumbers)].filter((page) => Number.isInteger(page) && page > 0).sort((a, b) => a - b)
+        : undefined;
 
     let scannedPages: number[] = [];
     const sentencesByPage = new Map<number, Sentence[]>();
@@ -135,7 +138,9 @@ export class AiHighlightService {
     const createdHighlights: Highlight[] = [];
     const pageBlocks = scope === 'page' && params.pageNumber
       ? [params.pageNumber]
-      : [...sentencesByPage.keys()].sort((a, b) => a - b);
+      : scope === 'range' && targetPages
+        ? targetPages
+        : [...sentencesByPage.keys()].sort((a, b) => a - b);
 
     // Re-run semantics: an AI analysis REPLACES the previous AI highlights of
     // the analyzed scope (manual highlights are never touched). This prevents
@@ -145,7 +150,11 @@ export class AiHighlightService {
       const removedIds = new Set<string>();
       for (const h of store.highlights[documentId] ?? []) {
         if (h.source !== 'ai') continue;
-        const inScope = scope === 'page' ? h.page_index === (params.pageNumber ?? -1) - 1 : true;
+        const inScope = scope === 'page'
+          ? h.page_index === (params.pageNumber ?? -1) - 1
+          : scope === 'range'
+            ? (params.pageNumbers ?? []).includes(h.page_index + 1)
+            : true;
         if (inScope && !removedIds.has(h.id)) {
           removedIds.add(h.id);
           await store.removeHighlight(h.id);
@@ -179,7 +188,7 @@ export class AiHighlightService {
             model_id: params.modelId || 'gemini-3.5-flash-lite',
             instruction: params.instruction?.trim() || undefined,
             quota_run_token: quotaRunToken || undefined,
-            quota_scope: scope,
+            quota_scope: scope === 'document' ? 'document' : 'page',
           }),
         });
 
