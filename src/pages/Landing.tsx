@@ -406,7 +406,7 @@ export const Landing = () => {
         {/* Footer */}
         <footer className="py-12 px-6 border-t border-white/10 text-center flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground max-w-7xl mx-auto w-full z-10">
           <Link to="/" className="inline-flex items-center mb-4 md:mb-0" aria-label="Lumena Workspace home">
-            <BrandLogo variant="horizontal" className="h-8 w-auto max-w-[150px]" />
+            <BrandLogo variant="lockup" className="h-8 w-auto max-w-[190px]" />
           </Link>
           <div className="space-x-6">
             <Link to="/legal" className="hover:text-foreground">Terms</Link>
