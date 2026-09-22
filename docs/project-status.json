@@ -3,7 +3,7 @@
   "product": "Lumena Workspace",
   "lifecycle": "Alpha",
   "current_focus": "Core Reading Experience",
-  "current_checkpoint": "Reader Navigation & Logical Pages",
+  "current_checkpoint": "Reader Validation & Preview Review",
   "status": "active-development",
   "completed": [
     "Workspace and document dashboard foundation",
@@ -20,15 +20,16 @@
     "Manual logical-to-physical page mapping with sequential corrections",
     "Logical page-aware chat and bounded AI-highlight page ranges",
     "Real in-document native-text/OCR search with Ctrl/Cmd+F",
-    "Citation cards that display logical page labels while navigating physical PDF pages"
+    "Citation cards that display logical page labels while navigating physical PDF pages",
+    "Persistent logical page corrections deployed to Supabase with workspace-bound RLS",
+    "Logical-page AI gateway and page-range highlight authorization deployed to Supabase"
   ],
   "in_progress": [
-    "Full reader regression audit and Playwright validation",
-    "Supabase rollout for persistent logical page corrections and updated AI edge functions"
+    "Final preview/manual reader review before merging the feature branch"
   ],
   "next": [
-    "Reader stabilization from preview feedback",
-    "Search result highlighting and richer semantic navigation",
+    "Search-result text highlighting and richer semantic navigation",
+    "Reader polish from preview feedback",
     "Knowledge tools completion after the reader core is stable"
   ],
   "product_rules": [
