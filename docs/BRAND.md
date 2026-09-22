@@ -3,11 +3,11 @@
 <!-- LUMENA_AUTO_STATUS_START -->
 > [!NOTE]
 > **Automated project status — source of truth for current implementation state.**
-> Synced from `docs/project-status.json` at commit [`ec920cd`](https://github.com/maxgab201/Lumena-Workspace/commit/ec920cd27959addbb53e9413359fd93a6419449d) on `2026-09-22T15:45:33-03:00` (branch `feat/page-mapping-doc-sync`). If older prose below conflicts with this block, this generated block wins.
+> Synced from `docs/project-status.json` at commit [`fea74ac`](https://github.com/maxgab201/Lumena-Workspace/commit/fea74ac49d4233ae075cf6739056466831777c97) on `2026-09-22T15:47:19-03:00` (branch `feat/page-mapping-doc-sync`). If older prose below conflicts with this block, this generated block wins.
 
 - **Lifecycle:** Alpha
 - **Current focus:** Core Reading Experience
-- **Current checkpoint:** Page Mapping
+- **Current checkpoint:** Reader Navigation & Logical Pages
 - **Status:** active-development
 - **Completed:**
   - Workspace and document dashboard foundation
@@ -20,12 +20,17 @@
   - Chat-triggered highlight actions
   - Persistent profile/settings controls
   - Lumena blue brand system, logo lockups and favicon
+  - PDF-native logical page labels with roman/front-matter support
+  - Manual logical-to-physical page mapping with sequential corrections
+  - Logical page-aware chat and bounded AI-highlight page ranges
+  - Real in-document native-text/OCR search with Ctrl/Cmd+F
+  - Citation cards that display logical page labels while navigating physical PDF pages
 - **In progress:**
-  - Logical page labels and PDF-index mapping
-  - Reader regression audit and test coverage
+  - Full reader regression audit and Playwright validation
+  - Supabase rollout for persistent logical page corrections and updated AI edge functions
 - **Next:**
-  - Document search and semantic navigation
-  - Citation UX using logical page labels
+  - Reader stabilization from preview feedback
+  - Search result highlighting and richer semantic navigation
   - Knowledge tools completion after the reader core is stable
 - **Product rules:**
   - Core reading remains usable without AI credits
