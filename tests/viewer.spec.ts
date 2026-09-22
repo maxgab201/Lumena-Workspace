@@ -53,6 +53,24 @@ test.describe('PDF Viewer (Mocked API)', () => {
         });
       }
     });
+    await page.route('**/rest/v1/document_page_texts*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([
+          { page_number: 2, page_text: 'Photosynthesis converts light energy into chemical energy.' },
+        ]),
+      });
+    });
+
+    await page.route('**/rest/v1/document_page_segments*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '[]',
+      });
+    });
+
     await page.route('**/rest/v1/document_page_labels*', async (route) => {
       await route.fulfill({
         status: 200,
@@ -128,13 +146,20 @@ test.describe('PDF Viewer (Mocked API)', () => {
     await expect(page.locator('text=/ 100')).toBeVisible();
 
     await expect(page.locator('button[aria-label="Toggle developer overlays"]')).toHaveCount(0);
-    await expect(page.locator('button[aria-label="Search in document"]')).toHaveCount(0);
+    await expect(page.locator('button[aria-label="Search in document"]')).toBeVisible();
     await expect(page.getByTestId('toggle-chat-btn')).toBeVisible();
     await expect(page.getByTestId('toggle-knowledge-btn')).toBeVisible();
 
     await expect(page.locator('div[data-layer="annotation"]').first()).toBeAttached();
 
     await expect(page.locator('input[aria-label="Current page"]')).toHaveValue('2');
+
+    // Real in-document search across extracted text / OCR segments
+    await page.locator('button[aria-label="Search in document"]').click();
+    await page.locator('input[aria-label="Search query"]').fill('photosynthesis');
+    await expect(page.getByTestId('pdf-search-result-2')).toContainText('Photosynthesis');
+    await page.getByTestId('pdf-search-result-2').click();
+    await expect(page.getByTestId('pdf-search-panel')).toHaveCount(0);
 
     // Logical page mapping: make physical PDF page 2 correspond to printed page 50
     await page.getByTestId('page-map-editor-trigger').click();
