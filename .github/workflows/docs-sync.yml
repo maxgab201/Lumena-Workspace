@@ -7,8 +7,10 @@ on:
       - main
       - develop
       - 'feat/**'
-    paths-ignore:
-      - '**/*.md'
+    paths:
+      - 'docs/project-status.json'
+      - 'scripts/sync-docs.mjs'
+      - '.github/workflows/docs-sync.yml'
 
 permissions:
   contents: write
