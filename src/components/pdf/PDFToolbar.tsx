@@ -31,7 +31,7 @@ interface PDFToolbarProps {
   workspaceId?: string;
 }
 
-export const PDFToolbar = ({ filename, fileSize, pageCount, documentId, workspaceId }: PDFToolbarProps) => {
+export const PDFToolbar = ({ filename, fileSize, pageCount, documentId: documentIdProp, workspaceId }: PDFToolbarProps) => {
   const {
     documentId,
     currentPage,
@@ -169,7 +169,7 @@ export const PDFToolbar = ({ filename, fileSize, pageCount, documentId, workspac
           <Tooltip>
             <TooltipTrigger asChild>
               <span className="inline-flex">
-                <PageMapEditor documentId={documentId} workspaceId={workspaceId} />
+                <PageMapEditor documentId={documentIdProp} workspaceId={workspaceId} />
               </span>
             </TooltipTrigger>
             <TooltipContent><p>Corregir numeración del libro</p></TooltipContent>
@@ -343,7 +343,7 @@ export const PDFToolbar = ({ filename, fileSize, pageCount, documentId, workspac
 
         {showSearch && (
           <PDFSearchPanel
-            documentId={documentId}
+            documentId={documentIdProp}
             onClose={() => setShowSearch(false)}
           />
         )}
