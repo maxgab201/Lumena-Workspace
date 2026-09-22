@@ -393,6 +393,51 @@ export type Database = {
           },
         ]
       }
+      document_page_labels: {
+        Row: {
+          document_id: string
+          workspace_id: string
+          page_number: number
+          label: string
+          source: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          document_id: string
+          workspace_id: string
+          page_number: number
+          label: string
+          source?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          document_id?: string
+          workspace_id?: string
+          page_number?: number
+          label?: string
+          source?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_page_labels_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_page_labels_workspace_id_fkey"
+            columns: ["workspace_id"]
+            isOneToOne: false
+            referencedRelation: "workspaces"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_page_segments: {
         Row: {
           id: string
