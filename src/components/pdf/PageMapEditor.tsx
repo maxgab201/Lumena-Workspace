@@ -14,7 +14,6 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   buildSequentialOverrides,
   clearLocalPageLabelOverrides,
-  loadLocalPageLabelOverrides,
   saveLocalPageLabelOverrides,
 } from '../../lib/pageMapping';
 import { PageLabelRepository } from '../../repositories/page-label.repository';
