@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
+import { BrandLogo } from '../components/brand/BrandLogo';
 import { AuthRepository } from '../repositories/auth.repository';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -68,11 +69,8 @@ export const Auth = () => {
         className="w-full max-w-md z-10 space-y-8"
       >
         <div className="text-center space-y-2">
-          <Link to="/" className="inline-flex items-center space-x-2.5 mx-auto">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent to-accent/60 text-white font-bold flex items-center justify-center shadow-lg shadow-accent/20 text-xl">
-              L
-            </div>
-            <span className="font-heading font-semibold text-2xl tracking-tight text-foreground">Lumena</span>
+          <Link to="/" className="inline-flex items-center mx-auto" aria-label="Lumena Workspace home">
+            <BrandLogo variant="vertical" className="h-24 w-auto max-w-[150px]" />
           </Link>
           <h2 className="text-3xl font-heading font-bold tracking-tight text-foreground pt-4">
             {isForgotPassword
