@@ -13,7 +13,8 @@
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "docs:sync": "node scripts/sync-docs.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
