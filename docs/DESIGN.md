@@ -3,7 +3,7 @@
 <!-- LUMENA_AUTO_STATUS_START -->
 > [!NOTE]
 > **Automated project status — source of truth for current implementation state.**
-> Synced from `docs/project-status.json` at commit [`36c4cf1`](https://github.com/maxgab201/Lumena-Workspace/commit/36c4cf1fe64028b5f9af5bcc339cb4d1e4e884ea) on `2026-09-22T15:50:48-03:00` (branch `feat/page-mapping-doc-sync`). If older prose below conflicts with this block, this generated block wins.
+> Synced from `docs/project-status.json` at commit [`b500c05`](https://github.com/maxgab201/Lumena-Workspace/commit/b500c0533bcf1c0d6830de21f21d0d56b60478fb) on `2026-09-22T15:51:15-03:00` (branch `feat/page-mapping-doc-sync`). If older prose below conflicts with this block, this generated block wins.
 
 - **Lifecycle:** Alpha
 - **Current focus:** Core Reading Experience
