@@ -1,5 +1,39 @@
 # Lumena Workspace
 
+<!-- LUMENA_AUTO_STATUS_START -->
+> [!NOTE]
+> **Automated project status — source of truth for current implementation state.**
+> Synced from `docs/project-status.json` at commit [`e97c092`](https://github.com/maxgab201/Lumena-Workspace/commit/e97c092cfbbf23b55886075dc28ee790d3f316c5) on `2026-09-22T15:33:27-03:00` (branch `feat/page-mapping-doc-sync`). If older prose below conflicts with this block, this generated block wins.
+
+- **Lifecycle:** Alpha
+- **Current focus:** Core Reading Experience
+- **Current checkpoint:** Page Mapping
+- **Status:** active-development
+- **Completed:**
+  - Workspace and document dashboard foundation
+  - PDF upload and resilient processing for large documents
+  - PDF viewer with virtualization, zoom and rotation
+  - Manual highlights, notes and reactive annotations
+  - Per-page native-text/OCR inventory
+  - Semantic AI highlights grounded to real PDF geometry
+  - Reader-connected AI chat with selection/page context
+  - Chat-triggered highlight actions
+  - Persistent profile/settings controls
+  - Lumena blue brand system, logo lockups and favicon
+- **In progress:**
+  - Logical page labels and PDF-index mapping
+  - Reader regression audit and test coverage
+- **Next:**
+  - Document search and semantic navigation
+  - Citation UX using logical page labels
+  - Knowledge tools completion after the reader core is stable
+- **Product rules:**
+  - Core reading remains usable without AI credits
+  - AI semantics never invent PDF geometry
+  - Provider-specific AI logic stays behind the gateway/service layer
+  - Documentation status is synchronized automatically from this file
+<!-- LUMENA_AUTO_STATUS_END -->
+
 File Structure Specification
 
 Version: 1.0
