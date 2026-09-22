@@ -33,6 +33,12 @@ interface UploadQueueItem {
   error?: string;
 }
 
+const QA_READER_FIXTURES = [
+  { url: '/qa/reader-native.pdf', name: 'Lumena QA - Native Multi Page.pdf' },
+  { url: '/qa/reader-scanned.pdf', name: 'Lumena QA - Scanned OCR.pdf' },
+  { url: '/qa/reader-large-120p.pdf', name: 'Lumena QA - Large 120 Pages.pdf' },
+] as const;
+
 function getStageLabel(stage: DocumentStage): string {
   switch (stage) {
     case 'uploading': return t('document.status.uploading');
@@ -84,6 +90,7 @@ export const Dashboard = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
+  const [loadingQaFixtures, setLoadingQaFixtures] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadControllers = useRef(new Map<string, AbortController>());
   const queuedFileKeys = useRef(new Set<string>());
@@ -248,6 +255,35 @@ export const Dashboard = () => {
       }));
       setUploadQueue(prev => [...prev, ...newItems]);
       newItems.forEach(scheduleUpload);
+    }
+  };
+
+  const loadQaFixtures = async () => {
+    if (!activeWorkspace || loadingQaFixtures) return;
+
+    setLoadingQaFixtures(true);
+    try {
+      const files = await Promise.all(QA_READER_FIXTURES.map(async fixture => {
+        const response = await fetch(fixture.url, { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`Could not load ${fixture.name} (${response.status})`);
+        }
+        const blob = await response.blob();
+        return new File([blob], fixture.name, {
+          type: 'application/pdf',
+          lastModified: Date.now(),
+        });
+      }));
+
+      await addFilesToQueue(files);
+      toast.success('QA reader fixtures queued', {
+        description: 'Native text, scanned OCR and 120-page PDFs are being uploaded through the normal production flow.',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load QA reader fixtures.';
+      toast.error('QA fixture load failed', { description: message });
+    } finally {
+      setLoadingQaFixtures(false);
     }
   };
 
@@ -462,6 +498,26 @@ export const Dashboard = () => {
                disabled={!activeWorkspace}
                multiple
              />
+             {user?.email?.toLowerCase() === 'test@gmail.com' && (
+               <Button
+                 type="button"
+                 variant="ghost"
+                 size="sm"
+                 data-testid="qa-load-reader-fixtures"
+                 className="mt-1 text-xs text-muted-foreground hover:text-foreground"
+                 onClick={() => void loadQaFixtures()}
+                 disabled={!activeWorkspace || loadingQaFixtures}
+               >
+                 {loadingQaFixtures ? (
+                   <>
+                     <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                     Loading QA PDFs...
+                   </>
+                 ) : (
+                   'Load QA sample PDFs'
+                 )}
+               </Button>
+             )}
            </div>
          )}
       </div>
