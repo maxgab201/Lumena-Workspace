@@ -1,0 +1,17 @@
+{
+  "name": "Lumena Workspace",
+  "short_name": "Lumena",
+  "description": "Where documents become knowledge.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#070B28",
+  "icons": [
+    {
+      "src": "/logo-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
