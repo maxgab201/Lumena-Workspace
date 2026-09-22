@@ -15,10 +15,12 @@ import {
   Brain,
   Highlighter,
   Sparkles,
+  Search,
 } from 'lucide-react';
 import { useUiStore } from '../../stores/uiStore';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/Tooltip';
 import { PageMapEditor } from './PageMapEditor';
+import { PDFSearchPanel } from './PDFSearchPanel';
 import { hasLogicalPageLabels } from '../../lib/pageMapping';
 
 interface PDFToolbarProps {
@@ -54,6 +56,7 @@ export const PDFToolbar = ({ filename, fileSize, pageCount, documentId, workspac
   );
 
   const [pageInput, setPageInput] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   const handlePageSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,7 +87,7 @@ export const PDFToolbar = ({ filename, fileSize, pageCount, documentId, workspac
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="h-14 flex items-center justify-between px-4 border-b border-white/5 bg-background/60 backdrop-blur-xl shrink-0 z-20">
+      <div className="relative h-14 flex items-center justify-between px-4 border-b border-white/5 bg-background/60 backdrop-blur-xl shrink-0 z-20">
         {/* Left: Document Info */}
         <div className="flex items-center gap-3 min-w-0 flex-shrink">
           <FileText className="w-4 h-4 text-accent shrink-0" />
@@ -236,6 +239,22 @@ export const PDFToolbar = ({ filename, fileSize, pageCount, documentId, workspac
 
           <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={showSearch ? "secondary" : "ghost"}
+                size="icon"
+                onClick={() => setShowSearch((value) => !value)}
+                aria-label="Search in document"
+                className="h-8 w-8"
+                data-testid="pdf-search-trigger"
+              >
+                <Search className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent><p>Buscar en el PDF</p></TooltipContent>
+          </Tooltip>
+
           {/* AI Highlighting panel trigger */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -310,6 +329,13 @@ export const PDFToolbar = ({ filename, fileSize, pageCount, documentId, workspac
           </Tooltip>
 
         </div>
+
+        {showSearch && (
+          <PDFSearchPanel
+            documentId={documentId}
+            onClose={() => setShowSearch(false)}
+          />
+        )}
       </div>
     </TooltipProvider>
   );
