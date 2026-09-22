@@ -11,7 +11,7 @@ export interface ResolvedPageRange {
   pages: number[];
 }
 
-const PAGE_RANGE_RE = /(?:p(?:á|a)g(?:ina|inas)?|pages?|pp?\.?)[\s:]*([ivxlcdm]+|\d+)(?:\s*(?:-|–|—|a|to|hasta)\s*([ivxlcdm]+|\d+))?/i;
+const PAGE_RANGE_RE = /(?:p(?:á|a)g(?:ina|inas)?|pages?|pp?\.?)[\s:]*([ivxlcdm]+|\d+)(?:\s*(?:-|–|—|a|to|hasta|y|and)\s*([ivxlcdm]+|\d+))?/i;
 
 export function normalizePageLabel(value: string): string {
   return value.trim().replace(/^p(?:á|a)g(?:ina)?\s*/i, '').toLowerCase();
