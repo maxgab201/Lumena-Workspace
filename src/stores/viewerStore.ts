@@ -1,6 +1,14 @@
 import { create } from 'zustand';
 import type { ViewerFitMode } from '../types';
 import { usePageRegistryStore } from './pageRegistryStore';
+import {
+  applyPageLabelOverrides,
+  defaultPageLabels,
+  normalizePdfLabels,
+  pageLabelFor,
+  resolvePageReference,
+  type PageLabelSource,
+} from '../lib/pageMapping';
 
 interface SearchMatch {
   pageIndex: number;
@@ -23,13 +31,15 @@ interface ViewerStoreState {
   selectedText: string;
   selectedTextPageIndex: number;
   selectionRects: Array<{ x: number; y: number; width: number; height: number }>;
-  // Search state
+  nativePageLabels: string[];
+  pageLabels: string[];
+  pageLabelSource: PageLabelSource;
+  pageLabelOverrides: Record<number, string>;
   searchQuery: string;
   searchResults: SearchMatch[];
   currentMatchIndex: number;
   isSearchActive: boolean;
 
-  // Actions
   setDocumentId: (id: string | null) => void;
   setTotalPages: (total: number) => void;
   setCurrentPage: (page: number) => void;
@@ -49,7 +59,11 @@ interface ViewerStoreState {
   setSelectedText: (text: string, pageIndex: number) => void;
   setSelectionRects: (rects: Array<{ x: number; y: number; width: number; height: number }>) => void;
   clearSelection: () => void;
-  // Search actions
+  setPageLabels: (labels?: string[] | null, source?: PageLabelSource) => void;
+  applyPageLabelOverrides: (overrides: Record<number, string>) => void;
+  clearPageLabelOverrides: () => void;
+  getPageLabel: (physicalPage: number) => string;
+  resolvePageReference: (reference: string) => number | null;
   setSearchQuery: (query: string) => void;
   setSearchResults: (results: SearchMatch[]) => void;
   setCurrentMatchIndex: (index: number) => void;
@@ -74,7 +88,10 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
   selectedText: '',
   selectedTextPageIndex: -1,
   selectionRects: [],
-  // Search state
+  nativePageLabels: [],
+  pageLabels: [],
+  pageLabelSource: 'default',
+  pageLabelOverrides: {},
   searchQuery: '',
   searchResults: [],
   currentMatchIndex: 0,
@@ -84,9 +101,7 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
   setTotalPages: (total) => set({ totalPages: total }),
   setCurrentPage: (page) => {
     const { totalPages } = get();
-    if (page >= 1 && page <= totalPages) {
-      set({ currentPage: page });
-    }
+    if (page >= 1 && page <= totalPages) set({ currentPage: page });
   },
   setScale: (scale) => {
     const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
@@ -96,18 +111,15 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
 
   zoomIn: () => {
     const { scale } = get();
-    const next = Math.min(MAX_SCALE, scale + ZOOM_STEP);
-    set({ scale: next, fitMode: 'custom' });
+    set({ scale: Math.min(MAX_SCALE, scale + ZOOM_STEP), fitMode: 'custom' });
   },
   zoomOut: () => {
     const { scale } = get();
-    const next = Math.max(MIN_SCALE, scale - ZOOM_STEP);
-    set({ scale: next, fitMode: 'custom' });
+    set({ scale: Math.max(MIN_SCALE, scale - ZOOM_STEP), fitMode: 'custom' });
   },
   rotate: () => {
     const { rotation } = get();
-    const next = ((rotation + 90) % 360) as 0 | 90 | 180 | 270;
-    set({ rotation: next });
+    set({ rotation: ((rotation + 90) % 360) as 0 | 90 | 180 | 270 });
   },
   goToNextPage: () => {
     const { currentPage, totalPages } = get();
@@ -122,10 +134,63 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
   toggleOverlays: () => set((state) => ({ showOverlays: !state.showOverlays })),
 
   initializeDocument: (totalPages) => {
-    // Initialize the centralized page registry
     usePageRegistryStore.getState().initializeRegistry(totalPages);
-    set({ totalPages, currentPage: 1, isLoading: false });
+    const labels = defaultPageLabels(totalPages);
+    set({
+      totalPages,
+      currentPage: 1,
+      isLoading: false,
+      nativePageLabels: labels,
+      pageLabels: labels,
+      pageLabelSource: 'default',
+      pageLabelOverrides: {},
+    });
   },
+
+  setPageLabels: (labels, source = labels ? 'pdf' : 'default') => {
+    const { totalPages, pageLabelOverrides } = get();
+    const nativePageLabels = normalizePdfLabels(totalPages, labels);
+    const effective = applyPageLabelOverrides(nativePageLabels, pageLabelOverrides);
+    set({
+      nativePageLabels,
+      pageLabels: effective,
+      pageLabelSource: Object.keys(pageLabelOverrides).length > 0 ? 'manual' : source,
+    });
+
+    for (let index = 0; index < effective.length; index += 1) {
+      usePageRegistryStore.getState().updatePage(index, { printedPageNumber: effective[index] });
+    }
+  },
+
+  applyPageLabelOverrides: (overrides) => {
+    const { nativePageLabels, totalPages } = get();
+    const base = nativePageLabels.length === totalPages ? nativePageLabels : defaultPageLabels(totalPages);
+    const effective = applyPageLabelOverrides(base, overrides);
+    set({
+      pageLabelOverrides: overrides,
+      pageLabels: effective,
+      pageLabelSource: Object.keys(overrides).length > 0 ? 'manual' : 'pdf',
+    });
+    for (let index = 0; index < effective.length; index += 1) {
+      usePageRegistryStore.getState().updatePage(index, { printedPageNumber: effective[index] });
+    }
+  },
+
+  clearPageLabelOverrides: () => {
+    const { nativePageLabels, totalPages } = get();
+    const base = nativePageLabels.length === totalPages ? nativePageLabels : defaultPageLabels(totalPages);
+    set({
+      pageLabelOverrides: {},
+      pageLabels: base,
+      pageLabelSource: 'pdf',
+    });
+    for (let index = 0; index < base.length; index += 1) {
+      usePageRegistryStore.getState().updatePage(index, { printedPageNumber: base[index] });
+    }
+  },
+
+  getPageLabel: (physicalPage) => pageLabelFor(get().pageLabels, physicalPage),
+  resolvePageReference: (reference) => resolvePageReference(get().pageLabels, reference),
 
   setLoading: (loading) => set({ isLoading: loading }),
 
@@ -142,23 +207,24 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
       selectedText: '',
       selectedTextPageIndex: -1,
       selectionRects: [],
+      nativePageLabels: [],
+      pageLabels: [],
+      pageLabelSource: 'default',
+      pageLabelOverrides: {},
+      searchQuery: '',
+      searchResults: [],
+      currentMatchIndex: 0,
+      isSearchActive: false,
     });
   },
 
   setSelectedText: (text, pageIndex) => set({ selectedText: text, selectedTextPageIndex: pageIndex }),
-
   setSelectionRects: (rects) => set({ selectionRects: rects }),
-
   clearSelection: () => set({ selectedText: '', selectedTextPageIndex: -1, selectionRects: [] }),
-  // Search actions
-  setSearchQuery: (query: string) => set({ searchQuery: query }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
   setSearchResults: (results) => set({ searchResults: results }),
-  setCurrentMatchIndex: (index: number) => set({ currentMatchIndex: index }),
-  setIsSearchActive: (active: boolean) => set({ isSearchActive: active }),
+  setCurrentMatchIndex: (index) => set({ currentMatchIndex: index }),
+  setIsSearchActive: (active) => set({ isSearchActive: active }),
   clearSearch: () => set({ searchQuery: '', searchResults: [], currentMatchIndex: 0, isSearchActive: false }),
-  goToMatch: (match) => {
-    const { setCurrentPage } = get();
-    setCurrentPage(match.pageNumber);
-    // Scroll to match will be handled by the component
-  },
+  goToMatch: (match) => get().setCurrentPage(match.pageNumber),
 }));

@@ -28,11 +28,13 @@ export const ChatSidebar = ({ fileUrl, documentId, workspaceId }: ChatSidebarPro
     currentDocumentId,
     currentPage,
     selectedText,
+    pageLabels,
   } = useViewerStore(useShallow((state) => ({
     setCurrentPage: state.setCurrentPage,
     currentDocumentId: state.documentId,
     currentPage: state.currentPage,
     selectedText: state.selectedText,
+    pageLabels: state.pageLabels,
   })));
 
   const navigateToCitationPage = (pageNumber: number) => {
@@ -231,6 +233,7 @@ export const ChatSidebar = ({ fileUrl, documentId, workspaceId }: ChatSidebarPro
                 message={msg}
                 onNavigateToPage={navigateToCitationPage}
                 onOpenDocument={openCitationDocument}
+                getPageLabel={(pageNumber) => pageLabels[pageNumber - 1] ?? String(pageNumber)}
               />
             ))}
           </div>

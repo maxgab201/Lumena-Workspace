@@ -15,6 +15,8 @@ import { useUiStore } from '../../stores/uiStore';
 import { useKnowledgeStore } from '../../stores/knowledgeStore';
 import { useShallow } from 'zustand/react/shallow';
 import { AlertCircle, Loader2 } from 'lucide-react';
+import { PageLabelRepository } from '../../repositories/page-label.repository';
+import { loadLocalPageLabelOverrides } from '../../lib/pageMapping';
 
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -39,9 +41,11 @@ interface PDFViewerProps {
  * Loads a PDF, initializes the page model, and renders the virtualized page list.
  */
 export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId }: PDFViewerProps) => {
-  const { initializeDocument, setLoading, totalPages, isLoading, zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale, currentPage } = useViewerStore(useShallow(state => ({
+  const { initializeDocument, setLoading, setPageLabels, applyPageLabelOverrides, totalPages, isLoading, zoomIn, zoomOut, rotate, goToNextPage, goToPrevPage, goToFirstPage, goToLastPage, setFitMode, setScale, currentPage } = useViewerStore(useShallow(state => ({
     initializeDocument: state.initializeDocument,
     setLoading: state.setLoading,
+    setPageLabels: state.setPageLabels,
+    applyPageLabelOverrides: state.applyPageLabelOverrides,
     totalPages: state.totalPages,
     isLoading: state.isLoading,
     zoomIn: state.zoomIn,
@@ -110,11 +114,37 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
 
   // Handle successful PDF load
   const onDocumentLoadSuccess = useCallback(
-    (pdf: { numPages: number; destroy: () => Promise<void> }) => {
+    async (pdf: {
+      numPages: number;
+      destroy: () => Promise<void>;
+      getPageLabels?: () => Promise<string[] | null>;
+    }) => {
       pdfDocRef.current = pdf;
       initializeDocument(pdf.numPages);
+
+      try {
+        const nativeLabels = pdf.getPageLabels ? await pdf.getPageLabels() : null;
+        setPageLabels(nativeLabels, nativeLabels ? 'pdf' : 'default');
+      } catch (error) {
+        console.warn('[PDFViewer] Could not read native PDF page labels:', error);
+        setPageLabels(null, 'default');
+      }
+
+      if (documentId) {
+        const localOverrides = loadLocalPageLabelOverrides(documentId);
+        let overrides = localOverrides;
+        try {
+          const remoteOverrides = await PageLabelRepository.getOverrides(documentId);
+          overrides = { ...localOverrides, ...remoteOverrides };
+        } catch (error) {
+          console.warn('[PDFViewer] Page label table unavailable; using local overrides.', error);
+        }
+        if (Object.keys(overrides).length > 0) {
+          applyPageLabelOverrides(overrides);
+        }
+      }
     },
-    [initializeDocument]
+    [initializeDocument, setPageLabels, applyPageLabelOverrides, documentId]
   );
 
   const onDocumentLoadError = useCallback(
@@ -208,6 +238,8 @@ export const PDFViewer = ({ fileUrl, filename, fileSize, documentId, workspaceId
         filename={filename}
         fileSize={fileSize}
         pageCount={totalPages || undefined}
+        documentId={documentId}
+        workspaceId={workspaceId}
       />
 
       <div className="flex-1 flex min-h-0 relative overflow-hidden">

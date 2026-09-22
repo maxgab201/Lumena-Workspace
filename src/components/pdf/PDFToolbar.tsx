@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useViewerStore } from '../../stores/viewerStore';
 import { useHighlightStore } from '../../stores/highlightStore';
 import { Button } from '../ui/Button';
@@ -15,17 +15,23 @@ import {
   Brain,
   Highlighter,
   Sparkles,
+  Search,
 } from 'lucide-react';
 import { useUiStore } from '../../stores/uiStore';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/Tooltip';
+import { PageMapEditor } from './PageMapEditor';
+import { PDFSearchPanel } from './PDFSearchPanel';
+import { hasLogicalPageLabels } from '../../lib/pageMapping';
 
 interface PDFToolbarProps {
   filename?: string;
   fileSize?: number;
   pageCount?: number;
+  documentId?: string;
+  workspaceId?: string;
 }
 
-export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) => {
+export const PDFToolbar = ({ filename, fileSize, pageCount, documentId: documentIdProp, workspaceId }: PDFToolbarProps) => {
   const {
     documentId,
     currentPage,
@@ -40,6 +46,8 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
     setCurrentPage,
     setFitMode,
     setScale,
+    pageLabels,
+    resolvePageReference,
   } = useViewerStore();
 
   const { activeRightPanel, setActiveRightPanel } = useUiStore();
@@ -48,15 +56,29 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
   );
 
   const [pageInput, setPageInput] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+
+  useEffect(() => {
+    const handleFind = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        setShowSearch(true);
+      }
+    };
+    window.addEventListener('keydown', handleFind);
+    return () => window.removeEventListener('keydown', handleFind);
+  }, []);
 
   const handlePageSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const page = parseInt(pageInput, 10);
-    if (!isNaN(page) && page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-    }
+    const page = resolvePageReference(pageInput);
+    if (page) setCurrentPage(page);
     setPageInput('');
   };
+
+  const currentPageLabel = pageLabels[currentPage - 1] ?? String(currentPage);
+  const lastPageLabel = pageLabels[totalPages - 1] ?? String(totalPages || pageCount || '—');
+  const logicalLabelsActive = hasLogicalPageLabels(pageLabels);
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
@@ -76,7 +98,7 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="h-14 flex items-center justify-between px-4 border-b border-white/5 bg-background/60 backdrop-blur-xl shrink-0 z-20">
+      <div className="relative h-14 flex items-center justify-between px-4 border-b border-white/5 bg-background/60 backdrop-blur-xl shrink-0 z-20">
         {/* Left: Document Info */}
         <div className="flex items-center gap-3 min-w-0 flex-shrink">
           <FileText className="w-4 h-4 text-accent shrink-0" />
@@ -111,16 +133,21 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
           <form onSubmit={handlePageSubmit} className="flex items-center gap-1 px-1">
             <input
               type="text"
-              value={pageInput || currentPage}
+              value={pageInput || currentPageLabel}
               onChange={(e) => setPageInput(e.target.value)}
-              onFocus={() => setPageInput(String(currentPage))}
+              onFocus={() => setPageInput(currentPageLabel)}
               onBlur={() => setPageInput('')}
               className="w-10 h-8 text-center text-sm font-medium rounded-md border-none bg-background/50 backdrop-blur-sm focus:outline-none focus:ring-1 focus:ring-accent transition-all"
               aria-label="Current page"
             />
-            <span className="text-sm text-muted-foreground font-medium px-1">
-              / {totalPages || pageCount || '—'}
+            <span className="text-sm text-muted-foreground font-medium px-1" title={logicalLabelsActive ? `PDF ${currentPage} / ${totalPages}` : undefined}>
+              / {lastPageLabel}
             </span>
+            {logicalLabelsActive && (
+              <span className="hidden lg:inline text-[10px] text-muted-foreground/70 whitespace-nowrap" data-testid="physical-page-indicator">
+                PDF {currentPage}/{totalPages}
+              </span>
+            )}
           </form>
 
           <Tooltip>
@@ -137,6 +164,15 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
               </Button>
             </TooltipTrigger>
             <TooltipContent><p className="flex items-center gap-2">Next page <kbd className="bg-white/10 px-1 rounded">→</kbd></p></TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <PageMapEditor documentId={documentIdProp} workspaceId={workspaceId} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent><p>Corregir numeración del libro</p></TooltipContent>
           </Tooltip>
         </div>
 
@@ -214,6 +250,22 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
 
           <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={showSearch ? "secondary" : "ghost"}
+                size="icon"
+                onClick={() => setShowSearch((value) => !value)}
+                aria-label="Search in document"
+                className="h-8 w-8"
+                data-testid="pdf-search-trigger"
+              >
+                <Search className="w-4 h-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent><p>Buscar en el PDF</p></TooltipContent>
+          </Tooltip>
+
           {/* AI Highlighting panel trigger */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -288,6 +340,13 @@ export const PDFToolbar = ({ filename, fileSize, pageCount }: PDFToolbarProps) =
           </Tooltip>
 
         </div>
+
+        {showSearch && (
+          <PDFSearchPanel
+            documentId={documentIdProp}
+            onClose={() => setShowSearch(false)}
+          />
+        )}
       </div>
     </TooltipProvider>
   );

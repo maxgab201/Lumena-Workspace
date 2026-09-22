@@ -1,5 +1,45 @@
 # Lumena Workspace
 
+<!-- LUMENA_AUTO_STATUS_START -->
+> [!NOTE]
+> **Automated project status — source of truth for current implementation state.**
+> Synced from `docs/project-status.json` at commit [`b500c05`](https://github.com/maxgab201/Lumena-Workspace/commit/b500c0533bcf1c0d6830de21f21d0d56b60478fb) on `2026-09-22T15:51:15-03:00` (branch `feat/page-mapping-doc-sync`). If older prose below conflicts with this block, this generated block wins.
+
+- **Lifecycle:** Alpha
+- **Current focus:** Core Reading Experience
+- **Current checkpoint:** Reader Validation & Preview Review
+- **Status:** active-development
+- **Completed:**
+  - Workspace and document dashboard foundation
+  - PDF upload and resilient processing for large documents
+  - PDF viewer with virtualization, zoom and rotation
+  - Manual highlights, notes and reactive annotations
+  - Per-page native-text/OCR inventory
+  - Semantic AI highlights grounded to real PDF geometry
+  - Reader-connected AI chat with selection/page context
+  - Chat-triggered highlight actions
+  - Persistent profile/settings controls
+  - Lumena blue brand system, logo lockups and favicon
+  - PDF-native logical page labels with roman/front-matter support
+  - Manual logical-to-physical page mapping with sequential corrections
+  - Logical page-aware chat and bounded AI-highlight page ranges
+  - Real in-document native-text/OCR search with Ctrl/Cmd+F
+  - Citation cards that display logical page labels while navigating physical PDF pages
+  - Persistent logical page corrections deployed to Supabase with workspace-bound RLS
+  - Logical-page AI gateway and page-range highlight authorization deployed to Supabase
+- **In progress:**
+  - Final preview/manual reader review before merging the feature branch
+- **Next:**
+  - Search-result text highlighting and richer semantic navigation
+  - Reader polish from preview feedback
+  - Knowledge tools completion after the reader core is stable
+- **Product rules:**
+  - Core reading remains usable without AI credits
+  - AI semantics never invent PDF geometry
+  - Provider-specific AI logic stays behind the gateway/service layer
+  - Documentation status is synchronized automatically from this file
+<!-- LUMENA_AUTO_STATUS_END -->
+
 Development Roadmap
 
 Version: 1.0

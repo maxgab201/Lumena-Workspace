@@ -293,6 +293,7 @@ When document context is provided:
 - Distinguish clearly between DOCUMENT CONTENT (the original text) and USER NOTES / USER HIGHLIGHTS (the user's own words). Never present a user's note as if the document said it.
 - When the user's request refers to "this", "this part", "this text", "this highlight" etc., prefer the CURRENT SELECTION or ACTIVE HIGHLIGHT over retrieved chunks or the whole page.
 - Use retrieved chunks only when they are relevant to the question.
+- Page references may include a LOGICAL/PRINTED label and a separate physical PDF page index. Treat the logical label as the page number the user means; the physical index is only an internal locator.
 - When you make a claim grounded in the document, cite the source inline using bracketed numbers like [1] that correspond to the numbered context blocks.
 - If the answer cannot be found in the provided context, say so plainly instead of guessing.
 - Explain at the level the user requests (e.g. "explain simply" → simpler language, "compare" → structured comparison).
@@ -313,21 +314,34 @@ Respond in this language unless the user explicitly asks for another one.`);
 
       // ─── 1. Current selection (highest priority referent for "this") ───
       if (ctx?.selectedText) {
-        sections.push(`=== CURRENT SELECTION (page ${ctx.selectedTextPageIndex ?? ctx.currentPage ?? '?'}) ===
+        sections.push(`=== CURRENT SELECTION (logical page ${ctx.currentPageLabel ?? ((ctx.selectedTextPageIndex ?? -1) >= 0 ? ctx.selectedTextPageIndex + 1 : (ctx.currentPage ?? '?'))}; physical PDF page ${(ctx.selectedTextPageIndex ?? -1) >= 0 ? ctx.selectedTextPageIndex + 1 : ctx.currentPage ?? '?'}) ===
 The user has selected this exact text in the viewer. References to "this", "this part" or "this text" mean the following:
 
 "${String(ctx.selectedText).substring(0, 2000)}"`);
       }
 
-      // ─── 2. Page text (native extraction or OCR — treated the same) ───
+      // ─── 2. Explicitly requested logical pages ───
+      if (ctx?.requestedPages && Array.isArray(ctx.requestedPages) && ctx.requestedPages.length > 0) {
+        const requested = ctx.requestedPages
+          .map((page: any, idx: number) => `[${idx + 1}] Logical page "${String(page.logicalLabel)}" (physical PDF page ${page.physicalPage}):
+<document_content>
+${String(page.text || '').substring(0, 5000)}
+</document_content>`)
+          .join('\n\n');
+        sections.push(`=== EXPLICITLY REQUESTED PAGES ===
+The user referred to these logical/printed pages. Use these page labels in your answer; the physical PDF page is only an internal locator.
+${requested}`);
+      }
+
+      // ─── 3. Current page text (native extraction or OCR — treated the same) ───
       if (ctx?.documentText) {
-        sections.push(`=== CURRENT PAGE TEXT (page ${ctx.currentPage ?? '?'}) ===
+        sections.push(`=== CURRENT PAGE TEXT (logical page ${ctx.currentPageLabel ?? ctx.currentPage ?? '?'}; physical PDF page ${ctx.currentPage ?? '?'}) ===
 <document_content>
 ${String(ctx.documentText).substring(0, 6000)}
 </document_content>`);
       }
 
-      // ─── 3. RAG chunks with citation numbers ───
+      // ─── 4. RAG chunks with citation numbers ───
       if (ctx?.ragChunks && Array.isArray(ctx.ragChunks) && ctx.ragChunks.length > 0) {
         const ragContext = ctx.ragChunks
           .map((chunk: any, idx: number) => {
@@ -342,7 +356,7 @@ ${String(chunk.chunk_text || '').substring(0, 800)}
 ${ragContext}`);
       }
 
-      // ─── 4. User highlights and notes (user content, clearly separated) ───
+      // ─── 5. User highlights and notes (user content, clearly separated) ───
       if (ctx?.activeHighlights && ctx.activeHighlights.length > 0) {
         const highlightsBlock = ctx.activeHighlights
           .map((h: any) => `- [${h.source === 'ai' ? 'AI HIGHLIGHT' : 'MANUAL HIGHLIGHT'}] "${h.text}"${h.note ? ` — USER NOTE: "${h.note}"` : ''}`)
@@ -359,7 +373,7 @@ ${highlightsBlock}`);
 ${allBlock.substring(0, 4000)}`);
       }
 
-      // ─── 5. Recent conversation for continuity ───
+      // ─── 6. Recent conversation for continuity ───
       if (ctx?.recentMessages && ctx.recentMessages.length > 0) {
         const convo = ctx.recentMessages
           .map((m: any) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${String(m.content).substring(0, 500)}`)

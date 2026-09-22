@@ -181,25 +181,26 @@ export function quickActionsForLanguage(
 export function highlightActionResultText(
   language: ChatLanguage,
   created: number,
-  scope: 'current_page' | 'document',
+  scope: 'current_page' | 'page_range' | 'document',
 ): string {
   const whole = scope === 'document';
+  const range = scope === 'page_range';
   if (language === 'es') return created > 0
-    ? `Listo. Creé ${created} subrayado${created === 1 ? '' : 's'} ${whole ? 'en el documento' : 'en esta página'} usando texto y geometría reales del PDF.`
-    : `No encontré fragmentos verificables para subrayar ${whole ? 'en el documento' : 'en esta página'}.`;
+    ? `Listo. Creé ${created} subrayado${created === 1 ? '' : 's'} ${whole ? 'en el documento' : range ? 'en ese rango de páginas' : 'en esta página'} usando texto y geometría reales del PDF.`
+    : `No encontré fragmentos verificables para subrayar ${whole ? 'en el documento' : range ? 'en ese rango de páginas' : 'en esta página'}.`;
   if (language === 'fr') return created > 0
-    ? `Terminé. J’ai créé ${created} surlignage${created === 1 ? '' : 's'} ${whole ? 'dans le document' : 'sur cette page'} à partir du texte réel du PDF.`
-    : `Je n’ai trouvé aucun fragment vérifiable à surligner ${whole ? 'dans le document' : 'sur cette page'}.`;
+    ? `Terminé. J’ai créé ${created} surlignage${created === 1 ? '' : 's'} ${whole ? 'dans le document' : range ? 'dans cette plage de pages' : 'sur cette page'} à partir du texte réel du PDF.`
+    : `Je n’ai trouvé aucun fragment vérifiable à surligner ${whole ? 'dans le document' : range ? 'dans cette plage de pages' : 'sur cette page'}.`;
   if (language === 'pt') return created > 0
-    ? `Pronto. Criei ${created} destaque${created === 1 ? '' : 's'} ${whole ? 'no documento' : 'nesta página'} usando o texto e a geometria reais do PDF.`
-    : `Não encontrei trechos verificáveis para destacar ${whole ? 'no documento' : 'nesta página'}.`;
+    ? `Pronto. Criei ${created} destaque${created === 1 ? '' : 's'} ${whole ? 'no documento' : range ? 'nesse intervalo de páginas' : 'nesta página'} usando o texto e a geometria reais do PDF.`
+    : `Não encontrei trechos verificáveis para destacar ${whole ? 'no documento' : range ? 'nesse intervalo de páginas' : 'nesta página'}.`;
   if (language === 'de') return created > 0
-    ? `Fertig. Ich habe ${created} Markierung${created === 1 ? '' : 'en'} ${whole ? 'im Dokument' : 'auf dieser Seite'} mit echter PDF-Geometrie erstellt.`
-    : `Ich habe ${whole ? 'im Dokument' : 'auf dieser Seite'} keine überprüfbaren Textstellen zum Markieren gefunden.`;
+    ? `Fertig. Ich habe ${created} Markierung${created === 1 ? '' : 'en'} ${whole ? 'im Dokument' : range ? 'in diesem Seitenbereich' : 'auf dieser Seite'} mit echter PDF-Geometrie erstellt.`
+    : `Ich habe ${whole ? 'im Dokument' : range ? 'in diesem Seitenbereich' : 'auf dieser Seite'} keine überprüfbaren Textstellen zum Markieren gefunden.`;
   if (language === 'it') return created > 0
-    ? `Fatto. Ho creato ${created} evidenziazione${created === 1 ? '' : 'i'} ${whole ? 'nel documento' : 'in questa pagina'} usando testo e geometria reali del PDF.`
-    : `Non ho trovato frammenti verificabili da evidenziare ${whole ? 'nel documento' : 'in questa pagina'}.`;
+    ? `Fatto. Ho creato ${created} evidenziazione${created === 1 ? '' : 'i'} ${whole ? 'nel documento' : range ? 'in questo intervallo di pagine' : 'in questa pagina'} usando testo e geometria reali del PDF.`
+    : `Non ho trovato frammenti verificabili da evidenziare ${whole ? 'nel documento' : range ? 'in questo intervallo di pagine' : 'in questa pagina'}.`;
   return created > 0
-    ? `Done. I created ${created} highlight${created === 1 ? '' : 's'} ${whole ? 'in the document' : 'on this page'} using real PDF text and geometry.`
-    : `I couldn't find any verifiable passages to highlight ${whole ? 'in the document' : 'on this page'}.`;
+    ? `Done. I created ${created} highlight${created === 1 ? '' : 's'} ${whole ? 'in the document' : range ? 'in that page range' : 'on this page'} using real PDF text and geometry.`
+    : `I couldn't find any verifiable passages to highlight ${whole ? 'in the document' : range ? 'in that page range' : 'on this page'}.`;
 }

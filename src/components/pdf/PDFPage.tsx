@@ -19,13 +19,15 @@ interface PDFPageProps {
  * and AI overlay layers are rendered as empty containers for future use.
  */
 export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) => {
-  const { scale, rotation } = useViewerStore(useShallow(state => ({
+  const { scale, rotation, pageLabels } = useViewerStore(useShallow(state => ({
     scale: state.scale,
     rotation: state.rotation,
+    pageLabels: state.pageLabels,
   })));
 
   const pageNumber = pageIndex + 1;
   const targetWidth = Math.max(100, Math.floor(width * scale));
+  const pageLabel = pageLabels[pageIndex] ?? String(pageNumber);
 
   return (
     <div
@@ -33,6 +35,7 @@ export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) =>
       style={style}
       data-page-outer-index={pageIndex}
       data-page-number={pageNumber}
+      data-page-label={pageLabel}
     >
       <div
         className="relative shadow-2xl shadow-black/40 bg-white rounded-sm"

@@ -15,12 +15,14 @@ interface CitationsProps {
   citations: Citation[];
   onNavigateToPage?: (pageNumber: number) => void;
   onOpenDocument?: (documentId: string) => void;
+  getPageLabel?: (physicalPage: number) => string;
 }
 
 export const Citations = ({
   citations,
   onNavigateToPage,
-  onOpenDocument
+  onOpenDocument,
+  getPageLabel,
 }: CitationsProps) => {
   if (!citations || citations.length === 0) return null;
 
@@ -62,7 +64,7 @@ export const Citations = ({
                   <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
                     <span className="flex items-center gap-0.5">
                       <FileText className="h-2.5 w-2.5" />
-                      Page {citation.page_number || '?'}
+                      Page {citation.page_number ? (getPageLabel?.(citation.page_number) ?? citation.page_number) : '?'}
                     </span>
                     <span className="flex items-center gap-0.5">
                       <span className="px-1.5 py-0.5 rounded text-[9px] bg-muted border border-white/5">
@@ -84,8 +86,8 @@ export const Citations = ({
                       "text-muted-foreground hover:text-foreground",
                       "transition-colors"
                     )}
-                    title="Go to page"
-                    aria-label={`Go to page ${citation.page_number}`}
+                    aria-label={`Go to page ${citation.page_number ? (getPageLabel?.(citation.page_number) ?? citation.page_number) : '?'}`}
+                    title={citation.page_number ? `PDF page ${citation.page_number}` : 'Go to page'}
                   >
                     <ChevronRight className="h-3.5 w-3.5" />
                   </button>
