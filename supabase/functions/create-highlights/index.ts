@@ -11,7 +11,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-type Scope = 'current_page' | 'document';
+type Scope = 'current_page' | 'page_range' | 'document';
 
 serve(async (req) => {
   const request_id = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
@@ -37,6 +37,7 @@ serve(async (req) => {
     const instruction = String(payload?.instruction ?? '').trim();
     const scope = payload?.scope as Scope;
     const page = Number(payload?.page ?? 0);
+    const pages = Array.isArray(payload?.pages) ? payload.pages.map((value: unknown) => Number(value)) : [];
     const modelId = String(payload?.model_id ?? DEFAULT_HIGHLIGHT_FREE_MODEL);
 
     if (!documentId || !workspaceId || !instruction) {
@@ -45,8 +46,8 @@ serve(async (req) => {
     if (instruction.length > 1200) {
       return json({ error: 'Highlight instruction is too long', request_id }, 400);
     }
-    if (scope !== 'current_page' && scope !== 'document') {
-      return json({ error: 'scope must be current_page or document', request_id }, 400);
+    if (scope !== 'current_page' && scope !== 'page_range' && scope !== 'document') {
+      return json({ error: 'scope must be current_page, page_range or document', request_id }, 400);
     }
 
     const { data: membership } = await supabase
@@ -72,6 +73,15 @@ serve(async (req) => {
       }
       if (doc.page_count && page > doc.page_count) {
         return json({ error: 'Page is outside the document', request_id }, 400);
+      }
+    }
+
+    if (scope === 'page_range') {
+      if (pages.length < 2 || pages.length > 80 || pages.some((value: number) => !Number.isInteger(value) || value < 1)) {
+        return json({ error: 'page_range requires between 2 and 80 valid pages', request_id }, 400);
+      }
+      if (doc.page_count && pages.some((value: number) => value > doc.page_count)) {
+        return json({ error: 'Page range is outside the document', request_id }, 400);
       }
     }
 
@@ -106,6 +116,7 @@ serve(async (req) => {
         instruction,
         scope,
         page: scope === 'current_page' ? page : undefined,
+        pages: scope === 'page_range' ? pages : undefined,
         model_id: model.model_id,
       },
       request_id,
