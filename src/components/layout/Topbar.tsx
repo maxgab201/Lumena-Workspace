@@ -1,5 +1,5 @@
 import { Bell, Search, Command, Menu, ChevronRight, Globe } from 'lucide-react';
-import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { Link, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { Button } from '../ui/Button';
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/Avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/DropdownMenu';
@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useState } from 'react';
 import { t } from '../../i18n';
 import type { Language } from '../../i18n';
+import { BrandLogo } from '../brand/BrandLogo';
 
 const LANGUAGES: { code: Language; label: string; flag: string }[] = [
   { code: 'en', label: 'English', flag: '🇺🇸' },
@@ -69,6 +70,14 @@ export const Topbar = () => {
         >
           <Menu size={20} />
         </Button>
+
+        <Link
+          to="/dashboard"
+          className="md:hidden inline-flex items-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          aria-label="Lumena Workspace dashboard"
+        >
+          <BrandLogo variant="icon" className="w-8 h-8" />
+        </Link>
 
         {/* Breadcrumb */}
         <nav className="hidden sm:flex items-center gap-1 text-sm" aria-label="Breadcrumb">
