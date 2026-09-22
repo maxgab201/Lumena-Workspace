@@ -53,6 +53,14 @@ test.describe('PDF Viewer (Mocked API)', () => {
         });
       }
     });
+    await page.route('**/rest/v1/document_page_labels*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '[]',
+      });
+    });
+
     await page.route('**/storage/v1/object/sign/**', async (route) => {
       await route.fulfill({
         status: 200,
@@ -127,6 +135,19 @@ test.describe('PDF Viewer (Mocked API)', () => {
     await expect(page.locator('div[data-layer="annotation"]').first()).toBeAttached();
 
     await expect(page.locator('input[aria-label="Current page"]')).toHaveValue('2');
+
+    // Logical page mapping: make physical PDF page 2 correspond to printed page 50
+    await page.getByTestId('page-map-editor-trigger').click();
+    await page.getByTestId('page-map-label-input').fill('50');
+    await page.getByTestId('page-map-save').click();
+    await expect(page.getByTestId('page-map-message')).toContainText('Mapeo guardado');
+    await page.keyboard.press('Escape');
+
+    await expect(page.locator('input[aria-label="Current page"]')).toHaveValue('50');
+    await expect(page.getByTestId('physical-page-indicator')).toContainText('PDF 2/100');
+
+    await page.locator('button[aria-label="Next page"]').click();
+    await expect(page.locator('input[aria-label="Current page"]')).toHaveValue('51');
 
     expect(errors.length).toBe(0);
   });
