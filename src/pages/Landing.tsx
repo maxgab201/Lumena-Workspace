@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Button } from '../components/ui/Button';
+import { BrandLogo } from '../components/brand/BrandLogo';
 import { 
   ArrowRight, 
   Sparkles, 
@@ -27,15 +28,9 @@ export const Landing = () => {
 
       {/* Premium Topbar */}
       <header className="h-20 flex items-center justify-between px-6 lg:px-12 w-full z-50 sticky top-0 bg-background/40 backdrop-blur-md border-b border-white/5">
-        <div className="flex items-center space-x-3 cursor-pointer">
-          <img
-            src="/logo-icon.svg"
-            alt=""
-            aria-hidden="true"
-            className="w-9 h-9 rounded-xl shadow-lg shadow-accent/20"
-          />
-          <span className="font-heading font-semibold text-xl tracking-tight text-foreground">Lumena</span>
-        </div>
+        <Link to="/" className="inline-flex items-center" aria-label="Lumena Workspace home">
+          <BrandLogo variant="horizontal" className="h-10 w-auto max-w-[180px]" />
+        </Link>
         <nav className="hidden md:flex items-center space-x-8">
           <a href="#features" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Features</a>
           <a href="#how-it-works" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">How it works</a>
@@ -410,10 +405,9 @@ export const Landing = () => {
 
         {/* Footer */}
         <footer className="py-12 px-6 border-t border-white/10 text-center flex flex-col md:flex-row justify-between items-center text-sm text-muted-foreground max-w-7xl mx-auto w-full z-10">
-          <div className="flex items-center space-x-2 mb-4 md:mb-0">
-            <img src="/logo-icon.svg" alt="" aria-hidden="true" className="w-6 h-6 rounded-md" />
-            <span className="font-medium text-foreground">Lumena Workspace</span>
-          </div>
+          <Link to="/" className="inline-flex items-center mb-4 md:mb-0" aria-label="Lumena Workspace home">
+            <BrandLogo variant="horizontal" className="h-8 w-auto max-w-[150px]" />
+          </Link>
           <div className="space-x-6">
             <Link to="/legal" className="hover:text-foreground">Terms</Link>
             <Link to="/legal" className="hover:text-foreground">Privacy</Link>
