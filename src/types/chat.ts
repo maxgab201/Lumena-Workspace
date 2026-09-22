@@ -51,6 +51,8 @@ export interface ChatContext {
   documentId?: string;
   workspaceId?: string;
   currentPage: number;
+  currentPageLabel?: string;
+  requestedPages?: Array<{ physicalPage: number; logicalLabel: string; text: string }>;
   activeHighlights: ChatHighlightContext[];
   recentMessages: Array<{
     role: string;
