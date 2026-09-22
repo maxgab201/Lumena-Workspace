@@ -3,10 +3,10 @@ name: CI
 on:
   push:
     branches: [main, develop, 'feat/**']
-    paths-ignore: ['**/*.md']
+    paths-ignore: ['**/*.md', 'docs/project-status.json']
   pull_request:
     branches: [main, develop]
-    paths-ignore: ['**/*.md']
+    paths-ignore: ['**/*.md', 'docs/project-status.json']
 
 env:
   NODE_VERSION: '22.x'
