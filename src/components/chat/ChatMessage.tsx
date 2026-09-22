@@ -8,9 +8,10 @@ interface ChatMessageProps {
   message: IChatMessage;
   onNavigateToPage?: (pageNumber: number) => void;
   onOpenDocument?: (documentId: string) => void;
+  getPageLabel?: (physicalPage: number) => string;
 }
 
-export const ChatMessage = ({ message, onNavigateToPage, onOpenDocument }: ChatMessageProps) => {
+export const ChatMessage = ({ message, onNavigateToPage, onOpenDocument, getPageLabel }: ChatMessageProps) => {
   const isUser = message.role === 'user';
 
   return (
@@ -47,6 +48,7 @@ export const ChatMessage = ({ message, onNavigateToPage, onOpenDocument }: ChatM
             citations={message.citations}
             onNavigateToPage={onNavigateToPage}
             onOpenDocument={onOpenDocument}
+            getPageLabel={getPageLabel}
           />
         )}
       </div>
