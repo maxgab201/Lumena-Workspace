@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useViewerStore } from '../../stores/viewerStore';
 import { useHighlightStore } from '../../stores/highlightStore';
 import { Button } from '../ui/Button';
@@ -57,6 +57,17 @@ export const PDFToolbar = ({ filename, fileSize, pageCount, documentId, workspac
 
   const [pageInput, setPageInput] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+
+  useEffect(() => {
+    const handleFind = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault();
+        setShowSearch(true);
+      }
+    };
+    window.addEventListener('keydown', handleFind);
+    return () => window.removeEventListener('keydown', handleFind);
+  }, []);
 
   const handlePageSubmit = (e: React.FormEvent) => {
     e.preventDefault();
