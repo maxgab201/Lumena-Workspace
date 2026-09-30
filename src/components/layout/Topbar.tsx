@@ -155,8 +155,9 @@ export const Topbar = () => {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72 mt-1 border-white/10 shadow-2xl p-0">
-            <div className="px-4 py-3 border-b border-white/5">
+            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
               <p className="text-sm font-semibold">{t('topbar.notifications')}</p>
+              <span className="text-[9px] font-bold uppercase tracking-widest bg-secondary/30 px-1.5 py-0.5 rounded text-muted-foreground/60">{t('common.soon')}</span>
             </div>
             <div className="px-4 py-8 text-center">
               <Bell size={28} className="mx-auto text-muted-foreground/30 mb-3" />

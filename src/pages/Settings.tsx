@@ -245,6 +245,11 @@ export const Settings = () => {
                     <CardDescription>{t('settings.notificationPrefsDesc')}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Nothing sends notifications yet: the preferences are stored, never acted on. */}
+                    <div className="flex items-start gap-3 p-4 rounded-xl bg-secondary/20 border border-white/5" data-testid="notifications-soon-notice">
+                      <Info size={18} className="text-accent shrink-0 mt-0.5" />
+                      <p className="text-sm text-muted-foreground">{t('settings.notificationsSoonNotice')}</p>
+                    </div>
                     <div className="space-y-3.5">
                       <div className="flex items-start justify-between p-3.5 rounded-xl bg-secondary/15 border border-white/5">
                         <div className="space-y-0.5">
