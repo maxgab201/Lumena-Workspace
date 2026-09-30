@@ -11,7 +11,14 @@ export interface ResolvedPageRange {
   pages: number[];
 }
 
-const PAGE_RANGE_RE = /(?:p(?:á|a)g(?:ina|inas)?|pages?|pp?\.?)[\s:]*([ivxlcdm]+|\d+)(?:\s*(?:-|–|—|a|to|hasta|y|and)\s*([ivxlcdm]+|\d+))?/i;
+// The keyword must START a word and the number must END one. Without those
+// boundaries the pattern matched the "p" inside ordinary words ("ex-pl-ain",
+// "pi-ck", "pd-f") and captured a lone roman letter from the word after "page"
+// ("página inicial" -> "i"), so phantom pages reached the model and chat-triggered
+// highlights. Written without lookbehind (unsupported before Safari 16.4): the
+// leading boundary is a consumed, non-captured character, so groups 1 and 2 stay
+// the first and second page label.
+const PAGE_RANGE_RE = /(?:^|[^\p{L}\p{N}])(?:p[áa]g(?:inas|ina)?|pages?|pp?)(?![\p{L}])\.?[\s:]*(\d+|[ivxlcdm]+)(?![\p{L}\p{N}])(?:\s*(?:-|–|—|a|to|hasta|y|and)\s*(\d+|[ivxlcdm]+)(?![\p{L}\p{N}]))?/iu;
 
 export function normalizePageLabel(value: string): string {
   return value.trim().replace(/^p(?:á|a)g(?:ina)?\s*/i, '').toLowerCase();
