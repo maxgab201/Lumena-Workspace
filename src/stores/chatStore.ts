@@ -349,8 +349,11 @@ async function buildChatContext(userQuery?: string): Promise<ChatContext> {
   }));
 
   const activeWorkspace = workspaceStore.activeWorkspace;
-  const activeSession = activeSessionId ? chatStore.sessions[activeSessionId] : undefined;
-  let workspaceId = activeWorkspace?.id ?? activeSession?.workspace_id;
+  // `sessions` is keyed by DOCUMENT id (it used to be looked up by session id, which never
+  // matched). The session remembers the workspace of its document, and that is the workspace
+  // the chat must run in: the one selected in the sidebar can be a different one.
+  const activeSession = documentId ? chatStore.sessions[documentId] : undefined;
+  let workspaceId = activeSession?.workspace_id ?? activeWorkspace?.id;
 
   // Direct navigation to a viewer route can beat workspace-store hydration.
   // The document is the source of truth for its workspace — resolve it there
