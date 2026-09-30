@@ -159,7 +159,7 @@ Last Updated: 2026-09-02
 - Real-browser run with a real QA login and no mocks: dashboard, reader, Ctrl+F search (5 results), chat answering "la página 2" and "pág. 3" with a real model, account switch showing none of the previous account's documents.
 - Cancelling a 900-page job mid-flight leaves it cancelled (heartbeat frozen), and the retry completes with 900/900 pages; the stale-job watchdog fails only a stale job in the caller's own workspaces (a non-member reaps nothing, anonymous gets 401).
 
-- A user who is not a member of a workspace gets 403 from `ai-gateway` for that workspace, with a normal prompt, an injection phrase, a Pro model or a document id; nothing is written to the victim's quota, usage ledger, rate-limit counters or security events.
+- A user who is not a member of a workspace gets 403 from `ai-gateway` for that workspace, with a normal prompt, an injection phrase, a Pro model or a document id; nothing is written to the victim's quota, usage ledger, rate-limit counters or security events. The same non-member also gets 403 from `ai-highlight`, `create-highlights`, `generate-knowledge`, `rag-retrieve` and `ai-config`.
 
 ### Infrastructure
 
