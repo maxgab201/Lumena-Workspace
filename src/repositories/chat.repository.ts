@@ -35,7 +35,23 @@ export const ChatRepository = {
       .select()
       .single();
 
-    if (createError) throw createError;
+    if (createError) {
+      // Two callers can get past the lookup above at the same moment (the chat sidebar loads
+      // the session while a send initialises one). The UNIQUE (document_id, user_id)
+      // constraint rejects the loser with 23505, but by then the session exists: read it
+      // instead of failing the load (production: 409 on POST /chat_sessions).
+      if (createError.code === '23505') {
+        const { data: raced, error: refetchError } = await supabase
+          .from('chat_sessions')
+          .select('*')
+          .eq('document_id', documentId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (refetchError) throw refetchError;
+        if (raced) return raced as ChatSession;
+      }
+      throw createError;
+    }
     return created as ChatSession;
   },
 

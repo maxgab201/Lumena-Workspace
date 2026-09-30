@@ -151,8 +151,13 @@ Last Updated: 2026-09-02
 - `ai-gateway` rejects a non-string `prompt` / `workspace_id` with 400 instead of passing it to the provider (500 after spending a quota unit).
 - **One failed embedding threw away its whole batch.** When the embedding provider answered 429 for some chunks (production: 21 of 120), the empty vectors made the database reject all 100 rows of the batch ("vector must have at least 1 dimension") and stopped every later batch, so a 120-page document kept no embeddings at all. `process-document` now leaves out only the chunks without an embedding (production after the fix: 105 of 120 stored) and records "Partially indexed: N of M chunks".
 - **A scanned PDF of three or more pages was not recognised as scanned.** The `---PAGE n---` markers were counted as text, so it skipped the scanned-document path and ended with `embedding_status = completed` and zero chunks instead of waiting for OCR.
+- **The reader loaded no flashcards, glossary, mind map or timeline in production.** `loadAllForDocument` used `Promise.all`, and the `presentations` table does not exist in that database (PostgREST 404 / PGRST205, although its migration is recorded as applied), so that one failure emptied every knowledge section for every document. Each section now loads on its own; the error still surfaces when all of them fail.
+- Opening the chat could log a 409 on `POST /chat_sessions` and fail the session load: two callers raced past the "does a session exist?" lookup and the loser hit the `(document_id, user_id)` unique constraint. It now reads the session the winner created.
 
 ### Verified in production
+
+- Real-browser run with a real QA login and no mocks: dashboard, reader, Ctrl+F search (5 results), chat answering "la página 2" and "pág. 3" with a real model, account switch showing none of the previous account's documents.
+- Cancelling a 900-page job mid-flight leaves it cancelled (heartbeat frozen), and the retry completes with 900/900 pages; the stale-job watchdog fails only a stale job in the caller's own workspaces (a non-member reaps nothing, anonymous gets 401).
 
 - A user who is not a member of a workspace gets 403 from `ai-gateway` for that workspace, with a normal prompt, an injection phrase, a Pro model or a document id; nothing is written to the victim's quota, usage ledger, rate-limit counters or security events.
 
