@@ -17,10 +17,10 @@ export default defineConfig({
       // Enforced in CI. Floors of the audited 2026-09-30 whole-`src` baseline: they only
       // ratchet up. Raising them requires adding tests; regressions fail immediately.
       thresholds: {
-        lines: 15,
-        functions: 11,
-        branches: 9,
-        statements: 15,
+        lines: 19,
+        functions: 12,
+        branches: 13,
+        statements: 18,
       },
     },
   },
