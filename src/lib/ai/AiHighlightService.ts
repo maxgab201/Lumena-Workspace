@@ -145,20 +145,23 @@ export class AiHighlightService {
     // Re-run semantics: an AI analysis REPLACES the previous AI highlights of
     // the analyzed scope (manual highlights are never touched). This prevents
     // duplicates accumulating across repeated runs.
+    //
+    // The old ones are only removed once their page has been analysed successfully.
+    // Deleting them up front lost them for good whenever the request then failed
+    // (daily limit reached, model overloaded, session expired) — and with the limit
+    // exhausted they could not even be regenerated.
     const store = (await import('../../stores/highlightStore')).useHighlightStore.getState();
+    const previousAiByPage = new Map<number, string[]>();
     if (params.replaceExisting !== false) {
-      const removedIds = new Set<string>();
       for (const h of store.highlights[documentId] ?? []) {
         if (h.source !== 'ai') continue;
+        const page = h.page_index + 1;
         const inScope = scope === 'page'
-          ? h.page_index === (params.pageNumber ?? -1) - 1
+          ? page === params.pageNumber
           : scope === 'range'
-            ? (params.pageNumbers ?? []).includes(h.page_index + 1)
+            ? (params.pageNumbers ?? []).includes(page)
             : true;
-        if (inScope && !removedIds.has(h.id)) {
-          removedIds.add(h.id);
-          await store.removeHighlight(h.id);
-        }
+        if (inScope) previousAiByPage.set(page, [...(previousAiByPage.get(page) ?? []), h.id]);
       }
     }
 
@@ -197,7 +200,17 @@ export class AiHighlightService {
           quotaRunToken = data.quota_run_token;
         }
         if (!res.ok) {
-          failedPages.push({ page: pageNumber, error: data?.error || `AI request failed (${res.status})` });
+          const message = data?.error || `AI request failed (${res.status})`;
+          failedPages.push({ page: pageNumber, error: message });
+          if (res.status === 429 && data?.quota) {
+            // Daily limit reached: every remaining page would be refused the same way.
+            for (const remaining of pageBlocks.slice(pageBlocks.indexOf(pageNumber) + 1)) {
+              if ((sentencesByPage.get(remaining)?.length ?? 0) > 0) {
+                failedPages.push({ page: remaining, error: message });
+              }
+            }
+            break;
+          }
           continue;
         }
 
@@ -205,7 +218,9 @@ export class AiHighlightService {
         const byKey = new Map(pageSentences.map((s) => [s.sentence_key, s]));
         onProgress?.({ phase: 'matching', detail: `Página ${pageNumber}` });
 
-        for (const selection of (data.selections ?? []) as AiSelection[]) {
+        const selections = (data.selections ?? []) as AiSelection[];
+        let createdOnPage = 0;
+        for (const selection of selections) {
           const sentence = byKey.get(selection.sentence_key);
           if (!sentence || sentence.words.length === 0) continue;
 
@@ -236,7 +251,19 @@ export class AiHighlightService {
               model: data.model,
             },
           });
-          if (created) createdHighlights.push(created);
+          if (created) {
+            createdHighlights.push(created);
+            createdOnPage += 1;
+          }
+        }
+
+        // Replace only on a real outcome: new highlights exist, or the model explicitly
+        // found nothing worth marking. Selections that all failed verification are a
+        // failed analysis, not a reason to erase what the user already has.
+        if (selections.length === 0 || createdOnPage > 0) {
+          for (const id of previousAiByPage.get(pageNumber) ?? []) {
+            await store.removeHighlight(id);
+          }
         }
       } catch (err) {
         console.error(`[AiHighlight] Page ${pageNumber} analysis failed:`, err);
