@@ -180,7 +180,7 @@ Security is a fundamental architectural principle, not an afterthought.
 - Pattern: `USING (workspace_id IN (SELECT get_user_workspace_ids()))`
 
 **Edge Function Level**:
-- `ai-gateway`: Verifies workspace membership, plan, credit quota
+- `ai-gateway`: Verifies workspace membership (and document ownership), plan, credit quota. The service-role client bypasses RLS, so this check is the only barrier: `tests/unit/edge-functions-authz.test.ts` fails if any user-facing function stops doing it before touching workspace data (static guard, not an integration test)
 - `generate-knowledge`: Verifies membership + document access + credits
 - `process-document`: Verifies credit reservation + workspace access
 - `create-checkout-session`: Verifies membership
@@ -271,6 +271,8 @@ if (injectionRegex.test(prompt)) {
 ```
 
 **Logged**: `security_events` table with severity HIGH
+
+**Data fencing (the real defence)**: the regex above only looks at the user's own message and is defence in depth (it also flags benign questions such as "how does the author *imitate* Kafka?"). What protects against a hostile PDF is that everything document-derived is treated as data: the system prompt is sent on its own channel, document text sits inside `<document_content>` blocks, and `supabase/functions/_shared/chatPrompt.ts` neutralises the block delimiters and `=== SECTION ===` headers in every untrusted value (page text, OCR, retrieved chunks, `/PageLabels`, file names, highlights, previous assistant turns), coerces page numbers, and caps how many pages/chunks/highlights/messages a request may add. Covered by `tests/unit/chat-prompt-injection.test.ts`.
 
 **Future**: ML-based detection, allowlist/blocklist
 

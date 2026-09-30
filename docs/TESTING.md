@@ -134,6 +134,10 @@ Last Updated: 2026-07-27
 - Utilities (`src/lib/utils.ts`, `src/lib/providers/types.ts`)
 - Highlight Engine (`src/lib/processing/HighlightEngine.ts`)
 
+**Coverage**: measured over every file in `src` (`vitest.config.ts`). The gate is a floor that only ratchets up; raising it requires adding tests. Vitest 4 only reports files that a test imports unless `coverage.include` is set, which once made the reported figure ~3× the real one.
+
+**Type checking**: `pnpm typecheck` runs `tsc -b`. The root `tsconfig.json` is a solution file (`"files": []`), so `tsc --noEmit` on it checks nothing.
+
 **Patterns**:
 ```typescript
 // Store testing
@@ -384,6 +388,8 @@ test('generate-knowledge returns flashcards', async () => {
 # 14. Security Testing
 
 **Automated**:
+- `tests/unit/chat-prompt-injection.test.ts`: hostile document content cannot close a data block or forge a prompt section
+- `tests/unit/edge-functions-authz.test.ts`: static guard that user-facing Edge Functions check workspace membership first
 - `npm audit` / `pnpm audit` in CI
 - `oxlint` security rules
 - Dependency review (GitHub Dependabot)

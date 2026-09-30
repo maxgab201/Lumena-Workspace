@@ -124,6 +124,28 @@ Last Updated: 2026-09-02
 
 # 5. Release History
 
+## [Unreleased] - 2026-09-30 — Audit round 1
+
+### Security
+
+- `ai-gateway` now verifies workspace membership (and that the document belongs to that workspace) before touching quota, credits or the usage ledger. It ran on the service-role client without the check every other user-facing function has.
+- Untrusted text (PDF text, OCR, page labels, file names, highlights, earlier turns) is neutralised before it enters the chat prompt, and prompt payload sizes are bounded.
+- A static guard test asserts that every user-facing Edge Function checks membership before using workspace data.
+
+### Fixed
+
+- Per-user state (workspace, documents, chat, credits) is reset on sign-out and when the account changes; settings load on sign-in.
+- Uploads keep the workspace they were queued for; deleting the active workspace reloads the next one; deleting a workspace or document removes its Storage objects (row first, files after).
+- AI Highlight replaces old AI highlights per page only after that page succeeded (a failed re-run no longer erases them).
+- Page references ("páginas 50 a 55", "pág. 12") are parsed with word boundaries; ordinary words no longer produce phantom pages.
+- The stale-job watchdog re-runs while documents process; cancelled jobs are no longer resurrected by an in-flight `process-document` run; documents over 1000 pages no longer chain into themselves forever.
+- The chat runs in the workspace of the document being read; the Study Mode "Ask" tab sends a request the gateway can answer.
+- The notification center and the notification preferences are labelled as not available yet.
+
+### Infrastructure
+
+- `pnpm typecheck` now runs `tsc -b` (the previous command checked nothing). Coverage is measured over all of `src` with honest floors.
+
 ## [Unreleased] - 2026-09-02 — Core Reading Experience: Checkpoint 1
 
 ### Added
