@@ -11,6 +11,7 @@ import { AiHighlightService } from '../lib/ai/AiHighlightService';
 import { parseCreateHighlightsAction, type CreateHighlightsAction } from '../lib/chatActions';
 import { highlightActionResultText, resolveChatLanguage, type ChatLanguage } from '../lib/chatLanguage';
 import { extractPageReferenceRange, pageLabelFor, resolvePageRange } from '../lib/pageMapping';
+import { registerSessionReset } from './sessionReset';
 
 export interface ChatActionRuntime {
   fileUrl?: string;
@@ -297,6 +298,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     return messages[activeSessionId] ?? [];
   },
 }));
+
+registerSessionReset(() => {
+  useChatStore.getState().stopGenerating();
+  useChatStore.setState(useChatStore.getInitialState(), true);
+});
 
 // Build chat context for AI
 async function buildChatContext(userQuery?: string): Promise<ChatContext> {
