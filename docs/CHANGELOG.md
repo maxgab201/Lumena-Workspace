@@ -142,6 +142,18 @@ Last Updated: 2026-09-02
 - The chat runs in the workspace of the document being read; the Study Mode "Ask" tab sends a request the gateway can answer.
 - The notification center and the notification preferences are labelled as not available yet.
 
+## [Unreleased] - 2026-09-30 — Audit round 2 (production smoke)
+
+### Fixed
+
+- **Free-plan chat answered 500 for every model.** The Free Gemini models declared by the model catalog (`gemini-3.1-flash-lite`, `gemini-3.5-flash-lite`) had no row in `provider_models`, and the gateway refuses a model it cannot price; the seeded OpenRouter `:free` model had been retired upstream (404 "unavailable for free"). New migration `20260930000002_register_free_gemini_models.sql` registers the two Gemini models.
+- The catalog no longer offers a seeded OpenRouter model that OpenRouter's live list has dropped, and the Free OpenRouter models it discovers at runtime (never in the registry) now run unmetered instead of failing with "not found or inactive". A Pro model without a price is still refused.
+- `ai-gateway` rejects a non-string `prompt` / `workspace_id` with 400 instead of passing it to the provider (500 after spending a quota unit).
+
+### Verified in production
+
+- A user who is not a member of a workspace gets 403 from `ai-gateway` for that workspace, with a normal prompt, an injection phrase, a Pro model or a document id; nothing is written to the victim's quota, usage ledger, rate-limit counters or security events.
+
 ### Infrastructure
 
 - `pnpm typecheck` now runs `tsc -b` (the previous command checked nothing). Coverage is measured over all of `src` with honest floors.

@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 import { ProviderRouter } from "./router.ts"
 import type { AIProvider } from "./providers/Provider.ts"
-import { getCatalog, FREE_DAILY_LIMIT } from "../_shared/modelCatalog.ts"
+import { getCatalog, FREE_DAILY_LIMIT, resolveChatPricing } from "../_shared/modelCatalog.ts"
 import { CHAT_SYSTEM_PROMPT, buildPromptWithRAG } from "../_shared/chatPrompt.ts"
 
 const corsHeaders = {
@@ -142,6 +142,11 @@ serve(async (req) => {
 
     if (!prompt || !workspace_id) {
       return new Response(JSON.stringify({ error: 'Missing prompt or workspace_id' }), { status: 400, headers: corsHeaders })
+    }
+    // Types are part of the contract: a numeric prompt has no .length, slipped past the size
+    // check below and reached the provider (500 after spending a quota unit).
+    if (typeof prompt !== 'string' || typeof workspace_id !== 'string') {
+      return new Response(JSON.stringify({ error: 'prompt and workspace_id must be strings' }), { status: 400, headers: corsHeaders })
     }
 
     if (prompt.length < MIN_PROMPT_LENGTH || prompt.length > MAX_PROMPT_LENGTH) {
@@ -350,11 +355,17 @@ serve(async (req) => {
           .eq('is_active', true)
           .single()
 
-        if (modelError || !modelData || !modelData.provider_pricing || modelData.provider_pricing.length === 0) {
+        // Free models the catalog discovers at runtime have no registry row: they run unmetered
+        // instead of failing; a model without a price that is not Free is still refused.
+        const resolved = resolveChatPricing(
+          modelError ? null : modelData,
+          catalog.find((m) => m.model_id === currentModelCode),
+        )
+        if (!resolved) {
           throw new Error(`Model ${currentModelCode} not found or inactive`)
         }
 
-        const pricing = modelData.provider_pricing[0]
+        const pricing = resolved.pricing
         const estimatedInputTokens = Math.max(10, Math.ceil(prompt.length / 4))
         const estimatedOutputTokens = 1000
 
@@ -392,7 +403,7 @@ serve(async (req) => {
             workspace_id,
             document_id,
             action_type,
-            model_id: modelData.id,
+            model_id: resolved.modelId,
             status: 'pending'
           })
           .select('id')
