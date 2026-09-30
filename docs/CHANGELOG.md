@@ -149,6 +149,8 @@ Last Updated: 2026-09-02
 - **Free-plan chat answered 500 for every model.** The Free Gemini models declared by the model catalog (`gemini-3.1-flash-lite`, `gemini-3.5-flash-lite`) had no row in `provider_models`, and the gateway refuses a model it cannot price; the seeded OpenRouter `:free` model had been retired upstream (404 "unavailable for free"). New migration `20260930000002_register_free_gemini_models.sql` registers the two Gemini models.
 - The catalog no longer offers a seeded OpenRouter model that OpenRouter's live list has dropped, and the Free OpenRouter models it discovers at runtime (never in the registry) now run unmetered instead of failing with "not found or inactive". A Pro model without a price is still refused.
 - `ai-gateway` rejects a non-string `prompt` / `workspace_id` with 400 instead of passing it to the provider (500 after spending a quota unit).
+- **One failed embedding threw away its whole batch.** When the embedding provider answered 429 for some chunks (production: 21 of 120), the empty vectors made the database reject all 100 rows of the batch ("vector must have at least 1 dimension") and stopped every later batch, so a 120-page document kept no embeddings at all. `process-document` now leaves out only the chunks without an embedding (production after the fix: 105 of 120 stored) and records "Partially indexed: N of M chunks".
+- **A scanned PDF of three or more pages was not recognised as scanned.** The `---PAGE n---` markers were counted as text, so it skipped the scanned-document path and ended with `embedding_status = completed` and zero chunks instead of waiting for OCR.
 
 ### Verified in production
 

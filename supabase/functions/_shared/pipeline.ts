@@ -58,6 +58,48 @@ export function createHeartbeat(client: QueryClient, jobId: string, now: () => D
 
 const CHECKPOINT_PAGE_SIZE = 1000
 
+/** Dimensions of the embedding column (gemini-embedding-001 with outputDimensionality 768). */
+export const EMBEDDING_DIMENSIONS = 768
+
+/** Fewer visible characters than this across the whole document means it has no text layer. */
+const MIN_NATIVE_TEXT_CHARS = 32
+
+/**
+ * Whether a PDF carries a real text layer. It must look at the page texts themselves: the
+ * stored `---PAGE n---` markers are 11+ characters each, so counting them made every scanned
+ * PDF of three pages or more look like it had text (and skip the scanned-document path).
+ */
+export function hasNativeText(pages: string[]): boolean {
+  return pages.join('').replace(/\s+/g, '').length >= MIN_NATIVE_TEXT_CHARS
+}
+
+/**
+ * Separates the chunks of one storage batch into those that have a usable embedding and a
+ * count of those that do not.
+ *
+ * A chunk whose embedding failed (provider quota, transient error) has an empty slot. Sending
+ * that empty vector makes the database reject the WHOLE batch ("vector must have at least 1
+ * dimension"): one failed chunk used to throw away the ~99 good ones next to it and stop every
+ * later batch. Leaving the failed chunks out keeps the rest of the document searchable.
+ */
+export function partitionEmbedded<T>(
+  chunks: T[],
+  embeddings: Array<number[] | undefined>,
+  offset: number,
+): { indexed: Array<{ chunk: T; index: number; embedding: number[] }>; skipped: number } {
+  const indexed: Array<{ chunk: T; index: number; embedding: number[] }> = []
+  let skipped = 0
+  chunks.forEach((chunk, i) => {
+    const embedding = embeddings[offset + i]
+    if (Array.isArray(embedding) && embedding.length === EMBEDDING_DIMENSIONS) {
+      indexed.push({ chunk, index: offset + i, embedding })
+    } else {
+      skipped += 1
+    }
+  })
+  return { indexed, skipped }
+}
+
 /**
  * Every page already extracted for a document, keyed by page number.
  *
