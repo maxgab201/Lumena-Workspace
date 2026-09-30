@@ -1,4 +1,28 @@
 import { supabase } from '../lib/supabase';
+import { StorageRepository } from './storage.repository';
+
+// PostgREST caps a response at 1000 rows; read documents page by page so no file is missed.
+const DOCUMENT_PAGE_SIZE = 1000;
+
+/** Storage objects of every document in a workspace (PDFs and thumbnails). */
+async function listWorkspaceStoragePaths(workspaceId: string): Promise<string[]> {
+  const paths: string[] = [];
+  for (let from = 0; ; from += DOCUMENT_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select('file_path, thumbnail_path')
+      .eq('workspace_id', workspaceId)
+      .range(from, from + DOCUMENT_PAGE_SIZE - 1);
+    if (error) throw error;
+
+    for (const row of data ?? []) {
+      if (row.file_path) paths.push(row.file_path);
+      if (row.thumbnail_path) paths.push(row.thumbnail_path);
+    }
+    if ((data?.length ?? 0) < DOCUMENT_PAGE_SIZE) break;
+  }
+  return paths;
+}
 
 export const WorkspaceRepository = {
   async createWorkspace(name: string) {
@@ -54,11 +78,17 @@ export const WorkspaceRepository = {
   },
 
   async deleteWorkspace(id: string) {
+    // Documents cascade with the workspace row and nothing else removes their PDFs from
+    // Storage, so the paths must be read before the row disappears.
+    const storagePaths = await listWorkspaceStoragePaths(id);
+
     const { error } = await supabase
       .from('workspaces')
       .delete()
       .eq('id', id);
     if (error) throw error;
+
+    await StorageRepository.removeDocumentObjects(storagePaths);
   },
 
   async getMembers(workspaceId: string) {

@@ -28,10 +28,15 @@ import {
 interface UploadQueueItem {
   id: string;
   file: File;
+  /** Workspace the file was dropped into; fixed at queue time, not when its turn comes. */
+  workspaceId: string;
   progress: number;
   status: 'pending' | 'uploading' | 'error';
   error?: string;
 }
+
+const queueKey = (workspaceId: string, file: File) =>
+  `${workspaceId}:${file.name}:${file.size}:${file.lastModified}`;
 
 const QA_READER_FIXTURES = [
   { url: '/qa/reader-native.pdf', name: 'Lumena QA - Native Multi Page.pdf' },
@@ -167,7 +172,7 @@ export const Dashboard = () => {
   };
 
   const runQueuedUpload = async (item: UploadQueueItem) => {
-    const fileKey = `${item.file.name}:${item.file.size}:${item.file.lastModified}`;
+    const fileKey = queueKey(item.workspaceId, item.file);
     if (!queuedFileKeys.current.has(fileKey)) return;
 
     const controller = new AbortController();
@@ -180,6 +185,7 @@ export const Dashboard = () => {
 
     try {
       await uploadDocument(item.file, {
+        workspaceId: item.workspaceId,
         signal: controller.signal,
         onProgress: (progress) => {
           setUploadQueue(previous => previous.map(queueItem =>
@@ -216,6 +222,8 @@ export const Dashboard = () => {
       toast.error(t('upload.workspaceLoading'));
       return;
     }
+    // Validation awaits file reads, so pin the workspace before the first await.
+    const workspaceId = activeWorkspace.id;
 
     const validFiles: File[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -235,7 +243,7 @@ export const Dashboard = () => {
         continue;
       }
 
-      const fileKey = `${file.name}:${file.size}:${file.lastModified}`;
+      const fileKey = queueKey(workspaceId, file);
       if (queuedFileKeys.current.has(fileKey)) {
         toast.error(t('upload.duplicateQueue'), { description: file.name });
         continue;
@@ -250,6 +258,7 @@ export const Dashboard = () => {
       const newItems: UploadQueueItem[] = validFiles.map(file => ({
         id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         file,
+        workspaceId,
         progress: 0,
         status: 'pending' as const,
       }));
@@ -294,7 +303,7 @@ export const Dashboard = () => {
       return;
     }
 
-    queuedFileKeys.current.delete(`${item.file.name}:${item.file.size}:${item.file.lastModified}`);
+    queuedFileKeys.current.delete(queueKey(item.workspaceId, item.file));
     setUploadQueue(previous => previous.filter(queueItem => queueItem.id !== item.id));
   };
 

@@ -8,6 +8,7 @@ import {
   isDocumentActive,
   type WorkspaceDocument,
 } from '../types/documents';
+import { registerSessionReset } from './sessionReset';
 
 interface Workspace {
   id: string;
@@ -18,7 +19,17 @@ interface Workspace {
 interface UploadDocumentOptions {
   signal?: AbortSignal;
   onProgress?: (progress: number) => void;
+  /**
+   * Workspace the file was queued for. Uploads drain one after another, so the
+   * active workspace can change before a queued file runs; without this the
+   * remaining files would silently land in whichever workspace is on screen.
+   */
+  workspaceId?: string;
 }
+
+const POLL_INTERVAL_MS = 2_000;
+// Stale-job watchdog cadence: every 30 polls (~60 s) while documents are processing.
+const WATCHDOG_EVERY_N_POLLS = 30;
 
 interface Subscription {
   unsubscribe: () => Promise<unknown> | unknown;
@@ -66,6 +77,23 @@ function mergeDocumentsWithJobs(
   }
 
   return documents.map(document => applyProcessingJob(document, latestJobByDocument.get(document.id)));
+}
+
+/**
+ * Reap processing jobs whose Edge Function died mid-flight. Runs repeatedly while
+ * documents are processing: a single sweep at the start of a polling session cannot
+ * see a job that dies (and goes stale) afterwards, leaving an eternal spinner until reload.
+ */
+async function sweepStaleJobs(workspaceId: string, reconcile: (workspaceId: string) => Promise<void>) {
+  try {
+    const reaped = await DocumentRepository.reapStaleProcessingJobs();
+    if (reaped > 0) {
+      console.warn(`[workspaceStore] Watchdog reaped ${reaped} stale processing job(s)`);
+      void reconcile(workspaceId);
+    }
+  } catch {
+    // Watchdog is best-effort; polling continues regardless.
+  }
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
@@ -132,14 +160,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       await WorkspaceRepository.deleteWorkspace(id);
-      set((state) => {
-        const remaining = state.workspaces.filter((w) => w.id !== id);
-        return {
-          workspaces: remaining,
-          activeWorkspace: state.activeWorkspace?.id === id ? remaining[0] || null : state.activeWorkspace,
-          loading: false,
-        };
-      });
+      const { workspaces, activeWorkspace } = get();
+      const remaining = workspaces.filter((w) => w.id !== id);
+      set({ workspaces: remaining, loading: false });
+      if (activeWorkspace?.id === id) {
+        // Go through setActiveWorkspace: it releases the deleted workspace's realtime
+        // channels and polling, and loads the next workspace's documents. Swapping
+        // `activeWorkspace` directly left the list showing the deleted workspace's files.
+        get().setActiveWorkspace(remaining[0] ?? null);
+      }
     } catch (err: any) {
       set({ error: err.message, loading: false });
       throw err;
@@ -181,6 +210,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   reconcileDocumentStatuses: async (workspaceId) => {
+    // Skip the two round-trips entirely for a workspace that is no longer on screen.
+    if (get().activeWorkspace?.id !== workspaceId) return;
     try {
       const [documents, jobs] = await Promise.all([
         DocumentRepository.listDocuments(workspaceId),
@@ -197,20 +228,24 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   uploadDocument: async (file, options = {}) => {
-    const { activeWorkspace } = get();
-    if (!activeWorkspace) throw new Error('No active workspace');
+    // The target is fixed by the caller when the file is queued; only fall back to the
+    // active workspace for direct calls. Reading it lazily here sent queued files to
+    // whichever workspace happened to be active when their turn came.
+    const workspaceId = options.workspaceId ?? get().activeWorkspace?.id;
+    if (!workspaceId) throw new Error('No active workspace');
+    const isOnScreen = () => get().activeWorkspace?.id === workspaceId;
     set({ loading: true, error: null, uploadProgress: 0 });
 
     let uploadedPath: string | null = null;
     let newDocument: WorkspaceDocument | null = null;
     try {
       const fileHash = await DocumentRepository.hashFile(file);
-      const duplicate = await DocumentRepository.findDocumentByHash(activeWorkspace.id, fileHash);
+      const duplicate = await DocumentRepository.findDocumentByHash(workspaceId, fileHash);
       if (duplicate) {
         throw new Error(`“${file.name}” is already in this workspace.`);
       }
 
-      const filePath = `${activeWorkspace.id}/${fileHash}.pdf`;
+      const filePath = `${workspaceId}/${fileHash}.pdf`;
       await DocumentRepository.uploadFile(filePath, file, {
         signal: options.signal,
         onProgress: (progress) => {
@@ -221,7 +256,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       uploadedPath = filePath;
 
       newDocument = await DocumentRepository.createDocumentRecord({
-        workspace_id: activeWorkspace.id,
+        workspace_id: workspaceId,
         name: file.name,
         size_bytes: file.size,
         file_path: filePath,
@@ -230,24 +265,30 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       }) as WorkspaceDocument;
 
       // Insert locally before the job is created so fast Realtime events cannot be lost.
-      set((state) => ({
-        documents: [
-          newDocument!,
-          ...state.documents.filter(document => document.id !== newDocument!.id),
-        ],
-      }));
-      get().startStatusPolling(activeWorkspace.id);
+      // Only when this workspace is the one on screen: otherwise the document would leak
+      // into another workspace's list and start a polling loop nobody is watching.
+      if (isOnScreen()) {
+        set((state) => ({
+          documents: [
+            newDocument!,
+            ...state.documents.filter(document => document.id !== newDocument!.id),
+          ],
+        }));
+        get().startStatusPolling(workspaceId);
+      }
 
       const job = await DocumentRepository.createProcessingJob(
-        activeWorkspace.id,
+        workspaceId,
         newDocument.id,
       ) as ProcessingJob;
       const documentWithJob = applyProcessingJob(newDocument, job);
 
       set((state) => ({
-        documents: state.documents.map(document =>
-          document.id === newDocument!.id ? documentWithJob : document
-        ),
+        documents: isOnScreen()
+          ? state.documents.map(document =>
+              document.id === newDocument!.id ? documentWithJob : document
+            )
+          : state.documents,
         loading: false,
         uploadProgress: 0,
       }));
@@ -348,7 +389,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (!doc) throw new Error('Document not found');
 
       // Repository handles bucket selection internally
-      await DocumentRepository.deleteDocument(doc.id, doc.file_path);
+      await DocumentRepository.deleteDocument(doc.id, doc.file_path, doc.thumbnail_path ?? undefined);
 
       set((state) => ({
         documents: state.documents.filter((d) => d.id !== documentId),
@@ -356,6 +397,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       }));
     } catch (err: any) {
       set({ error: err.message, loading: false });
+      // Callers (Dashboard) show the failure to the user; swallowing it here made
+      // their error toast dead code and a failed delete look like a success.
+      throw err;
     }
   },
 
@@ -469,26 +513,26 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   startStatusPolling: (workspaceId) => {
+    // Only the workspace on screen is ever reconciled, so a timer bound to any other
+    // one would spin forever (and block the real one, because only one timer may exist).
+    if (get().activeWorkspace?.id !== workspaceId) return;
     if (get()._pollTimer) return;
+
+    let polls = 0;
     const pollTimer = setInterval(() => {
+      if (get().activeWorkspace?.id !== workspaceId) {
+        get().stopStatusPolling();
+        return;
+      }
+      polls += 1;
       void get().reconcileDocumentStatuses(workspaceId);
-    }, 2_000);
+      if (polls % WATCHDOG_EVERY_N_POLLS === 0) {
+        void sweepStaleJobs(workspaceId, get().reconcileDocumentStatuses);
+      }
+    }, POLL_INTERVAL_MS);
     set({ _pollTimer: pollTimer });
     void get().reconcileDocumentStatuses(workspaceId);
-    // Watchdog sweep: reap jobs stuck 'processing' with a stale heartbeat
-    // (Edge Function killed mid-flight). Runs once per polling session —
-    // cheap indexed RPC that turns eternal spinners into retryable errors.
-    void (async () => {
-      try {
-        const reaped = await DocumentRepository.reapStaleProcessingJobs();
-        if (reaped > 0) {
-          console.warn(`[workspaceStore] Watchdog reaped ${reaped} stale processing job(s)`);
-          void get().reconcileDocumentStatuses(workspaceId);
-        }
-      } catch {
-        // Watchdog is best-effort; polling continues regardless.
-      }
-    })();
+    void sweepStaleJobs(workspaceId, get().reconcileDocumentStatuses);
   },
 
   stopStatusPolling: () => {
@@ -497,3 +541,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({ _pollTimer: null });
   },
 }));
+
+registerSessionReset(() => {
+  useWorkspaceStore.getState().cleanupSubscriptions();
+  useWorkspaceStore.setState(useWorkspaceStore.getInitialState(), true);
+});

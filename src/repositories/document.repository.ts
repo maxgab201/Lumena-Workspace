@@ -1,9 +1,20 @@
 import { supabase } from '../lib/supabase';
 import { env } from '../config/env';
+import { DOCUMENTS_BUCKET } from '../config/storage';
+import { StorageRepository } from './storage.repository';
 import type { ProcessingJob } from '../types/processing';
 import type { WorkspaceDocument } from '../types/documents';
 
-const BUCKET = 'workspace_documents';
+const BUCKET = DOCUMENTS_BUCKET;
+const STORAGE_NOT_FOUND = 'The resource was not found';
+
+// supabase-js reuses a channel that shares a topic until its `leave` completes, and a
+// channel that is still closing never re-joins: the new subscription would be silently
+// dead. Unique topics guarantee every subscription gets a fresh channel.
+let channelSequence = 0;
+const nextChannelTopic = (prefix: string, workspaceId: string) =>
+  `${prefix}_${workspaceId}_${++channelSequence}`;
+
 
 interface UploadFileOptions {
   onProgress?: (progress: number) => void;
@@ -199,7 +210,7 @@ export const DocumentRepository = {
    */
   subscribeToProcessingJobs(workspaceId: string, onUpdate: (job: ProcessingJob) => void) {
     return supabase
-      .channel(`processing_jobs_${workspaceId}`)
+      .channel(nextChannelTopic('processing_jobs', workspaceId))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'processing_jobs', filter: `workspace_id=eq.${workspaceId}` },
@@ -213,7 +224,7 @@ export const DocumentRepository = {
     onUpdate: (eventType: 'INSERT' | 'UPDATE' | 'DELETE', document: WorkspaceDocument) => void,
   ) {
     return supabase
-      .channel(`documents_${workspaceId}`)
+      .channel(nextChannelTopic('documents', workspaceId))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'documents', filter: `workspace_id=eq.${workspaceId}` },
@@ -285,30 +296,26 @@ export const DocumentRepository = {
   },
 
   /**
-   * Delete a document record AND its corresponding storage object.
+   * Delete a document record AND its corresponding storage objects.
    * Always uses the workspace_documents bucket — callers should not need
    * to know which bucket is being used.
+   *
+   * The row goes first: if it cannot be deleted, the PDF must stay, otherwise
+   * the document would remain listed with no file behind it.
    */
-  async deleteDocument(id: string, filePath: string) {
-    // Delete from storage first. If the file is already gone, that's fine.
-    const { error: storageError } = await supabase.storage
-      .from(BUCKET)
-      .remove([filePath]);
-    // A 404 on storage is not a fatal error (file may have already been removed).
-    if (storageError && storageError.message !== 'The resource was not found') {
-      throw storageError;
-    }
-
+  async deleteDocument(id: string, filePath: string, thumbnailPath?: string | null) {
     const { error: dbError } = await supabase
       .from('documents')
       .delete()
       .eq('id', id);
     if (dbError) throw dbError;
+
+    await StorageRepository.removeDocumentObjects([filePath, ...(thumbnailPath ? [thumbnailPath] : [])]);
   },
 
   async removeFile(filePath: string) {
     const { error } = await supabase.storage.from(BUCKET).remove([filePath]);
-    if (error && error.message !== 'The resource was not found') throw error;
+    if (error && error.message !== STORAGE_NOT_FOUND) throw error;
   },
 
   /**
@@ -373,28 +380,23 @@ export const DocumentRepository = {
   async deleteDocumentsBulk(ids: string[]) {
     if (ids.length === 0) return;
 
-    // Get file paths for storage deletion
+    // Read the storage paths first: they are unreachable once the rows are gone.
     const { data: docs, error: fetchError } = await supabase
       .from('documents')
-      .select('id, file_path')
+      .select('id, file_path, thumbnail_path')
       .in('id', ids);
     if (fetchError) throw fetchError;
 
-    // Delete from storage
-    const filePaths = docs.map(doc => doc.file_path);
-    const { error: storageError } = await supabase.storage
-      .from(BUCKET)
-      .remove(filePaths);
-    if (storageError && storageError.message !== 'The resource was not found') {
-      throw storageError;
-    }
-
-    // Delete from database
+    // Rows first, files second (see deleteDocument).
     const { error: dbError } = await supabase
       .from('documents')
       .delete()
       .in('id', ids);
     if (dbError) throw dbError;
+
+    await StorageRepository.removeDocumentObjects(
+      (docs ?? []).flatMap(doc => [doc.file_path, ...(doc.thumbnail_path ? [doc.thumbnail_path] : [])]),
+    );
   },
 
   /**
