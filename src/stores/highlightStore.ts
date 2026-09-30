@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { HighlightRepository } from '../repositories/highlight.repository';
 import type { Highlight, HighlightCategory, NormalizedRect } from '../types/highlights';
 import { toast } from 'sonner';
+import { registerSessionReset } from './sessionReset';
 
 interface HighlightStoreState {
   // Highlights keyed by document_id
@@ -193,3 +194,7 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
     return null;
   },
 }));
+
+registerSessionReset(() => {
+  useHighlightStore.setState(useHighlightStore.getInitialState(), true);
+});

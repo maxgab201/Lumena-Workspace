@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { BillingRepository } from '../repositories/billing.repository';
 import { useWorkspaceStore } from './workspaceStore';
+import { registerSessionReset } from './sessionReset';
 
 interface Subscription {
   id: string;
@@ -124,3 +125,7 @@ export const useBillingStore = create<BillingStore>((set) => ({
     }
   },
 }));
+
+registerSessionReset(() => {
+  useBillingStore.setState(useBillingStore.getInitialState(), true);
+});

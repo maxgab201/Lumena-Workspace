@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 import { getDocumentProxy, getResolvedPDFJS } from "https://esm.sh/unpdf@1.3.2"
+import {
+  ACTIVE_JOB_STATUSES,
+  JobSupersededError,
+  createHeartbeat,
+  loadAllPageTexts,
+} from "../_shared/pipeline.ts"
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 const EMBEDDING_MODEL = "gemini-embedding-001" // 768 dims by default
@@ -189,14 +195,10 @@ async function extractPdfTextIncremental(
   const pdfjs = await getResolvedPDFJS()
   const totalPages = pdf.numPages
 
-  // 1. Load any pages already extracted by a previous (interrupted) attempt
-  const { data: cachedRows } = await supabaseClient
-    .from('document_page_texts')
-    .select('page_number, page_text')
-    .eq('document_id', documentId)
-    .order('page_number')
-  const cached = new Map<number, string>()
-  for (const row of cachedRows ?? []) cached.set(row.page_number, row.page_text)
+  // 1. Load any pages already extracted by a previous (interrupted) attempt.
+  // Paginated: one select only returns the first 1000 rows, which made documents with more
+  // pages than that re-extract the same pages and chain into themselves forever.
+  const cached = await loadAllPageTexts(supabaseClient, documentId)
 
   const pages: string[] = new Array(totalPages).fill('')
   let fromCache = 0
@@ -424,11 +426,10 @@ serve(async (req) => {
     // If the runtime kills this invocation mid-flight (CPU/memory limits),
     // the reap_stale_processing_jobs watchdog detects the stale heartbeat
     // and marks the job failed-with-retryable instead of an eternal spinner.
-    const heartbeat = (status: string, progress: number, extra: Record<string, unknown> = {}) =>
-      supabaseClient
-        .from('processing_jobs')
-        .update({ status, progress, progress_heartbeat: new Date().toISOString(), ...extra })
-        .eq('id', jobId)
+    // It only writes while the job is still active: when the job was cancelled (Retry
+    // replaces it) it throws JobSupersededError and this run stops instead of
+    // resurrecting the cancelled job and racing its replacement.
+    const heartbeat = createHeartbeat(supabaseClient, job.id)
 
     await heartbeat('inspecting', 10, { started_at: new Date(startTime).toISOString() })
 
@@ -504,6 +505,7 @@ serve(async (req) => {
       pages = extraction.pages
       console.log(`Extracted text from ${extraction.totalPages} pages (${extraction.fromCache} resumed from checkpoint)`)
     } catch (extractError: any) {
+      if (extractError instanceof JobSupersededError) throw extractError
       throw new Error('PDF text extraction failed: ' + (extractError?.message || 'unknown error'))
     }
 
@@ -522,6 +524,9 @@ serve(async (req) => {
     const hasNoNativeText = extractedText.replace(/\s+/g, '').length < 32
     if (hasNoNativeText) {
       console.warn('No extractable text — scanned document. Completing core processing; OCR text will come from the client.')
+
+      // Last liveness check before touching the document: a cancelled job must not mark it ready.
+      await heartbeat('processing', 95)
 
       await supabaseClient
         .from('documents')
@@ -544,6 +549,7 @@ serve(async (req) => {
           processing_time: Math.round((Date.now() - startTime) / 1000),
         })
         .eq('id', jobId)
+        .in('status', ACTIVE_JOB_STATUSES)
 
       console.log(`Job ${jobId} completed (scanned document, core-only). Client OCR will supply text.`)
       return new Response(JSON.stringify({ success: true, jobId, scanned: true }), {
@@ -677,6 +683,9 @@ serve(async (req) => {
       }
     }
 
+    // Last liveness check before touching the document: a cancelled job must not mark it ready.
+    await heartbeat('processing', 95)
+
     // Update document: the reading experience is READY as soon as text
     // extraction (core) succeeded, regardless of the AI embedding outcome.
     await supabaseClient
@@ -767,6 +776,7 @@ serve(async (req) => {
         processing_time: Math.round((Date.now() - startTime) / 1000),
       })
       .eq('id', jobId)
+      .in('status', ACTIVE_JOB_STATUSES)
 
     console.log(`Job ${jobId} completed successfully in ${Math.round((Date.now() - startTime) / 1000)}s. Cost: ${actualCost} credits (core processing).`)
 
@@ -776,6 +786,18 @@ serve(async (req) => {
     })
 
   } catch (error: any) {
+    if (error instanceof JobSupersededError) {
+      // The job was cancelled (Retry) or finished elsewhere: its replacement owns the document
+      // now, so this run must not flag the document as failed or touch the job any more.
+      // Core processing is unmetered (DOCUMENT_PROCESSING_CREDIT_COST = 0), so no reservation
+      // is left dangling.
+      console.log(`Job ${jobId} superseded — stopping this run without touching its status`)
+      return new Response(JSON.stringify({ success: true, jobId, superseded: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      })
+    }
+
     console.error('Processing job failed:', error)
 
     // Attempt to refund reserved credits on failure.
@@ -830,7 +852,9 @@ serve(async (req) => {
           })
         }
 
-        await supabaseClient
+        // Only fail a job that is still active, and only then flag the document: a
+        // cancelled job's late failure must not overwrite what its replacement is doing.
+        const { data: failedRows } = await supabaseClient
           .from('processing_jobs')
           .update({
             status: 'failed',
@@ -838,8 +862,10 @@ serve(async (req) => {
             progress_heartbeat: new Date().toISOString(),
           })
           .eq('id', jobId)
+          .in('status', ACTIVE_JOB_STATUSES)
+          .select('id')
 
-        if (documentId) {
+        if (documentId && failedRows && failedRows.length > 0) {
           await supabaseClient
             .from('documents')
             .update({ status: 'error' })

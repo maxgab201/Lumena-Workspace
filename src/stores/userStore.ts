@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { AuthRepository } from '../repositories/auth.repository';
 import { supabase } from '../lib/supabase';
+import { resetUserScopedState } from './sessionReset';
+import { useUiStore } from './uiStore';
 import type { User } from '@supabase/supabase-js';
 
 interface UserStore {
@@ -42,14 +44,36 @@ export const useUserStore = create<UserStore>((set, get) => ({
       });
 
     // Subscribe to auth state changes - this is the source of truth
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return;
+      const previousUserId = get().user?.id ?? null;
+      const nextUser = session?.user ?? null;
+      const accountChanged = previousUserId !== (nextUser?.id ?? null);
+
+      // The session ended or another account took over: whatever is cached in the
+      // stores now belongs to someone else and must not be shown to the new user.
+      if (event === 'SIGNED_OUT' || (accountChanged && previousUserId !== null)) {
+        resetUserScopedState();
+      }
+
+      // Token refresh, tab refocus, metadata update: same account, profile already loaded.
+      if (!accountChanged && nextUser) {
+        set({ user: nextUser, loading: false });
+        return;
+      }
+
       let profile = null;
-      if (session?.user) {
-        const { data } = await supabase.from('profiles').select('name, avatar_url').eq('id', session.user.id).single();
+      if (nextUser) {
+        const { data } = await supabase.from('profiles').select('name, avatar_url').eq('id', nextUser.id).single();
         profile = data;
       }
-      set({ user: session?.user ?? null, profile, loading: false });
+      set({ user: nextUser, profile, loading: false });
+
+      // App loads settings once at mount, before anyone is signed in. Without this an
+      // account that signs in afterwards keeps default (or the previous account's)
+      // theme, language and dashboard preferences until the page is reloaded.
+      // INITIAL_SESSION is excluded on purpose: App's mount-time load already covers it.
+      if (event === 'SIGNED_IN' && nextUser) void useUiStore.getState().loadSettings();
     });
 
     // Cleanup function
@@ -158,6 +182,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       await AuthRepository.signOut();
+      resetUserScopedState();
       set({ user: null, profile: null, loading: false });
     } catch (err: any) {
       set({ error: err.message, loading: false });

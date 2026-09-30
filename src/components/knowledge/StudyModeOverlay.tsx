@@ -2,6 +2,9 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useKnowledgeStore } from '../../stores/knowledgeStore';
 import { useViewerStore } from '../../stores/viewerStore';
 import { usePageRegistryStore } from '../../stores/pageRegistryStore';
+import { useChatStore } from '../../stores/chatStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { buildStudyQaRequest } from '../../lib/studyQa';
 import { supabase } from '../../lib/supabase';
 import { Button } from '../ui/Button';
 import {
@@ -172,21 +175,16 @@ const currentPageData = pages[currentPage - 1];
         ...docTimeline.map((t: TimelineEvent) => `${t.date_str}: ${t.description}`),
       ].filter(Boolean).join('\n\n');
 
-      const systemPrompt = `You are a helpful study assistant. Answer questions based on the provided document context.
-
-Document Context:
-${contextChunks}
-
-Instructions:
-- Answer based on the document context provided
-- If the answer isn't in the context, say so
-- Cite specific parts of the document when possible
-- Be concise but comprehensive`;
-
       const session = await supabase.auth.getSession();
       const { data: { session: currentSession } } = session;
 
       if (!currentSession) throw new Error('No active session');
+
+      // The chat session remembers the workspace of the document being read; the one selected
+      // in the sidebar is only a fallback. (This used to send the USER id as the workspace.)
+      const workspaceId = useChatStore.getState().sessions[documentId]?.workspace_id
+        ?? useWorkspaceStore.getState().activeWorkspace?.id;
+      if (!workspaceId) throw new Error('No workspace available for this document');
 
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-gateway`, {
         method: 'POST',
@@ -194,15 +192,13 @@ Instructions:
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${currentSession.access_token}`,
         },
-        body: JSON.stringify({
-          prompt: userMessage,
-          workspace_id: (await supabase.auth.getUser()).data.user?.id,
-          action_type: 'chat',
-          model_code: 'gemini-flash-latest',
-          document_id: documentId,
-          context: { systemPrompt, ragChunks: [] },
-          stream: false,
-        }),
+        body: JSON.stringify(buildStudyQaRequest({
+          question: userMessage,
+          material: contextChunks,
+          documentId,
+          workspaceId,
+          modelCode: useChatStore.getState().selectedModel,
+        })),
       });
 
       if (!response.ok) throw new Error('Failed to get answer');

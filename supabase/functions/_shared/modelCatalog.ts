@@ -153,7 +153,7 @@ export async function resolvePlan(
   return data?.plan_code === 'pro' ? 'pro' : 'free'
 }
 
-export function quotaInfo(used: number): { limit: number; resets_at: string } {
+export function quotaInfo(_used: number): { limit: number; resets_at: string } {
   // Resets at 00:00 UTC of the next day.
   const now = new Date()
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0))

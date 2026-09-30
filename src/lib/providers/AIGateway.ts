@@ -10,7 +10,7 @@ export class AIGateway {
    */
   static async generate(prompt: string, context?: any, modelCode: string = 'gemini-3.6-flash'): Promise<{ text: string, usage?: any }> {
     const account = useBillingStore.getState().account;
-    const workspaceId = useWorkspaceStore.getState().activeWorkspace?.id;
+    const workspaceId = context?.workspaceId ?? context?.workspace_id ?? useWorkspaceStore.getState().activeWorkspace?.id;
 
     if (!workspaceId) {
       throw new Error('No active workspace selected.');
@@ -67,19 +67,20 @@ export class AIGateway {
     onChunk: (chunk: string) => void,
     signal?: AbortSignal
   ): Promise<{ text: string; usage?: any }> {
-    // Viewer routes can be opened directly, before the dashboard has hydrated
-    // the workspace store. The chat context already carries the session's
-    // workspace, so use it as the authoritative fallback for streaming. If
-    // both are missing, hydrate the store once before giving up — never send
-    // a placeholder id, the backend's usage_jobs FK would reject it.
-    let workspaceId = useWorkspaceStore.getState().activeWorkspace?.id ?? context?.workspaceId ?? context?.workspace_id;
+    // The chat context carries the workspace of the document being read, and it wins over
+    // the one selected in the sidebar: a viewer opened from a link (or reloaded) can belong
+    // to another workspace, and the backend rejects a document that is not part of the
+    // workspace it is given. The active workspace is only a fallback. If both are missing,
+    // hydrate the store once before giving up — never send a placeholder id, the backend's
+    // usage_jobs FK would reject it.
+    let workspaceId = context?.workspaceId ?? context?.workspace_id ?? useWorkspaceStore.getState().activeWorkspace?.id;
     if (!workspaceId) {
       try {
         await useWorkspaceStore.getState().fetchWorkspaces();
       } catch {
         // Non-fatal: the explicit error below is the useful signal
       }
-      workspaceId = useWorkspaceStore.getState().activeWorkspace?.id ?? context?.workspaceId ?? context?.workspace_id;
+      workspaceId = context?.workspaceId ?? context?.workspace_id ?? useWorkspaceStore.getState().activeWorkspace?.id;
     }
 
     if (!workspaceId) {

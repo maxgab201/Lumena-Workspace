@@ -9,6 +9,7 @@ import {
   resolvePageReference,
   type PageLabelSource,
 } from '../lib/pageMapping';
+import { registerSessionReset } from './sessionReset';
 
 interface SearchMatch {
   pageIndex: number;
@@ -228,3 +229,7 @@ export const useViewerStore = create<ViewerStoreState>((set, get) => ({
   clearSearch: () => set({ searchQuery: '', searchResults: [], currentMatchIndex: 0, isSearchActive: false }),
   goToMatch: (match) => get().setCurrentPage(match.pageNumber),
 }));
+
+registerSessionReset(() => {
+  useViewerStore.getState().reset();
+});

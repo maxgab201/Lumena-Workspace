@@ -10,6 +10,7 @@ import type {
   Concept,
   Event,
 } from '../types/knowledge';
+import { registerSessionReset } from './sessionReset';
 
 interface KnowledgeStoreState {
   // All keyed by document_id
@@ -540,3 +541,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
     }
   },
 }));
+
+registerSessionReset(() => {
+  useKnowledgeStore.setState(useKnowledgeStore.getInitialState(), true);
+});
