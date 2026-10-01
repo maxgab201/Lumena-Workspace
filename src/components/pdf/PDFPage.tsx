@@ -1,6 +1,8 @@
 import React from 'react';
 import { Page } from 'react-pdf';
 import { useViewerStore } from '../../stores/viewerStore';
+import { usePageRegistryStore } from '../../stores/pageRegistryStore';
+import { effectiveRotation, normalizeRotation } from '../../lib/pageRotation';
 import { useShallow } from 'zustand/react/shallow';
 import { LayoutOverlay } from './overlays/LayoutOverlay';
 import { OCROverlay } from './overlays/OCROverlay';
@@ -25,6 +27,8 @@ export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) =>
     pageLabels: state.pageLabels,
   })));
 
+  const intrinsicRotation = usePageRegistryStore((state) => state.pages[pageIndex]?.intrinsicRotation);
+
   const pageNumber = pageIndex + 1;
   const targetWidth = Math.max(100, Math.floor(width * scale));
   const pageLabel = pageLabels[pageIndex] ?? String(pageNumber);
@@ -47,7 +51,12 @@ export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) =>
         <Page
           pageNumber={pageNumber}
           width={targetWidth}
-          rotate={rotation}
+          // Until the page reports its own /Rotate, let react-pdf use it (the same value for an unrotated view).
+          rotate={intrinsicRotation === undefined ? undefined : effectiveRotation(intrinsicRotation, rotation)}
+          onLoadSuccess={(page) => {
+            const own = normalizeRotation(page.rotate);
+            if (own !== intrinsicRotation) usePageRegistryStore.getState().updatePage(pageIndex, { intrinsicRotation: own });
+          }}
           renderTextLayer={true}
           renderAnnotationLayer={false}
           className="pdf-page bg-white"

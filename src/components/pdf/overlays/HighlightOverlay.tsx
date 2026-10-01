@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useHighlightStore } from '../../../stores/highlightStore';
 import { useViewerStore } from '../../../stores/viewerStore';
+import { usePageRegistryStore } from '../../../stores/pageRegistryStore';
+import { effectiveRotation } from '../../../lib/pageRotation';
 import { HighlightEngine } from '../../../lib/processing/HighlightEngine';
 import { cn } from '../../../lib/utils';
 import { useShallow } from 'zustand/react/shallow';
@@ -16,6 +18,7 @@ export const HighlightOverlay = ({ pageIndex }: HighlightOverlayProps) => {
     showOverlays: state.showOverlays,
     rotation: state.rotation,
   })));
+  const intrinsicRotation = usePageRegistryStore((state) => state.pages[pageIndex]?.intrinsicRotation);
   const { activeHighlightId, setActiveHighlight } = useHighlightStore(useShallow(state => ({
     activeHighlightId: state.activeHighlightId,
     setActiveHighlight: state.setActiveHighlight,
@@ -36,6 +39,9 @@ export const HighlightOverlay = ({ pageIndex }: HighlightOverlayProps) => {
   if (!documentId || !showOverlays) return null;
   if (highlights.length === 0) return null;
 
+  // The page's own /Rotate plus the user's rotation: what the canvas is actually drawn at.
+  const displayRotation = effectiveRotation(intrinsicRotation, rotation);
+
   // Canonical (unrotated, normalized) rects are transformed to the CURRENT
   // rotation at render time. Zoom needs no transform here: the overlay is a
   // child of the page wrapper, so percentages scale with it automatically.
@@ -48,7 +54,7 @@ export const HighlightOverlay = ({ pageIndex }: HighlightOverlayProps) => {
       {highlights.map((highlight) => {
         const isActive = activeHighlightId === highlight.id;
         const hasNote = Boolean(highlight.note && highlight.note.trim().length > 0);
-        const renderedRects = HighlightEngine.canonicalRectsToRendered(highlight.rects, rotation);
+        const renderedRects = HighlightEngine.canonicalRectsToRendered(highlight.rects, displayRotation);
 
         return (
           <div
