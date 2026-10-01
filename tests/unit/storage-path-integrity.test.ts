@@ -103,3 +103,21 @@ describe('document file_path stays inside its workspace prefix', () => {
     expect(path.split('/')).toHaveLength(2);
   });
 });
+
+describe('describeUploadFailure', () => {
+  // Real response of Storage when two tabs upload the same file at the same moment (production, QA account).
+  const duplicate = JSON.stringify({ statusCode: '409', error: 'Duplicate', message: 'The resource already exists' });
+
+  it('says a file that lost the race for its path is already in the workspace', async () => {
+    const { describeUploadFailure } = await import('../../src/repositories/document.repository');
+    expect(describeUploadFailure(400, duplicate, 'report.pdf')).toBe('“report.pdf” is already in this workspace.');
+    expect(describeUploadFailure(409, duplicate)).toBe('“This file” is already in this workspace.');
+  });
+
+  it('keeps Storage\'s own message for other refusals, and falls back to the status', async () => {
+    const { describeUploadFailure } = await import('../../src/repositories/document.repository');
+    expect(describeUploadFailure(403, JSON.stringify({ statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy' }))).toBe('new row violates row-level security policy');
+    expect(describeUploadFailure(413, '<html>too large</html>')).toBe('Upload failed (413)');
+    expect(describeUploadFailure(500, '')).toBe('Upload failed (500)');
+  });
+});

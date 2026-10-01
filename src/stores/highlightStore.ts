@@ -134,10 +134,14 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
       });
       set((state) => {
         const existing = state.highlights[highlightData.document_id] ?? [];
+        // A refresh made while this save was in flight may already have brought the new highlight in.
+        const next = existing.some((h) => h.id === created.id)
+          ? existing.map((h) => (h.id === created.id ? created : h))
+          : [...existing, created];
         return {
           highlights: {
             ...state.highlights,
-            [highlightData.document_id]: [...existing, created],
+            [highlightData.document_id]: next,
           },
         };
       });

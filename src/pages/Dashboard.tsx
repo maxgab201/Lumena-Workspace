@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { t } from '../i18n';
 import { useLanguage } from '../hooks/useLanguage';
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn';
 import { getDocumentStage, hasLimitedAiSearch, isDocumentReady, type DocumentStage } from '../types/documents';
 import {
   DropdownMenu,
@@ -144,6 +145,12 @@ export const Dashboard = () => {
   useEffect(() => {
     fetchWorkspaces();
   }, [fetchWorkspaces]);
+
+  // Another tab or device may have added, deleted or changed documents while this tab was in the background.
+  useRefreshOnReturn(() => {
+    const { activeWorkspace: current, reconcileDocumentStatuses } = useWorkspaceStore.getState();
+    if (current) void reconcileDocumentStatuses(current.id);
+  });
 
   // Resolve thumbnail storage paths to signed URLs
   const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});

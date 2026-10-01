@@ -17,6 +17,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn';
 
 interface DocumentMeta {
   id: string;
@@ -121,6 +122,11 @@ export const Viewer = () => {
       reset();
     };
   }, [documentId, reset, setDocumentId, loadDocument]);
+
+  // Highlights made in another tab or on another device while this one was in the background.
+  useRefreshOnReturn(() => {
+    if (documentId) void loadHighlights(documentId);
+  });
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '—';

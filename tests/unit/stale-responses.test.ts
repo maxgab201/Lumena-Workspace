@@ -252,6 +252,18 @@ describe('highlights: a failed save only undoes its own change', () => {
     expect(a().note).toBeNull();
   });
 
+  it('a highlight a refresh already brought in is not added a second time when its own save returns', async () => {
+    vi.mocked(HighlightRepository.createHighlight).mockImplementation((async () => {
+      // the user comes back to the tab while this save is in flight: the refresh lists the new row already
+      useHighlightStore.setState({ highlights: { 'doc-1': [highlight('A'), highlight('B'), highlight('C'), highlight('NEW')] } });
+      return highlight('NEW');
+    }) as never);
+
+    await useHighlightStore.getState().addHighlight({ document_id: 'doc-1', workspace_id: 'ws-1', page_index: 0, rects: [], text: 'new', color: '#fff' });
+
+    expect(ids()).toEqual(['A', 'B', 'C', 'NEW']);
+  });
+
   it('a failed delete of the active highlight makes it active again', async () => {
     vi.mocked(HighlightRepository.deleteHighlight).mockRejectedValue(new Error('offline'));
     useHighlightStore.setState({ activeHighlightId: 'B' });
