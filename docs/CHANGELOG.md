@@ -155,6 +155,11 @@ Last Updated: 2026-09-02
 - Opening the chat could log a 409 on `POST /chat_sessions` and fail the session load: two callers raced past the "does a session exist?" lookup and the loser hit the `(document_id, user_id)` unique constraint. It now reads the session the winner created.
 - **A member could point a document at another workspace's Storage prefix.** `move_document_workspace` stored any `p_new_file_path`, and the documents UPDATE policy has no column restriction; `process-document` downloads `file_path` with the service-role key. New migration `20261001000001_documents_file_path_in_workspace_prefix.sql` adds `CHECK (file_path LIKE workspace_id::text || '/%')`, which closes every writer at once (the 27 existing rows already conformed). Verified live: the RPC with a foreign path and a direct PATCH both fail with 23514, renaming inside the own prefix and a legitimate A↔B move still work.
 
+### Security
+
+- The hosting config now sends `X-Frame-Options: DENY` (and CSP `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and a `Permissions-Policy` that turns off camera, microphone and geolocation. Production sent only HSTS, so the app could be framed (clickjacking). A script-src CSP is deliberately not added: PDF.js and Tesseract load code and data from unpkg/jsDelivr, and it needs its own rollout.
+- Pinned that assistant output (hostile input, built from PDF text) renders without raw HTML and without `javascript:`/`data:` links.
+
 ### Verified in production
 
 - Live attack matrix with a second QA account against the first one's real data: all 49 public tables read as the other user and as anonymous (none returns the victim's workspace id, user id or content); cross-workspace writes (documents, highlights, flashcards, chat, jobs, memberships, workspace name/delete, self-promotion to owner); billing and quota tampering in the attacker's own workspace (plan, credits, ledger, daily quota, rate limits, purchases, `consume_ai_request`); Storage sign/download/list/upload/move/copy/remove across prefixes, in both directions. Every attempt is refused.
