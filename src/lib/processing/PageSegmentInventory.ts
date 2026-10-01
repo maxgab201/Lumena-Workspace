@@ -1,5 +1,6 @@
 import { pdfjs } from 'react-pdf';
 import type { NormalizedRect } from '../../types/highlights';
+import { rectToCanonical, type RightAngle } from '../pageRotation';
 
 // Vite replaces `?url` imports with a URL string at build time. In Node
 // (unit tests) the setup script exposes the worker file URL on globalThis.
@@ -143,8 +144,9 @@ export class PageSegmentInventory {
 
   /**
    * Merge OCR results for the scanned pages into the inventory format.
-   * OCR words arrive with pixel bboxes on the rasterized page (rendered at
-   * rotation 0), so normalization is a direct division by raster dimensions.
+   * OCR words arrive with pixel bboxes on the rasterized page as it was drawn
+   * (`rotation`, the page's own /Rotate), so normalization is a division by the
+   * raster dimensions, then a map onto the unrotated page when `rotation` is not 0.
    */
   static buildOcrSegments(
     pageNumber: number,
@@ -152,15 +154,28 @@ export class PageSegmentInventory {
     rasterWidth: number,
     rasterHeight: number,
     groupLines = true,
+    rotation: RightAngle = 0,
   ): PageSegment[] {
     if (ocrWords.length === 0) return [];
 
-    const norm = (b: [number, number, number, number]): NormalizedRect => ({
-      x: Number(Math.max(0, Math.min(1, b[0] / rasterWidth)).toFixed(5)),
-      y: Number(Math.max(0, Math.min(1, b[1] / rasterHeight)).toFixed(5)),
-      width: Number(Math.max(0, Math.min(1, (b[2] - b[0]) / rasterWidth)).toFixed(5)),
-      height: Number(Math.max(0, Math.min(1, (b[3] - b[1]) / rasterHeight)).toFixed(5)),
-    });
+    // Words and lines live on the raster as it was drawn (`rotation`, upright for a scan stored
+    // sideways); only the finished rect goes to the canonical frame.
+    const norm = (b: [number, number, number, number]): NormalizedRect => {
+      const drawn: NormalizedRect = {
+        x: Number(Math.max(0, Math.min(1, b[0] / rasterWidth)).toFixed(5)),
+        y: Number(Math.max(0, Math.min(1, b[1] / rasterHeight)).toFixed(5)),
+        width: Number(Math.max(0, Math.min(1, (b[2] - b[0]) / rasterWidth)).toFixed(5)),
+        height: Number(Math.max(0, Math.min(1, (b[3] - b[1]) / rasterHeight)).toFixed(5)),
+      };
+      if (rotation === 0) return drawn;
+      const canonical = rectToCanonical(drawn, rotation);
+      return {
+        x: Number(canonical.x.toFixed(5)),
+        y: Number(canonical.y.toFixed(5)),
+        width: Number(canonical.width.toFixed(5)),
+        height: Number(canonical.height.toFixed(5)),
+      };
+    };
 
     if (!groupLines) {
       return ocrWords.map((w, i) => ({

@@ -98,6 +98,8 @@ export interface PageData {
   annotationStatus: 'idle' | 'loading' | 'ready';
   /** Page rotation override (if different from global) */
   rotation: number;
+  /** The page's own /Rotate from the PDF (0/90/180/270). Undefined until the page has loaded. */
+  intrinsicRotation?: number;
   /** Page scale override (if different from global) */
   scale: number;
   /** Cached measurements for virtualization */

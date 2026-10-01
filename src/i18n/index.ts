@@ -1,6 +1,7 @@
 import en from './en';
 import es from './es';
 import type { TranslationKey } from './en';
+import { readStorage, writeStorage } from '../lib/safeStorage';
 
 export type Language = 'en' | 'es';
 
@@ -12,7 +13,7 @@ const dictionaries: Record<Language, Record<TranslationKey, string>> = {
 function detectInitialLanguage(): Language {
   if (typeof window === 'undefined') return 'en';
 
-  const stored = window.localStorage.getItem('lumena-lang');
+  const stored = readStorage('lumena-lang');
   if (stored === 'en' || stored === 'es') return stored;
 
   return window.navigator.language.toLowerCase().startsWith('es') ? 'es' : 'en';
@@ -30,7 +31,7 @@ export function getLanguage(): Language {
 export function setLanguage(lang: Language): void {
   currentLang = lang;
   if (typeof window !== 'undefined') {
-    window.localStorage.setItem('lumena-lang', lang);
+    writeStorage('lumena-lang', lang);
     window.dispatchEvent(new CustomEvent('languagechange', { detail: { lang } }));
   }
   if (typeof document !== 'undefined') {

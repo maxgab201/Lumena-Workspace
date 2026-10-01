@@ -2,8 +2,9 @@ import { serve } from "https://deno.land/std@0.192.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3"
 import { ProviderRouter } from "./router.ts"
 import type { AIProvider } from "./providers/Provider.ts"
-import { getCatalog, FREE_DAILY_LIMIT } from "../_shared/modelCatalog.ts"
+import { getCatalog, FREE_DAILY_LIMIT, resolveChatPricing } from "../_shared/modelCatalog.ts"
 import { CHAT_SYSTEM_PROMPT, buildPromptWithRAG } from "../_shared/chatPrompt.ts"
+import { createQuotaRefund } from "../_shared/quota.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -118,6 +119,10 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  // Set once a Free-plan quota unit has been taken: gives it back when the request ends without
+  // an answer (every provider failed, or the request was refused after the quota was consumed).
+  let refundQuota: (() => Promise<void>) | null = null
+
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -142,6 +147,11 @@ serve(async (req) => {
 
     if (!prompt || !workspace_id) {
       return new Response(JSON.stringify({ error: 'Missing prompt or workspace_id' }), { status: 400, headers: corsHeaders })
+    }
+    // Types are part of the contract: a numeric prompt has no .length, slipped past the size
+    // check below and reached the provider (500 after spending a quota unit).
+    if (typeof prompt !== 'string' || typeof workspace_id !== 'string') {
+      return new Response(JSON.stringify({ error: 'prompt and workspace_id must be strings' }), { status: 400, headers: corsHeaders })
     }
 
     if (prompt.length < MIN_PROMPT_LENGTH || prompt.length > MAX_PROMPT_LENGTH) {
@@ -227,6 +237,7 @@ serve(async (req) => {
           request_id,
         }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       }
+      refundQuota = createQuotaRefund(supabaseClient, workspace_id)
     }
 
     // ==========================================
@@ -271,6 +282,7 @@ serve(async (req) => {
           severity: 'MEDIUM',
           metadata: { limit: ACTION_LIMIT, metric: 'actions_per_hour' }
         });
+        await refundQuota?.()
         return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }), { status: 429, headers: corsHeaders });
       }
       await supabaseClient.from('rate_limit_counters').update({ count: existingLimit.count + 1 }).eq('id', existingLimit.id);
@@ -306,6 +318,7 @@ serve(async (req) => {
         severity: 'HIGH',
         metadata: { cap: DAILY_CREDIT_CAP, consumed: totalConsumedToday }
       });
+      await refundQuota?.()
       return new Response(JSON.stringify({ error: 'Daily credit cap reached. Circuit breaker tripped.' }), { status: 403, headers: corsHeaders });
     }
 
@@ -331,6 +344,7 @@ serve(async (req) => {
       allowedChatModels.has(m) && all.indexOf(m) === index
     );
     if (chain.length === 0) {
+      await refundQuota?.()
       return new Response(JSON.stringify({ error: 'No allowed chat model is available for this plan.', request_id }), {
         status: 503,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -350,11 +364,17 @@ serve(async (req) => {
           .eq('is_active', true)
           .single()
 
-        if (modelError || !modelData || !modelData.provider_pricing || modelData.provider_pricing.length === 0) {
+        // Free models the catalog discovers at runtime have no registry row: they run unmetered
+        // instead of failing; a model without a price that is not Free is still refused.
+        const resolved = resolveChatPricing(
+          modelError ? null : modelData,
+          catalog.find((m) => m.model_id === currentModelCode),
+        )
+        if (!resolved) {
           throw new Error(`Model ${currentModelCode} not found or inactive`)
         }
 
-        const pricing = modelData.provider_pricing[0]
+        const pricing = resolved.pricing
         const estimatedInputTokens = Math.max(10, Math.ceil(prompt.length / 4))
         const estimatedOutputTokens = 1000
 
@@ -392,7 +412,7 @@ serve(async (req) => {
             workspace_id,
             document_id,
             action_type,
-            model_id: modelData.id,
+            model_id: resolved.modelId,
             status: 'pending'
           })
           .select('id')
@@ -528,6 +548,7 @@ serve(async (req) => {
     })
 
   } catch (err: any) {
+    await refundQuota?.()
     console.error('AI Gateway error:', { request_id, error: err.message || err, workspace_id: null, action_type: null, model: null, fallback_reason: err.message || 'unknown', duration_ms: 0 })
 
     if (err.status === 402) {

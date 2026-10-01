@@ -12,6 +12,7 @@ import { parseCreateHighlightsAction, type CreateHighlightsAction } from '../lib
 import { highlightActionResultText, resolveChatLanguage, type ChatLanguage } from '../lib/chatLanguage';
 import { extractPageReferenceRange, pageLabelFor, resolvePageRange } from '../lib/pageMapping';
 import { registerSessionReset } from './sessionReset';
+import { readStorage } from '../lib/safeStorage';
 
 export interface ChatActionRuntime {
   fileUrl?: string;
@@ -139,9 +140,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
           throw new Error('The PDF viewer context is not ready for highlighting yet.');
         }
 
-        const preferredHighlightModel = typeof window !== 'undefined'
-          ? (window.localStorage.getItem('lumena.ai-highlight.model') || 'gemini-3.5-flash-lite')
-          : 'gemini-3.5-flash-lite';
+        const preferredHighlightModel = readStorage('lumena.ai-highlight.model') || 'gemini-3.5-flash-lite';
 
         const authorized = await authorizeCreateHighlightsAction(
           highlightAction,

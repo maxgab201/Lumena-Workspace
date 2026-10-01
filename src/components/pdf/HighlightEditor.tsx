@@ -36,6 +36,9 @@ export const HighlightEditor = ({ workspaceId }: { workspaceId?: string }) => {
   const [noteText, setNoteText] = useState('');
   const [selectedColor, setSelectedColor] = useState('#fef08a');
   const toolbarRef = useRef<HTMLDivElement>(null);
+  // A double-click on a colour fires two click events before the first save returns and the
+  // selection is cleared; without this guard each one inserted the same highlight.
+  const savingRef = useRef(false);
 
   const resolvedWorkspaceId = workspaceId || activeWorkspace?.id || '';
 
@@ -94,22 +97,31 @@ export const HighlightEditor = ({ workspaceId }: { workspaceId?: string }) => {
   }, []);
 
   const handleCreateHighlight = async (color: string, note?: string) => {
-    if (!selectionData || !documentId) return;
+    if (!selectionData || !documentId || savingRef.current) return;
 
     if (!resolvedWorkspaceId) {
       toast.error('No workspace active to save highlight');
       return;
     }
 
-    await addHighlight({
-      document_id: documentId,
-      workspace_id: resolvedWorkspaceId,
-      page_index: selectionData.pageIndex,
-      rects: selectionData.rects,
-      text: selectionData.text,
-      color,
-      note: note && note.trim().length > 0 ? note.trim() : undefined,
-    });
+    savingRef.current = true;
+    let created: Awaited<ReturnType<typeof addHighlight>>;
+    try {
+      created = await addHighlight({
+        document_id: documentId,
+        workspace_id: resolvedWorkspaceId,
+        page_index: selectionData.pageIndex,
+        rects: selectionData.rects,
+        text: selectionData.text,
+        color,
+        note: note && note.trim().length > 0 ? note.trim() : undefined,
+      });
+    } finally {
+      savingRef.current = false;
+    }
+
+    // The store already told the user why a save failed; keep the selection so one click retries it.
+    if (!created) return;
 
     // Clear selection
     window.getSelection()?.removeAllRanges();

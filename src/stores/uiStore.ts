@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { SettingsRepository } from '../repositories/settings.repository';
 import { supabase } from '../lib/supabase';
 import { getLanguage, setLanguage, type Language } from '../i18n';
+import { readStorage } from '../lib/safeStorage';
 
 interface UiStore {
   theme: 'light' | 'dark' | 'system';
@@ -173,7 +174,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
     }
 
     // Fallback: localStorage
-    const cachedTheme = (localStorage.getItem('theme') as 'light' | 'dark' | 'system') ?? 'system';
+    const cachedTheme = (readStorage('theme') as 'light' | 'dark' | 'system' | null) ?? 'system';
     await get().setTheme(cachedTheme);
   },
 }));

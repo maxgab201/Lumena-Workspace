@@ -5,6 +5,7 @@ import { AiHighlightService, type AiDensity, type AiScope, type AiHighlightProgr
 import { cn } from '../../lib/utils';
 import { ModelSelectorPanel } from '../chat/ModelSelectorPanel';
 import { useBillingStore } from '../../stores/billingStore';
+import { readStorage, writeStorage } from '../../lib/safeStorage';
 
 interface AiHighlightPanelProps {
   documentId: string;
@@ -23,9 +24,7 @@ export const AiHighlightPanel = ({ documentId, workspaceId, fileUrl, currentPage
   const [scope, setScope] = useState<AiScope>('document');
   const [density, setDensity] = useState<AiDensity>('normal');
   const [selectedModel, setSelectedModel] = useState(() =>
-    typeof window !== 'undefined'
-      ? (window.localStorage.getItem('lumena.ai-highlight.model') || 'gemini-3.5-flash-lite')
-      : 'gemini-3.5-flash-lite'
+    readStorage('lumena.ai-highlight.model') || 'gemini-3.5-flash-lite'
   );
   const currentPlan = useBillingStore((state) => state.subscription?.plan?.code === 'pro' ? 'pro' : 'free');
   const [running, setRunning] = useState(false);
@@ -156,9 +155,7 @@ export const AiHighlightPanel = ({ documentId, workspaceId, fileUrl, currentPage
               selectedModel={selectedModel}
               onChange={(modelId) => {
                 setSelectedModel(modelId);
-                if (typeof window !== 'undefined') {
-                  window.localStorage.setItem('lumena.ai-highlight.model', modelId);
-                }
+                writeStorage('lumena.ai-highlight.model', modelId);
               }}
               plan={currentPlan}
               capability="ai_highlight"

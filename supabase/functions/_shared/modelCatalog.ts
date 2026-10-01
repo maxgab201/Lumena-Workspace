@@ -123,6 +123,17 @@ export async function getCatalog(): Promise<CatalogModel[]> {
       fetchGeminiAvailable().catch(() => new Set<string>()),
     ])
     dynamic.push(...orModels)
+    // OpenRouter retires ':free' slugs without notice (production: 2026-09-30, the seeded Nex
+    // model answered 404 "unavailable for free" while still offered in the picker). When the
+    // live list is healthy, a seeded OpenRouter model it no longer contains is not offered.
+    if (orModels.length > 0) {
+      const live = new Set(orModels.map((m) => m.model_id))
+      for (const m of STATIC_CATALOG) {
+        if (m.provider === 'openrouter' && !live.has(m.model_id)) {
+          dynamic.push({ ...m, available: false })
+        }
+      }
+    }
     // Mark Gemini whitelist models unavailable only if ListModels worked and
     // explicitly does not know them (avoids offering dead models).
     if (geminiIds.size > 0) {
@@ -151,6 +162,30 @@ export async function resolvePlan(
     .eq('workspace_id', workspaceId)
     .single()
   return data?.plan_code === 'pro' ? 'pro' : 'free'
+}
+
+/** Metering placeholder for Free-tier models that have no row in the provider registry. */
+export const UNMETERED_PRICING = {
+  input_price_per_1k: 0,
+  output_price_per_1k: 0,
+  credit_conversion_rate: 100,
+}
+
+/**
+ * Pricing the gateway meters a chat request with. The provider registry (provider_models +
+ * provider_pricing) is authoritative when it has the model. The catalog also discovers Free
+ * OpenRouter models at runtime that the registry can never know in advance; without this they
+ * were offered in the picker and then failed every request with "not found or inactive".
+ * Only Free-tier models may run without a registry row: a Pro model with no price is refused.
+ */
+export function resolveChatPricing(
+  registryRow: { id: string; provider_pricing?: Array<typeof UNMETERED_PRICING> | null } | null | undefined,
+  catalogModel: Pick<CatalogModel, 'tier'> | undefined,
+): { modelId: string | null; pricing: typeof UNMETERED_PRICING } | null {
+  const registered = registryRow?.provider_pricing?.[0]
+  if (registryRow && registered) return { modelId: registryRow.id, pricing: registered }
+  if (catalogModel?.tier === 'free') return { modelId: null, pricing: UNMETERED_PRICING }
+  return null
 }
 
 export function quotaInfo(_used: number): { limit: number; resets_at: string } {

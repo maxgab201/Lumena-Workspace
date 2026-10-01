@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ACTIVE_JOB_STATUSES,
+  EMBEDDING_DIMENSIONS,
   JobSupersededError,
   createHeartbeat,
+  hasNativeText,
   loadAllPageTexts,
+  partitionEmbedded,
 } from '../../supabase/functions/_shared/pipeline';
 
 type Job = { status: string; progress: number; progress_heartbeat?: string };
@@ -174,5 +177,72 @@ describe('page-text checkpoint', () => {
 
     expect(pages.size).toBe(1000);
     expect(warn).toHaveBeenCalled();
+  });
+});
+
+describe('embedding batches', () => {
+  const vector = () => Array.from({ length: EMBEDDING_DIMENSIONS }, () => 0.1);
+  const chunks = (n: number) => Array.from({ length: n }, (_, i) => ({ text: `chunk ${i}` }));
+
+  it('keeps every chunk that has an embedding and counts the rest', () => {
+    // Production evidence: Gemini answered 429 for 21 of 120 chunks; each failed slot is [].
+    const embeddings = Array.from({ length: 120 }, (_, i) => (i % 6 === 5 ? [] : vector()));
+
+    const { indexed, skipped } = partitionEmbedded(chunks(120), embeddings, 0);
+
+    expect(skipped).toBe(20);
+    expect(indexed).toHaveLength(100);
+    expect(indexed.every(({ embedding }) => embedding.length === EMBEDDING_DIMENSIONS)).toBe(true);
+    // the empty vector is what the database rejects for a whole batch
+    expect(indexed.some(({ embedding }) => embedding.length === 0)).toBe(false);
+  });
+
+  it('numbers chunks by their position in the document, not in the batch', () => {
+    const embeddings = Array.from({ length: 250 }, () => vector());
+    embeddings[205] = [];
+
+    const { indexed, skipped } = partitionEmbedded(chunks(50), embeddings.slice(0), 200);
+
+    expect(skipped).toBe(1);
+    expect(indexed[0].index).toBe(200);
+    expect(indexed.map(({ index }) => index)).not.toContain(205);
+    expect(indexed.at(-1)?.index).toBe(249);
+  });
+
+  it('treats missing, empty and wrongly sized embeddings as not indexed', () => {
+    const embeddings: Array<number[] | undefined> = [vector(), undefined, [], [1, 2, 3]];
+
+    const { indexed, skipped } = partitionEmbedded(chunks(4), embeddings, 0);
+
+    expect(indexed.map(({ index }) => index)).toEqual([0]);
+    expect(skipped).toBe(3);
+  });
+
+  it('indexes nothing, and reports everything as skipped, when every embedding failed', () => {
+    const { indexed, skipped } = partitionEmbedded(chunks(3), [[], [], []], 0);
+    expect(indexed).toEqual([]);
+    expect(skipped).toBe(3);
+  });
+});
+
+describe('native text detection', () => {
+  it('sees a scanned PDF of any length as having no text layer', () => {
+    // Production evidence: a 5-page scanned PDF went down the normal path because the
+    // "---PAGE n---" markers alone were longer than the threshold.
+    for (const pageCount of [1, 2, 3, 5, 400]) {
+      expect(hasNativeText(Array.from({ length: pageCount }, () => ''))).toBe(false);
+    }
+    // whitespace and stray glyphs do not count either
+    expect(hasNativeText([' \n ', '\t', '.'])).toBe(false);
+  });
+
+  it('sees a PDF with real text as having a text layer', () => {
+    expect(hasNativeText(['Capítulo 1. Introducción a la materia.'])).toBe(true);
+    // the text can be spread thinly over many pages
+    expect(hasNativeText(Array.from({ length: 40 }, (_, i) => (i % 10 === 0 ? 'abcdefgh' : '')))).toBe(true);
+  });
+
+  it('sees a mixed document (one text page among scanned ones) as having text', () => {
+    expect(hasNativeText(['', '', 'Este párrafo sí tiene capa de texto nativa.', ''])).toBe(true);
   });
 });

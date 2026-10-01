@@ -251,15 +251,34 @@ export const KnowledgeRepository = {
     timelineEvents: TimelineEvent[];
     presentations: Presentation[];
   }> {
-    const [flashcards, glossaryTerms, mindMapNodes, timelineEvents, presentations] =
-      await Promise.all([
-        KnowledgeRepository.listFlashcards(documentId),
-        KnowledgeRepository.listGlossaryTerms(documentId),
-        KnowledgeRepository.listMindMapNodes(documentId),
-        KnowledgeRepository.listTimelineEvents(documentId),
-        KnowledgeRepository.listPresentations(documentId),
-      ]);
+    const sections = await Promise.allSettled([
+      KnowledgeRepository.listFlashcards(documentId),
+      KnowledgeRepository.listGlossaryTerms(documentId),
+      KnowledgeRepository.listMindMapNodes(documentId),
+      KnowledgeRepository.listTimelineEvents(documentId),
+      KnowledgeRepository.listPresentations(documentId),
+    ]);
 
-    return { flashcards, glossaryTerms, mindMapNodes, timelineEvents, presentations };
+    // One unavailable section must not hide the others. Production evidence: the
+    // `presentations` table does not exist there (PostgREST 404 / PGRST205), and with a plain
+    // Promise.all that single failure left flashcards, glossary, mind map and timeline empty
+    // for every document. When EVERY section fails (offline, expired session) it is still an
+    // error the caller has to see.
+    if (sections.every((section) => section.status === 'rejected')) {
+      throw (sections[0] as PromiseRejectedResult).reason;
+    }
+    const sectionOrEmpty = <T>(section: PromiseSettledResult<T[]>, name: string): T[] => {
+      if (section.status === 'fulfilled') return section.value;
+      console.warn(`[KnowledgeRepository] ${name} unavailable for ${documentId}:`, section.reason);
+      return [];
+    };
+
+    return {
+      flashcards: sectionOrEmpty(sections[0], 'flashcards'),
+      glossaryTerms: sectionOrEmpty(sections[1], 'glossary'),
+      mindMapNodes: sectionOrEmpty(sections[2], 'mind map'),
+      timelineEvents: sectionOrEmpty(sections[3], 'timeline'),
+      presentations: sectionOrEmpty(sections[4], 'presentations'),
+    };
   },
 };

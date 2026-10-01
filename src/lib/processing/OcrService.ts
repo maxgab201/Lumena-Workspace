@@ -2,6 +2,7 @@ import { pdfjs } from 'react-pdf';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { createWorker, type Worker } from 'tesseract.js';
 import { PageSegmentInventory, type PageSegment } from './PageSegmentInventory';
+import { normalizeRotation, type RightAngle } from '../pageRotation';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -9,7 +10,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
  * OCR Service (Checkpoint 3) — REAL OCR, end to end.
  *
  * Architecture: the browser rasterizes scanned pages with PDF.js
- * (OffscreenCanvas at rotation 0, scale 2) and runs Tesseract.js WASM
+ * (OffscreenCanvas, scale 2, drawn upright with the page's own /Rotate) and runs Tesseract.js WASM
  * locally. Words are grouped into lines, bboxes are normalized to the
  * canonical unrotated page space, and the resulting segments are persisted
  * to document_page_segments — the same table the native inventory uses.
@@ -26,10 +27,12 @@ export interface OcrPageResult {
   segmentCount: number;
   error?: string;
   confidence?: number;
-  /** Real OCR words with pixel bboxes on the page raster (canonical input). */
+  /** Real OCR words with pixel bboxes on the page raster as it was drawn (see `rasterRotation`). */
   words?: Array<{ text: string; bbox: [number, number, number, number]; confidence: number }>;
   rasterWidth?: number;
   rasterHeight?: number;
+  /** Rotation the raster was drawn at (the page's own /Rotate); the segment/sentence builders map rects back from it. */
+  rasterRotation?: RightAngle;
 }
 
 export interface OcrProgress {
@@ -102,14 +105,20 @@ export class OcrService {
     }
   }
 
-  /** Rasterize one page at rotation 0 and return the canvas + dimensions. */
+  /**
+   * Rasterize one page the way a viewer shows it and return the canvas + dimensions + the rotation
+   * it was drawn at. A scanned sheet is often stored sideways with /Rotate 90/270 so it displays
+   * upright; Tesseract reads garbage from the sideways pixels, so it gets the upright raster. Words
+   * stay in that frame (lines run horizontally there); the segment and sentence builders take the
+   * rotation and map only their finished rects onto the canonical (unrotated) page.
+   */
   private static async rasterizePage(
     pdf: { getPage: (n: number) => Promise<any> },
     pageNumber: number,
-  ): Promise<{ data: ImageData; width: number; height: number }> {
+  ): Promise<{ data: ImageData; width: number; height: number; rotation: RightAngle }> {
     const page = await pdf.getPage(pageNumber);
-    // Rotation 0 → raster maps 1:1 to canonical (unrotated) page space
-    const viewport = page.getViewport({ scale: OCR_RENDER_SCALE, rotation: 0 });
+    const rotation = normalizeRotation(page.rotate);
+    const viewport = page.getViewport({ scale: OCR_RENDER_SCALE, rotation });
     const canvas = new OffscreenCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
     const context = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
     // White background — Tesseract performs poorly on transparency
@@ -117,7 +126,7 @@ export class OcrService {
     context.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({ canvasContext: context, viewport }).promise;
     const data = context.getImageData(0, 0, canvas.width, canvas.height);
-    return { data, width: canvas.width, height: canvas.height };
+    return { data, width: canvas.width, height: canvas.height, rotation };
   }
 
   /**
@@ -139,7 +148,7 @@ export class OcrService {
     for (const pageNumber of pageNumbers) {
       try {
         onProgress?.({ phase: 'rasterizing', page_number: pageNumber, totalPages: pageNumbers.length, completedPages: completed });
-        const { data: raster, width, height } = await this.rasterizePage(pdf, pageNumber);
+        const { data: raster, width, height, rotation } = await this.rasterizePage(pdf, pageNumber);
         onProgress?.({ phase: 'recognizing', page_number: pageNumber, totalPages: pageNumbers.length, completedPages: completed });
 
         const encodeCanvas = new OffscreenCanvas(width, height);
@@ -161,6 +170,7 @@ export class OcrService {
           words,
           rasterWidth: width,
           rasterHeight: height,
+          rasterRotation: rotation,
         });
       } catch (err) {
         console.error(`[OcrService] Page ${pageNumber} failed:`, err);
@@ -190,7 +200,7 @@ export class OcrService {
     for (const r of results) {
       if (!r.success || !r.words || !r.rasterWidth || !r.rasterHeight) continue;
       const segments = PageSegmentInventory.buildOcrSegments(
-        r.page_number, r.words, r.rasterWidth, r.rasterHeight,
+        r.page_number, r.words, r.rasterWidth, r.rasterHeight, true, r.rasterRotation ?? 0,
       );
       if (segments.length === 0) continue;
       const rows = segments.map((s) => ({
@@ -241,7 +251,7 @@ export class OcrService {
           completedPages: completed,
         });
 
-        const { data: raster, width, height } = await this.rasterizePage(pdf, pageNumber);
+        const { data: raster, width, height, rotation } = await this.rasterizePage(pdf, pageNumber);
 
         onProgress?.({
           phase: 'recognizing',
@@ -268,7 +278,7 @@ export class OcrService {
         const words = rawWords.filter((w) => w.confidence >= MIN_WORD_CONFIDENCE);
 
         const segments: PageSegment[] = PageSegmentInventory.buildOcrSegments(
-          pageNumber, words, width, height,
+          pageNumber, words, width, height, true, rotation,
         );
 
         // Persist segments (upsert keeps idempotent retries clean)

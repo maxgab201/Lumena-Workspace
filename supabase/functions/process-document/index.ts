@@ -6,6 +6,8 @@ import {
   JobSupersededError,
   createHeartbeat,
   loadAllPageTexts,
+  hasNativeText,
+  partitionEmbedded,
 } from "../_shared/pipeline.ts"
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
@@ -521,7 +523,7 @@ serve(async (req) => {
     // Core-vs-AI separation: a scanned PDF is still CORE-readable (the viewer
     // renders it fine). Its text arrives later via client-side OCR, so missing
     // native text must NOT fail the job. Only skip the AI (embeddings) layer.
-    const hasNoNativeText = extractedText.replace(/\s+/g, '').length < 32
+    const hasNoNativeText = !hasNativeText(pages)
     if (hasNoNativeText) {
       console.warn('No extractable text — scanned document. Completing core processing; OCR text will come from the client.')
 
@@ -618,15 +620,18 @@ serve(async (req) => {
     if (embeddings.length > 0) {
       const BATCH = 100
       let stored = 0
+      let notIndexed = 0
       for (let start = 0; start < chunks.length; start += BATCH) {
         const slice = chunks.slice(start, start + BATCH)
-        const embeddingRows = slice.map((chunk, i) => ({
+        const { indexed, skipped } = partitionEmbedded(slice, embeddings, start)
+        notIndexed += skipped
+        const embeddingRows = indexed.map(({ chunk, index, embedding }) => ({
           workspace_id: workspaceId,
           document_id: documentId,
-          chunk_index: start + i,
+          chunk_index: index,
           chunk_text: chunk.text,
           chunk_tokens: chunk.tokenCount,
-          embedding: embeddings[start + i],
+          embedding,
           metadata: {
             page_numbers: chunk.pageNumbers,
             // Scalar for hybrid_search's metadata->>'page_number' lookup
@@ -634,18 +639,24 @@ serve(async (req) => {
           }
         }));
 
-        const { error: embeddingError } = await supabaseClient
-          .from('document_embeddings')
-          .upsert(embeddingRows, { onConflict: 'document_id,chunk_index' });
+        if (embeddingRows.length > 0) {
+          const { error: embeddingError } = await supabaseClient
+            .from('document_embeddings')
+            .upsert(embeddingRows, { onConflict: 'document_id,chunk_index' });
 
-        if (embeddingError) {
-          // Same policy: storage of AI artifacts is not core. Degrade gracefully.
-          embeddingFailure = `Failed to store embeddings: ${embeddingError.message}`
-          console.warn(embeddingFailure)
-          break
+          if (embeddingError) {
+            // Same policy: storage of AI artifacts is not core. Degrade gracefully.
+            embeddingFailure = `Failed to store embeddings: ${embeddingError.message}`
+            console.warn(embeddingFailure)
+            break
+          }
         }
         stored += slice.length
         await heartbeat('processing', Math.min(75 + Math.round(stored / chunks.length * 10), 85))
+      }
+      if (notIndexed > 0 && !embeddingFailure) {
+        embeddingFailure = `Partially indexed: ${notIndexed} of ${chunks.length} chunks have no AI embedding (provider quota); they stay searchable by text.`
+        console.warn(embeddingFailure)
       }
     }
 
