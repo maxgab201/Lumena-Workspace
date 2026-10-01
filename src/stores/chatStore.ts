@@ -11,7 +11,7 @@ import { AiHighlightService } from '../lib/ai/AiHighlightService';
 import { parseCreateHighlightsAction, type CreateHighlightsAction } from '../lib/chatActions';
 import { highlightActionResultText, resolveChatLanguage, type ChatLanguage } from '../lib/chatLanguage';
 import { extractPageReferenceRange, pageLabelFor, resolvePageRange } from '../lib/pageMapping';
-import { registerSessionReset } from './sessionReset';
+import { getSessionEpoch, registerSessionReset } from './sessionReset';
 import { readStorage } from '../lib/safeStorage';
 
 export interface ChatActionRuntime {
@@ -50,6 +50,9 @@ interface ChatStoreState {
   getActiveMessages: () => ChatMessage[];
 }
 
+/** Counts loadSession calls so a stale one can tell it is no longer the latest. */
+let latestSessionLoad = 0;
+
 export const useChatStore = create<ChatStoreState>((set, get) => ({
   sessions: {},
   messages: {},
@@ -60,10 +63,17 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   abortController: null,
 
   loadSession: async (documentId, workspaceId) => {
+    // Only the most recent call may write. Opening document A and then B quickly leaves A's lookup
+    // in flight; its slower answer used to arrive after B's and make A's conversation the active one
+    // (B's panel showed A's chat, and a message sent there was saved in A's session).
+    const call = ++latestSessionLoad;
+    const epoch = getSessionEpoch();
+    const isCurrent = () => call === latestSessionLoad && epoch === getSessionEpoch();
     set({ isLoadingSession: true });
     try {
       const session = await ChatRepository.getOrCreateSession(documentId, workspaceId);
       const msgs = await ChatRepository.getMessages(session.id);
+      if (!isCurrent()) return;
 
       set((state) => ({
         sessions: { ...state.sessions, [documentId]: session },
@@ -72,6 +82,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         isLoadingSession: false,
       }));
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('[ChatStore] Failed to load session:', err);
       set({ isLoadingSession: false });
     }
