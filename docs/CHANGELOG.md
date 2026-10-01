@@ -142,6 +142,18 @@ Last Updated: 2026-09-02
 - The chat runs in the workspace of the document being read; the Study Mode "Ask" tab sends a request the gateway can answer.
 - The notification center and the notification preferences are labelled as not available yet.
 
+## [Unreleased] - 2026-10-01 — Audit round 3
+
+### Changed
+
+- **Presentations is behind a feature flag and makes no request while it is off.** Opening a document used to ask for the `presentations` table, which does not exist in production, and logged a 404 (PGRST205) on every open, with the error swallowed afterwards. `VITE_FEATURE_PRESENTATIONS` (build time, off unless `true`/`1`, see `.env.example` and `src/config/features.ts`) now gates it: while it is off `loadAllForDocument` does not call `listPresentations`, every presentation method of the repository and `generatePresentation` refuse before making a request, and the Knowledge sidebar offers no Presentation tab and no "Generate Presentation". The table, its migration and the Edge Function support are left as they are for when the feature is turned on. Verified in a real browser with a real QA login: opening a document sends 0 requests to `/presentations` and gets 0 404s. Pinned by `tests/unit/presentations-feature-flag.test.tsx` (including that the loader does not even call the repository, and that every repository method that reaches the table is guarded); the production E2E no longer tolerates presentations errors.
+
+### Verified in production (after merging audit round 2, `main` at `6e9d50b`)
+
+- With browser storage blocked the app renders (it was a blank page) and login, upload, the reader and the page-label editor work; security headers are served.
+- A `/Rotate 90` page is displayed landscape (`data-main-rotation` 90), a highlight lands on its text (IoU 1.00), stays after rotating 90° more and after reload; OCR of a sideways `/Rotate 90` scan reads the same six lines as the upright one (6 of 6 known words).
+- One selection + double-click saves one highlight; a failed save keeps the toolbar and a retry after the network returns saves it; Ctrl+F `Mach*ne` no longer matches "Machine"; a long OCR search lists 60 pages (about 15 before); labels "mid" and "iiii" are stored as typed while "iv" still continues the sequence.
+
 ## [Unreleased] - 2026-09-30 — Audit round 2 (production smoke)
 
 ### Fixed
