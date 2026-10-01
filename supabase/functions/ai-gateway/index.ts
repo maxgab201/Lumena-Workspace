@@ -4,6 +4,7 @@ import { ProviderRouter } from "./router.ts"
 import type { AIProvider } from "./providers/Provider.ts"
 import { getCatalog, FREE_DAILY_LIMIT, resolveChatPricing } from "../_shared/modelCatalog.ts"
 import { CHAT_SYSTEM_PROMPT, buildPromptWithRAG } from "../_shared/chatPrompt.ts"
+import { createQuotaRefund } from "../_shared/quota.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -117,6 +118,10 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  // Set once a Free-plan quota unit has been taken: gives it back when the request ends without
+  // an answer (every provider failed, or the request was refused after the quota was consumed).
+  let refundQuota: (() => Promise<void>) | null = null
 
   try {
     const supabaseClient = createClient(
@@ -232,6 +237,7 @@ serve(async (req) => {
           request_id,
         }), { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
       }
+      refundQuota = createQuotaRefund(supabaseClient, workspace_id)
     }
 
     // ==========================================
@@ -276,6 +282,7 @@ serve(async (req) => {
           severity: 'MEDIUM',
           metadata: { limit: ACTION_LIMIT, metric: 'actions_per_hour' }
         });
+        await refundQuota?.()
         return new Response(JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }), { status: 429, headers: corsHeaders });
       }
       await supabaseClient.from('rate_limit_counters').update({ count: existingLimit.count + 1 }).eq('id', existingLimit.id);
@@ -311,6 +318,7 @@ serve(async (req) => {
         severity: 'HIGH',
         metadata: { cap: DAILY_CREDIT_CAP, consumed: totalConsumedToday }
       });
+      await refundQuota?.()
       return new Response(JSON.stringify({ error: 'Daily credit cap reached. Circuit breaker tripped.' }), { status: 403, headers: corsHeaders });
     }
 
@@ -336,6 +344,7 @@ serve(async (req) => {
       allowedChatModels.has(m) && all.indexOf(m) === index
     );
     if (chain.length === 0) {
+      await refundQuota?.()
       return new Response(JSON.stringify({ error: 'No allowed chat model is available for this plan.', request_id }), {
         status: 503,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -539,6 +548,7 @@ serve(async (req) => {
     })
 
   } catch (err: any) {
+    await refundQuota?.()
     console.error('AI Gateway error:', { request_id, error: err.message || err, workspace_id: null, action_type: null, model: null, fallback_reason: err.message || 'unknown', duration_ms: 0 })
 
     if (err.status === 402) {
