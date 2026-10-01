@@ -1,3 +1,5 @@
+import { readStorage, removeStorage, writeStorage } from './safeStorage';
+
 export type PageLabelSource = 'default' | 'pdf' | 'manual';
 
 export interface PageReferenceRange {
@@ -146,8 +148,10 @@ export function buildSequentialOverrides(
     return overrides;
   }
 
+  // Only a canonical numeral continues the sequence. A word that merely uses roman letters ("mid",
+  // "dim") or a variant ("iiii") would otherwise be rewritten to something the user never typed.
   const romanStart = romanToNumber(clean);
-  if (romanStart) {
+  if (romanStart && numberToRoman(romanStart) === clean.toUpperCase()) {
     const lower = clean === clean.toLowerCase();
     for (let page = currentPhysicalPage; page <= totalPages; page += 1) {
       const roman = numberToRoman(romanStart + page - currentPhysicalPage);
@@ -163,9 +167,9 @@ export function buildSequentialOverrides(
 const LOCAL_PREFIX = 'lumena.page-label-overrides.';
 
 export function loadLocalPageLabelOverrides(documentId: string): Record<number, string> {
-  if (typeof window === 'undefined' || !documentId) return {};
+  if (!documentId) return {};
   try {
-    const raw = window.localStorage.getItem(LOCAL_PREFIX + documentId);
+    const raw = readStorage(LOCAL_PREFIX + documentId);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const result: Record<number, string> = {};
@@ -182,11 +186,11 @@ export function loadLocalPageLabelOverrides(documentId: string): Record<number, 
 }
 
 export function saveLocalPageLabelOverrides(documentId: string, overrides: Record<number, string>): void {
-  if (typeof window === 'undefined' || !documentId) return;
-  window.localStorage.setItem(LOCAL_PREFIX + documentId, JSON.stringify(overrides));
+  if (!documentId) return;
+  writeStorage(LOCAL_PREFIX + documentId, JSON.stringify(overrides));
 }
 
 export function clearLocalPageLabelOverrides(documentId: string): void {
-  if (typeof window === 'undefined' || !documentId) return;
-  window.localStorage.removeItem(LOCAL_PREFIX + documentId);
+  if (!documentId) return;
+  removeStorage(LOCAL_PREFIX + documentId);
 }
