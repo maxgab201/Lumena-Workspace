@@ -29,6 +29,9 @@ export interface WorkspaceDocument {
   processing_job_id?: string;
   thumbnail_path?: string | null;
   thumbnail_generated_at?: string | null;
+  /** AI indexing (embeddings). 'failed' means it stopped short; the document itself is still usable. */
+  embedding_status?: string | null;
+  embedding_error?: string | null;
 }
 
 const ACTIVE_JOB_STATUSES: JobStatus[] = [
@@ -75,6 +78,16 @@ export function getDocumentStage(document: WorkspaceDocument): DocumentStage {
       // Document records are created only after the storage upload succeeds.
       return 'uploaded';
   }
+}
+
+/**
+ * A ready document whose AI indexing stopped short (provider quota, rate limit). Reading, OCR,
+ * text search, highlights and navigation do not depend on it; semantic search and chat retrieval
+ * fall back to the document's text until indexing is retried. 'pending' is not reported: a scanned
+ * document is never indexed after OCR today, and claiming a failure there would be wrong.
+ */
+export function hasLimitedAiSearch(document: WorkspaceDocument): boolean {
+  return getDocumentStage(document) === 'ready' && document.embedding_status === 'failed';
 }
 
 export function isDocumentReady(document: WorkspaceDocument): boolean {

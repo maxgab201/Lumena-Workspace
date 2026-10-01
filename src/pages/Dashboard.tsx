@@ -13,7 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import { t } from '../i18n';
 import { useLanguage } from '../hooks/useLanguage';
-import { getDocumentStage, isDocumentReady, type DocumentStage } from '../types/documents';
+import { getDocumentStage, hasLimitedAiSearch, isDocumentReady, type DocumentStage } from '../types/documents';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -831,6 +831,27 @@ export const Dashboard = () => {
                                 className="h-full bg-accent transition-[width] duration-300"
                                 style={{ width: `${Math.max(doc.progress ?? 0, 3)}%` }}
                               />
+                            </div>
+                          )}
+                          {hasLimitedAiSearch(doc) && (
+                            // Stacked, not side by side: the grid card is ~156px wide and a row overflowed it.
+                            <div className="mt-2 flex min-w-0 flex-col items-start gap-0.5" data-testid={`document-ai-index-${doc.id}`}>
+                              <p className="max-w-full truncate text-xs text-amber-500" title={doc.embedding_error || t('document.aiIndexLimitedHint')}>
+                                {t('document.aiIndexLimited')}
+                              </p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 max-w-full px-1.5 text-xs"
+                                title={t('document.aiIndexRetry')}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  retryDocument(doc.id).catch(() => toast.error(t('document.retryFailed')));
+                                }}
+                              >
+                                <RotateCcw className="mr-1 h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{t('document.aiIndexRetry')}</span>
+                              </Button>
                             </div>
                           )}
                           {stage === 'failed' && (
