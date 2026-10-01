@@ -1,5 +1,6 @@
 import { pdfjs } from 'react-pdf';
 import type { NormalizedRect } from '../../types/highlights';
+import { rectToCanonical, type RightAngle } from '../pageRotation';
 
 // Vite replaces `?url` imports with a URL string at build time. In Node
 // (unit tests) the setup script exposes the worker file URL on globalThis.
@@ -145,13 +146,17 @@ export class SentenceInventory {
 
   /**
    * Build sentence inventory for a scanned page from real Tesseract word
-   * bboxes (already normalized to canonical space by the caller's raster).
+   * bboxes. Lines and sentences are worked out on the raster as it was drawn
+   * (`rotation`: upright for a scan stored sideways, where text runs
+   * horizontally); the finished word rects are then mapped onto the canonical,
+   * unrotated page.
    */
   static buildOcrSentences(
     pageNumber: number,
     ocrWords: Array<{ text: string; bbox: [number, number, number, number]; confidence: number }>,
     rasterWidth: number,
     rasterHeight: number,
+    rotation: RightAngle = 0,
   ): PageSentences {
     const rawWords = ocrWords
       .filter((w) => w.text?.trim())
@@ -159,12 +164,31 @@ export class SentenceInventory {
         text: w.text.trim(),
         startFrac: 0,
         endFrac: 0,
-        itemX: w.bbox[0] / rasterWidth,   // already canonical — reuse the frac fields
+        itemX: w.bbox[0] / rasterWidth,   // already normalized — reuse the frac fields
         itemW: (w.bbox[2] - w.bbox[0]) / rasterWidth,
         top: w.bbox[1] / rasterHeight,
         height: (w.bbox[3] - w.bbox[1]) / rasterHeight,
       }));
-    return SentenceInventory.wordsToSentences(rawWords, pageNumber, null);
+    const drawn = SentenceInventory.wordsToSentences(rawWords, pageNumber, null);
+    if (rotation === 0) return drawn;
+    return {
+      ...drawn,
+      sentences: drawn.sentences.map((sentence) => ({
+        ...sentence,
+        words: sentence.words.map((word) => {
+          const rect = rectToCanonical(word.rect, rotation);
+          return {
+            ...word,
+            rect: {
+              x: Number(rect.x.toFixed(5)),
+              y: Number(rect.y.toFixed(5)),
+              width: Number(rect.width.toFixed(5)),
+              height: Number(rect.height.toFixed(5)),
+            },
+          };
+        }),
+      })),
+    };
   }
 
   // ────────────────────────────────────────────────────────────────

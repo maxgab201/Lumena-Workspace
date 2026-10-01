@@ -125,7 +125,7 @@ export class AiHighlightService {
       for (const r of results) {
         if (!r.success || !r.words || !r.rasterWidth || !r.rasterHeight) continue;
         const pageSentences = SentenceInventory.buildOcrSentences(
-          r.page_number, r.words, r.rasterWidth, r.rasterHeight,
+          r.page_number, r.words, r.rasterWidth, r.rasterHeight, r.rasterRotation ?? 0,
         );
         sentencesByPage.set(r.page_number, pageSentences.sentences);
       }
