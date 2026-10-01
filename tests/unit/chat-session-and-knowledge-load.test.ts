@@ -93,6 +93,41 @@ describe('ChatRepository.getOrCreateSession', () => {
     await expect(ChatRepository.getOrCreateSession('doc-1', 'ws-1')).rejects.toMatchObject({ code: '23505' });
   });
 
+  it('shares ONE lookup/insert between callers that ask for the same session at the same moment', async () => {
+    // Production: the reader opened and two callers asked at once; the second insert was a 409.
+    harness.scripts['chat_sessions.select'] = [{ data: null }];
+    harness.scripts['chat_sessions.insert'] = [{ data: session }];
+
+    const [first, second] = await Promise.all([
+      ChatRepository.getOrCreateSession('doc-1', 'ws-1'),
+      ChatRepository.getOrCreateSession('doc-1', 'ws-1'),
+    ]);
+
+    expect(first).toEqual(session);
+    expect(second).toEqual(session);
+    expect(harness.calls).toEqual(['chat_sessions.select', 'chat_sessions.insert']);
+  });
+
+  it('does not share a load across different documents, or after the first one finished', async () => {
+    harness.scripts['chat_sessions.select'] = [{ data: session }, { data: { ...session, id: 'session-2' } }, { data: session }];
+
+    await Promise.all([
+      ChatRepository.getOrCreateSession('doc-1', 'ws-1'),
+      ChatRepository.getOrCreateSession('doc-2', 'ws-1'),
+    ]);
+    expect(harness.calls).toHaveLength(2);
+
+    await ChatRepository.getOrCreateSession('doc-1', 'ws-1');
+    expect(harness.calls).toHaveLength(3);
+  });
+
+  it('lets a failed load be retried instead of caching the failure', async () => {
+    harness.scripts['chat_sessions.select'] = [{ error: { code: '57014', message: 'timeout' } }, { data: session }];
+
+    await expect(ChatRepository.getOrCreateSession('doc-1', 'ws-1')).rejects.toMatchObject({ code: '57014' });
+    await expect(ChatRepository.getOrCreateSession('doc-1', 'ws-1')).resolves.toEqual(session);
+  });
+
   it('refuses to run without a signed-in user', async () => {
     harness.user = null;
     await expect(ChatRepository.getOrCreateSession('doc-1', 'ws-1')).rejects.toThrow('Not authenticated');
