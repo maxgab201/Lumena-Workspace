@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  anchorAt,
+  offsetForAnchor,
   ALIGN_MAX_CORRECTIONS,
   ALIGN_RECHECK_MS,
   ALIGN_STABLE_CHECKS,
@@ -151,5 +153,38 @@ describe('holdNavigation (re-aim until the page really is at the top)', () => {
     const h = harness({ wanted: 1000.4, current: 1000 });
     h.advance(ALIGN_RECHECK_MS * 5);
     expect(h.reaim).not.toHaveBeenCalled();
+  });
+});
+
+describe('the reader\'s place across a layout change', () => {
+  // Pages of 1400 px starting at 0: page index 3 spans 4200..5600
+  const items = [{ index: 2, start: 2800, end: 4200 }, { index: 3, start: 4200, end: 5600 }, { index: 4, start: 5600, end: 7000 }];
+
+  it('is the page at the top of the view and how far down it the top edge is', () => {
+    expect(anchorAt(items, 4900, 'k')).toEqual({ key: 'k', index: 3, fraction: 0.5 });
+    expect(anchorAt(items, 4200, 'k')).toEqual({ key: 'k', index: 3, fraction: 0 });
+    expect(anchorAt(items, 3500, 'k')?.index).toBe(2);
+  });
+
+  it('keeps the fraction inside 0..1 and survives nothing to anchor to', () => {
+    expect(anchorAt(items, 99_999, 'k')).toBeNull();
+    expect(anchorAt([{ index: 0, start: 0, end: 0 }], 5, 'k')).toBeNull();
+    expect(anchorAt([{ index: 1, start: 100, end: 200 }], 50, 'k')?.fraction).toBe(0);
+    expect(anchorAt([{ index: 1, start: 10, end: 10 }], 5, 'k')?.fraction).toBe(0); // a zero-height item cannot divide
+  });
+
+  it('goes back to the same place in the page at its new size, never past the end of the document', () => {
+    expect(offsetForAnchor({ fraction: 0.5 }, 10_000, 4_000, 99_999)).toBe(12_000);
+    expect(offsetForAnchor({ fraction: 0 }, 10_000, 4_000, 99_999)).toBe(10_000);
+    expect(offsetForAnchor({ fraction: 0.9 }, 10_000, 4_000, 11_000)).toBe(11_000);
+    expect(offsetForAnchor({ fraction: 0.5 }, 0, 4_000, -50)).toBe(0);
+  });
+
+  it('counts the times the user takes the scroll over', () => {
+    const sync = createPageScrollSync();
+    expect(sync.gestures()).toBe(0);
+    sync.userScrolled();
+    sync.userScrolled();
+    expect(sync.gestures()).toBe(2);
   });
 });

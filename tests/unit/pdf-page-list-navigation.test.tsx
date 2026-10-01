@@ -16,14 +16,22 @@ const virt = vi.hoisted(() => {
     getVirtualItems: vi.fn(() => [] as Array<{ index: number; start: number; end: number; key: number }>),
     getTotalSize: vi.fn(() => 200_000),
     getOffsetForIndex: vi.fn((): [number, string] => [0, 'start']),
+    scrollToOffset: vi.fn(),
+    measurementsCache: [] as Array<{ size: number }>,
     scrollOffset: 0,
   };
-  return { instance, options: null as null | { onChange: (instance: unknown) => void; overscan?: number } };
+  return {
+    instance,
+    options: null as null | { onChange: (instance: unknown) => void; overscan?: number },
+    /** Runs while the list is rendering, like the real virtualizer reporting a position the layout change moved. */
+    duringRender: null as null | ((options: { onChange: (instance: unknown) => void }) => void),
+  };
 });
 
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: (options: { onChange: (instance: unknown) => void; overscan?: number }) => {
     virt.options = options;
+    virt.duringRender?.(options);
     return virt.instance;
   },
 }));
@@ -57,7 +65,10 @@ const flushTimeouts = () => act(async () => { await vi.advanceTimersByTimeAsync(
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  virt.duringRender = null;
   virt.instance.scrollOffset = 0;
+  virt.instance.measurementsCache = [];
+  virt.instance.getTotalSize.mockReturnValue(200_000);
   virt.instance.getOffsetForIndex.mockReturnValue([0, 'start']);
   useViewerStore.setState({ totalPages: 100, currentPage: 1, scale: 1, rotation: 0, fitMode: 'fit-width' } as never);
 });
@@ -220,5 +231,86 @@ describe('<PDFPageList /> page and scroll position', () => {
     expect(virt.options!.overscan).toBe(2);
     await act(async () => { useViewerStore.setState({ scale: 1 } as never); });
     expect(virt.options!.overscan).toBe(5);
+  });
+
+  describe('keeps the reader where they were when the layout changes (zoom, rotation, fit mode, a side panel)', () => {
+    /** The reader is half way down page 60, then the layout changes and page 60 starts at 200 000 and is 2 800 px tall. */
+    const readerHalfWayDownPage60 = async (container: HTMLElement) => {
+      fireEvent.wheel(container, { deltaY: 100 });
+      reportVisible([[58, 82_600, 84_000], [59, 84_000, 85_400]], 84_700);
+      await flushTimeouts();
+      virt.instance.getTotalSize.mockReturnValue(400_000);
+      virt.instance.getOffsetForIndex.mockReturnValue([200_000, 'start']);
+      virt.instance.measurementsCache = Object.assign([], { 59: { size: 2_800 } });
+      virt.instance.scrollOffset = 84_700; // the offset did not change with the layout: that is the bug
+    };
+
+    it('goes back to the same page and the same place in it', async () => {
+      const { container } = mount();
+      await readerHalfWayDownPage60(container);
+
+      await act(async () => { useViewerStore.setState({ scale: 2 } as never); });
+
+      expect(virt.instance.scrollToOffset).toHaveBeenCalledWith(201_400); // 200 000 + 0.5 × 2 800
+    });
+
+    it('does the same when the page width changes (a side panel opening), but not when nothing changed', async () => {
+      const view = mount();
+      await readerHalfWayDownPage60(view.container);
+
+      view.rerender(<PDFPageList containerWidth={1000} containerHeight={CONTAINER_HEIGHT} />); // same layout
+      expect(virt.instance.scrollToOffset).not.toHaveBeenCalled();
+
+      view.rerender(<PDFPageList containerWidth={700} containerHeight={CONTAINER_HEIGHT} />); // the chat panel opened
+      expect(virt.instance.scrollToOffset).toHaveBeenCalledWith(201_400);
+    });
+
+    it('does not move anything on the first layout', async () => {
+      mount();
+      await flushTimeouts();
+      expect(virt.instance.scrollToOffset).not.toHaveBeenCalled();
+    });
+
+    it('uses the place the reader had in the layout they just left, not an older one', async () => {
+      const { container } = mount();
+      await readerHalfWayDownPage60(container);
+      await act(async () => { useViewerStore.setState({ scale: 2 } as never); });
+
+      // in the new layout the reader scrolls to page 70, a quarter of the way down
+      reportVisible([[69, 300_000, 302_800]], 300_700);
+      await flushTimeouts();
+      virt.instance.scrollToOffset.mockClear();
+      virt.instance.getOffsetForIndex.mockReturnValue([90_000, 'start']);
+      virt.instance.measurementsCache = Object.assign([], { 69: { size: 1_400 } });
+      await act(async () => { useViewerStore.setState({ scale: 1 } as never); });
+
+      expect(virt.instance.scrollToOffset).toHaveBeenCalledWith(90_350); // 90 000 + 0.25 × 1 400
+    });
+
+    it('is not fooled by the position the list reports while the layout is changing', async () => {
+      const { container } = mount();
+      await readerHalfWayDownPage60(container);
+      // the new heights have not been applied yet, so the unchanged offset now falls on page 20
+      virt.duringRender = (options) => options.onChange({ getVirtualItems: () => [{ index: 19, start: 28_000, end: 29_400, key: 19 }], scrollOffset: 28_500 });
+
+      await act(async () => { useViewerStore.setState({ scale: 2 } as never); });
+
+      expect(virt.instance.scrollToOffset).toHaveBeenCalledWith(201_400); // page 60, not page 20
+    });
+
+    it('keeps re-aiming while the new page heights are measured, and stops when the user scrolls', async () => {
+      const { container } = mount();
+      await readerHalfWayDownPage60(container);
+      await act(async () => { useViewerStore.setState({ scale: 2 } as never); });
+      virt.instance.scrollToOffset.mockClear();
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(ALIGN_RECHECK_MS); });
+      expect(virt.instance.scrollToOffset).toHaveBeenCalledWith(201_400); // still short of where it should be
+
+      fireEvent.wheel(container);
+      virt.instance.scrollToOffset.mockClear();
+      await act(async () => { await vi.advanceTimersByTimeAsync(ALIGN_RECHECK_MS * 5); });
+      expect(virt.instance.scrollToOffset).not.toHaveBeenCalled();
+    });
   });
 });

@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { PDFPage } from './PDFPage';
 import { useViewerStore } from '../../stores/viewerStore';
 import { useShallow } from 'zustand/react/shallow';
-import { SCROLL_KEYS, createPageScrollSync, holdNavigation } from '../../lib/pageScrollSync';
+import { SCROLL_KEYS, anchorAt, createPageScrollSync, holdNavigation, offsetForAnchor, type ReadingAnchor } from '../../lib/pageScrollSync';
 import { overscanForScale } from '../../lib/canvasBudget';
 
 interface PDFPageListProps {
@@ -60,6 +60,10 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
   // Who decides the current page: the scroll position (user scrolling) or a navigation. See pageScrollSync.
   const sync = useRef(createPageScrollSync()).current;
 
+  // Every input that changes the height of the pages. When it changes the reader has to be put back where they were.
+  const layoutKey = `${Math.round(pageWidth)}|${scale}|${rotation}|${fitMode}`;
+  const anchorRef = useRef<ReadingAnchor | null>(null);
+
   const virtualizer = useVirtualizer({
     count: totalPages,
     getScrollElement: () => parentRef.current,
@@ -88,6 +92,11 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
           }
         }
 
+        // Remember where the reader is, in the current layout (see the effect below that restores it).
+        if (anchorRef.current === null || anchorRef.current.key === layoutKey) {
+          anchorRef.current = anchorAt(virtualItems, scrollOffset, layoutKey) ?? anchorRef.current;
+        }
+
         if (maxVisibleHeight > 0) {
           const newPage = sync.reportVisiblePage(mostVisible.index + 1, currentPage);
           // Wrap in timeout or handle safely to avoid React state updates during render
@@ -104,6 +113,27 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
 
   const containerHeightRef = useRef(containerHeight);
   containerHeightRef.current = containerHeight;
+
+  // After the layout changed (zoom, rotation, fit mode, a side panel opening) go back to the page and the position
+  // inside it that the reader was at, and keep it there while the new page heights are measured.
+  useEffect(() => {
+    const anchor = anchorRef.current;
+    if (anchor === null || anchor.key === layoutKey) return;
+    const { index, fraction } = anchor;
+    const target = () => {
+      const start = virtualizer.getOffsetForIndex(index, 'start')?.[0] ?? 0;
+      const size = virtualizer.measurementsCache[index]?.size ?? getRowHeight();
+      return offsetForAnchor({ fraction }, start, size, virtualizer.getTotalSize() - containerHeightRef.current);
+    };
+    anchorRef.current = { ...anchor, key: layoutKey };
+    virtualizer.scrollToOffset(target());
+    const gesturesAtStart = sync.gestures();
+    return holdNavigation({
+      isNavigating: () => sync.gestures() === gesturesAtStart,
+      read: () => ({ wanted: target(), current: virtualizer.scrollOffset ?? 0 }),
+      reaim: () => virtualizer.scrollToOffset(target()),
+    });
+  }, [layoutKey, virtualizer, sync, getRowHeight]);
 
   // Scroll to the page when it was navigated to. A page that only became current because the user
   // scrolled there must not scroll again (that made the view jump at every page boundary).

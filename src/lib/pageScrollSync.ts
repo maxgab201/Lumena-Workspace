@@ -17,6 +17,7 @@
  */
 export function createPageScrollSync() {
   let navigating = false;
+  let gestures = 0;
   const derivedFromScroll = new Set<number>();
 
   return {
@@ -47,7 +48,11 @@ export function createPageScrollSync() {
     /** The user took the scroll over (wheel, touch, dragging the scrollbar, keys): they choose the page again. */
     userScrolled(): void {
       navigating = false;
+      gestures += 1;
     },
+
+    /** How many times the user has taken the scroll over; a watcher compares it to the value it started with. */
+    gestures: (): number => gestures,
 
     /** True from a navigation until the user scrolls on their own. */
     isNavigating: (): boolean => navigating,
@@ -107,3 +112,30 @@ export function holdNavigation(opts: {
 
 /** Keys that scroll a document. */
 export const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' ']);
+
+/** Where the reader is: the page at the top of the view and how far down that page the top edge is (0 to 1). */
+export interface ReadingAnchor {
+  /** The layout (page width, zoom, rotation, fit mode) the anchor was measured in. */
+  key: string;
+  index: number;
+  fraction: number;
+}
+
+/** The anchor for a scroll offset, from the list's visible items (start/end in the list's own pixels). */
+export function anchorAt(items: ReadonlyArray<{ index: number; start: number; end: number }>, scrollOffset: number, key: string): ReadingAnchor | null {
+  const top = items.find((item) => item.end > scrollOffset);
+  if (!top) return null;
+  const size = top.end - top.start;
+  const fraction = size > 0 ? Math.min(1, Math.max(0, (scrollOffset - top.start) / size)) : 0;
+  return { key, index: top.index, fraction };
+}
+
+/**
+ * Zooming, rotating, fitting to width or page, or opening a side panel changes every page's height, but the scroll
+ * offset stays the same, so the reader ended on a different page (measured in a real browser on a 120-page document:
+ * from page 60, one click on zoom in left the view on page 47, five clicks on page 20). After such a change the view
+ * goes back to the page and the position inside it that it was at.
+ */
+export function offsetForAnchor(anchor: Pick<ReadingAnchor, 'fraction'>, pageStart: number, pageSize: number, furthest: number): number {
+  return Math.min(pageStart + anchor.fraction * pageSize, Math.max(0, furthest));
+}
