@@ -3,6 +3,8 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { PDFPage } from './PDFPage';
 import { useViewerStore } from '../../stores/viewerStore';
 import { useShallow } from 'zustand/react/shallow';
+import { SCROLL_KEYS, anchorAt, createPageScrollSync, holdNavigation, offsetForAnchor, type ReadingAnchor } from '../../lib/pageScrollSync';
+import { overscanForScale } from '../../lib/canvasBudget';
 
 interface PDFPageListProps {
   containerWidth: number;
@@ -55,11 +57,19 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
     [pageWidth, scale, rotation]
   );
 
+  // Who decides the current page: the scroll position (user scrolling) or a navigation. See pageScrollSync.
+  const sync = useRef(createPageScrollSync()).current;
+
+  // Every input that changes the height of the pages. When it changes the reader has to be put back where they were.
+  const layoutKey = `${Math.round(pageWidth)}|${scale}|${rotation}|${fitMode}`;
+  const anchorRef = useRef<ReadingAnchor | null>(null);
+
   const virtualizer = useVirtualizer({
     count: totalPages,
     getScrollElement: () => parentRef.current,
     estimateSize: getRowHeight,
-    overscan: 5,
+    // Large pages (high zoom) are millions of pixels each: keep fewer of them mounted around the visible ones.
+    overscan: overscanForScale(scale),
     // When scale/rotation/fitMode changes, we force a re-measurement
     onChange: (instance: any) => {
       // Find the most visible page and update the store
@@ -82,10 +92,15 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
           }
         }
 
-        const newPage = mostVisible.index + 1;
-        if (newPage !== currentPage && maxVisibleHeight > 0) {
+        // Remember where the reader is, in the current layout (see the effect below that restores it).
+        if (anchorRef.current === null || anchorRef.current.key === layoutKey) {
+          anchorRef.current = anchorAt(virtualItems, scrollOffset, layoutKey) ?? anchorRef.current;
+        }
+
+        if (maxVisibleHeight > 0) {
+          const newPage = sync.reportVisiblePage(mostVisible.index + 1, currentPage);
           // Wrap in timeout or handle safely to avoid React state updates during render
-          setTimeout(() => setCurrentPage(newPage), 0);
+          if (newPage !== null) setTimeout(() => setCurrentPage(newPage), 0);
         }
       }
     }
@@ -96,20 +111,60 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
     virtualizer.measure();
   }, [virtualizer, getRowHeight, containerWidth, containerHeight]);
 
-  // Scroll to page when currentPage changes programmatically
-  // We use a local ref to distinguish between programmatic scrolls and user scrolling
-  const isProgrammaticScroll = useRef(false);
-  
+  const containerHeightRef = useRef(containerHeight);
+  containerHeightRef.current = containerHeight;
+
+  // After the layout changed (zoom, rotation, fit mode, a side panel opening) go back to the page and the position
+  // inside it that the reader was at, and keep it there while the new page heights are measured.
   useEffect(() => {
-    if (!isProgrammaticScroll.current) {
-      isProgrammaticScroll.current = true;
-      virtualizer.scrollToIndex(currentPage - 1, { align: 'start' });
-      // Reset flag after small delay to allow scroll to settle
-      setTimeout(() => {
-        isProgrammaticScroll.current = false;
-      }, 100);
-    }
-  }, [currentPage, virtualizer]);
+    const anchor = anchorRef.current;
+    if (anchor === null || anchor.key === layoutKey) return;
+    const { index, fraction } = anchor;
+    const target = () => {
+      const start = virtualizer.getOffsetForIndex(index, 'start')?.[0] ?? 0;
+      const size = virtualizer.measurementsCache[index]?.size ?? getRowHeight();
+      return offsetForAnchor({ fraction }, start, size, virtualizer.getTotalSize() - containerHeightRef.current);
+    };
+    anchorRef.current = { ...anchor, key: layoutKey };
+    virtualizer.scrollToOffset(target());
+    const gesturesAtStart = sync.gestures();
+    return holdNavigation({
+      isNavigating: () => sync.gestures() === gesturesAtStart,
+      read: () => ({ wanted: target(), current: virtualizer.scrollOffset ?? 0 }),
+      reaim: () => virtualizer.scrollToOffset(target()),
+    });
+  }, [layoutKey, virtualizer, sync, getRowHeight]);
+
+  // Scroll to the page when it was navigated to. A page that only became current because the user
+  // scrolled there must not scroll again (that made the view jump at every page boundary).
+  useEffect(() => {
+    if (!sync.shouldScrollTo(currentPage)) return;
+    const index = currentPage - 1;
+    virtualizer.scrollToIndex(index, { align: 'start' });
+    // The list only knows the real height of the pages it has drawn, so a long jump is first aimed with
+    // estimates. Keep checking that the page really is at the top (the last pages cannot get there: nothing
+    // is below them) and re-aim while it is not.
+    return holdNavigation({
+      isNavigating: sync.isNavigating,
+      read: () => {
+        const target = virtualizer.getOffsetForIndex(index, 'start')?.[0] ?? 0;
+        const furthest = Math.max(0, virtualizer.getTotalSize() - containerHeightRef.current);
+        return { wanted: Math.min(target, furthest), current: virtualizer.scrollOffset ?? 0 };
+      },
+      reaim: () => virtualizer.scrollToIndex(index, { align: 'start' }),
+    });
+  }, [currentPage, virtualizer, sync]);
+
+  // Scrolling with the keyboard does not reach the list's own handlers (focus is elsewhere).
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (SCROLL_KEYS.has(event.key) && !(event.target instanceof HTMLInputElement) && !(event.target instanceof HTMLTextAreaElement)) {
+        sync.userScrolled();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [sync]);
 
   if (totalPages === 0) return null;
 
@@ -121,8 +176,12 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
         width: containerWidth,
         height: containerHeight,
       }}
-      onScroll={() => {
-        isProgrammaticScroll.current = false;
+      // The user taking the scroll over: wheel, touch, or grabbing the scrollbar (the pointer lands on the
+      // list itself, not on a page).
+      onWheel={() => sync.userScrolled()}
+      onTouchStart={() => sync.userScrolled()}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) sync.userScrolled();
       }}
     >
       <div

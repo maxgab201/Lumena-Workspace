@@ -8,7 +8,18 @@ import {
   loadAllPageTexts,
   hasNativeText,
   partitionEmbedded,
+  EMBEDDING_DIMENSIONS,
 } from "../_shared/pipeline.ts"
+import {
+  EmbeddingHttpError,
+  chunksToEmbed,
+  classifyEmbeddingFailure,
+  createCooldownGate,
+  createEmbeddingBreaker,
+  describeEmbeddingOutcome,
+  embedWithRetry,
+  type EmbeddingFailure,
+} from "../_shared/embeddings.ts"
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 const EMBEDDING_MODEL = "gemini-embedding-001" // 768 dims by default
@@ -82,62 +93,129 @@ async function embedOne(text: string, apiKey: string): Promise<number[]> {
       body: JSON.stringify({
         model: `models/${EMBEDDING_MODEL}`,
         content: { parts: [{ text }] },
-        outputDimensionality: 768,
+        outputDimensionality: EMBEDDING_DIMENSIONS,
       }),
     },
   );
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`Embedding failed (${res.status}): ${errText.slice(0, 200)}`);
+    // The provider says whether this is "slow down" (per-minute), "done for today" (per-day) or
+    // a credentials problem; the pipeline acts differently on each.
+    const body = await res.text().catch(() => "");
+    throw new EmbeddingHttpError(classifyEmbeddingFailure(res.status, body));
   }
   const json = await res.json();
   return json.embedding?.values ?? [];
 }
 
-async function generateEmbeddings(texts: string[], apiKey: string): Promise<number[][]> {
-  // Bounded-concurrency embedding: a 900-page document is 900 chunks and the
-  // original sequential loop risked exhausting the Edge Function time budget
-  // (the observed root cause of jobs dying mid-flight and staying 'processing'
-  // forever). Concurrency 8 with per-batch heartbeats keeps each stage short.
+interface EmbeddingRun {
+  /** Aligned with the chunk list; [] where nothing was generated (not attempted or failed). */
+  embeddings: number[][];
+  /** The provider failure that stopped (or last hit) the run, if any. */
+  failure: EmbeddingFailure | null;
+  attempted: number;
+  succeeded: number;
+}
+
+/**
+ * Embeds the chunks in `todo` (the ones with no stored vector yet) with bounded concurrency. A
+ * rate limit is retried a few times; once a request cannot succeed (daily quota used up,
+ * credentials rejected, repeated rate limits) the run STOPS issuing requests instead of sending
+ * one per remaining chunk. Whatever was embedded is kept; the rest stays for a later retry.
+ */
+async function generateEmbeddings(texts: string[], apiKey: string, todo: number[], invocationStart: number): Promise<EmbeddingRun> {
+  // Concurrency 8 keeps each stage short enough for the Edge Function time budget (a 900-chunk
+  // document with the original sequential loop died mid-flight and stayed 'processing').
   const CONCURRENCY = 8;
-  const embeddings: number[][] = new Array(texts.length);
-  let next = 0;
-  let failures = 0;
-  const failure = { message: '' };
+  // The provider limits requests per minute (production: ~100, so a 120-chunk document used to get
+  // 101 vectors and 19 rate-limit errors within three seconds). When it says "slow down" every
+  // worker pauses together, and the stage may wait for the window to clear, but only inside a
+  // budget well under the Edge Function's wall-clock limit; whatever is left stays for a retry.
+  // Storing the vectors and chunks afterwards has taken 10-35 s in production, so the stage also has
+  // to end well before the invocation's own clock (150 s on the free plan) runs low.
+  const STAGE_BUDGET_MS = 60_000;
+  const deadline = Math.min(Date.now() + STAGE_BUDGET_MS, invocationStart + 80_000);
+  const stageStart = Date.now();
+  let rateLimited = 0;
+  let firstRateLimit: EmbeddingFailure | null = null;
+  const gate = createCooldownGate();
+  const embeddings: number[][] = texts.map(() => []);
+  const breaker = createEmbeddingBreaker();
+  let cursor = 0;
+  let attempted = 0;
+  let succeeded = 0;
+  let failuresLogged = 0;
 
   async function worker() {
-    while (true) {
-      const i = next++;
-      if (i >= texts.length) return;
+    while (!breaker.isOpen()) {
+      const position = cursor++;
+      if (position >= todo.length) return;
+      const index = todo[position];
+      attempted++;
       try {
         // Truncate (gemini-embedding-001 has a 2048-token input limit)
-        const values = await embedOne(texts[i].slice(0, 8000), apiKey);
-        if (values.length !== 768) {
-          throw new Error(`Unexpected embedding dimension: ${values.length}`);
+        const values = await embedWithRetry(() => embedOne(texts[index].slice(0, 8000), apiKey), {
+          maxAttempts: 4,
+          maxInlineWaitMs: Math.min(60_000, Math.max(0, deadline - Date.now())),
+          beforeAttempt: gate.wait,
+          onWait: gate.trip,
+          onFailure: (failure) => {
+            if (failure.kind === 'rate_limit' || failure.kind === 'daily_quota') {
+              rateLimited++;
+              firstRateLimit ??= failure;
+            }
+          },
+        });
+        if (values.length !== EMBEDDING_DIMENSIONS) {
+          throw new EmbeddingHttpError({ kind: 'invalid_input', status: 200, retryAfterMs: null, detail: `Unexpected embedding dimension: ${values.length}` });
         }
-        embeddings[i] = values;
-      } catch (error: any) {
-        failures++;
-        failure.message = error?.message || 'unknown embedding error';
-        console.error(`Failed to generate embedding for chunk ${i}:`, failure.message);
-        // Zero vectors would poison search, so leave the slot empty; the
-        // caller treats a fully-failed batch as an AI-layer degradation.
-        embeddings[i] = [];
+        embeddings[index] = values;
+        succeeded++;
+        breaker.record(null);
+      } catch (error) {
+        const failure: EmbeddingFailure = error instanceof EmbeddingHttpError
+          ? error.failure
+          : { kind: 'transient', status: 0, retryAfterMs: null, detail: error instanceof Error ? error.message.slice(0, 160) : 'unknown error' };
+        breaker.record(failure);
+        // Zero vectors would poison search, so the slot stays empty. Log a few, not one per chunk.
+        if (failuresLogged++ < 3) console.warn(`Embedding for chunk ${index} failed (${failure.kind}, ${failure.status}, quota=${failure.quota ?? 'n/a'}, retryAfterMs=${failure.retryAfterMs ?? 'n/a'}): ${failure.detail}`);
       }
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, texts.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, worker));
 
-  if (failures > 0 && failures === texts.length) {
-    // Everything failed (e.g. quota exhausted) — surface to the caller so it
-    // degrades the AI layer without ever blocking core reading.
-    throw new Error(failure.message || 'all embeddings failed');
+  // What the provider actually said, so the real limit is on record (it is not in its public docs).
+  console.log(`Embedding stage: ${succeeded}/${todo.length} embedded in ${Math.round((Date.now() - stageStart) / 1000)}s, ${rateLimited} rate-limited attempt(s)${firstRateLimit ? `, first: ${(firstRateLimit as EmbeddingFailure).kind} quota=${(firstRateLimit as EmbeddingFailure).quota ?? 'n/a'} retryAfterMs=${(firstRateLimit as EmbeddingFailure).retryAfterMs ?? 'n/a'}` : ''}`);
+
+  if (breaker.isOpen()) {
+    console.warn(`Embedding provider unavailable (${breaker.lastFailure()?.kind}) after ${attempted} request(s): stopping, ${todo.length - attempted} chunk(s) not attempted`);
+  } else if (succeeded < attempted) {
+    console.warn(`${attempted - succeeded}/${attempted} embeddings failed — partial indexing`);
   }
-  if (failures > 0) {
-    console.warn(`${failures}/${texts.length} embeddings failed — partial indexing (search degraded for those chunks)`)
+  return { embeddings, failure: breaker.lastFailure(), attempted, succeeded };
+}
+
+/** chunk_index -> the text the stored vector was made from, so a retry only embeds what is missing. */
+// deno-lint-ignore no-explicit-any
+async function loadStoredChunkTexts(client: any, documentId: string): Promise<Map<number, string>> {
+  const stored = new Map<number, string>();
+  const PAGE = 500;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await client
+      .from('document_embeddings')
+      .select('chunk_index, chunk_text')
+      .eq('document_id', documentId)
+      .order('chunk_index', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) {
+      // Not fatal: without this the run just embeds every chunk, as it always did.
+      console.warn(`Could not read stored embeddings (${error.message}); embedding every chunk`);
+      break;
+    }
+    for (const row of data ?? []) stored.set(row.chunk_index, row.chunk_text);
+    if (!data || data.length < PAGE) break;
   }
-  return embeddings;
+  return stored;
 }
 
 // ==========================================
@@ -597,15 +675,15 @@ serve(async (req) => {
     }
 
     const chunkTexts = chunks.map(c => c.text);
-    let embeddings: number[][] = []
+    let run: EmbeddingRun | null = null
+    let alreadyIndexed = 0
     if (geminiApiKey) {
-      try {
-        embeddings = await generateEmbeddings(chunkTexts, geminiApiKey);
-      } catch (embedErr: any) {
-        // e.g. Gemini quota (429). Reading is unaffected; AI features degrade.
-        embeddingFailure = `AI embeddings deferred: ${embedErr?.message || 'unknown error'}`
-        console.warn(embeddingFailure)
-      }
+      // A retry only pays for what is missing: chunks whose vector is already stored (from the same
+      // text) are skipped, so a document the quota cut short is finished, not redone.
+      const todo = chunksToEmbed(chunkTexts, await loadStoredChunkTexts(supabaseClient, String(documentId)))
+      alreadyIndexed = chunkTexts.length - todo.length
+      console.log(`Embeddings: ${alreadyIndexed} of ${chunkTexts.length} chunks already stored, ${todo.length} to generate`)
+      if (todo.length > 0) run = await generateEmbeddings(chunkTexts, geminiApiKey, todo, startTime)
       // Heartbeat after the (potentially long) embedding stage
       await heartbeat('processing', 75)
     }
@@ -617,14 +695,14 @@ serve(async (req) => {
     // ==========================================
     // A 900-chunk single insert is a giant payload that can hit request
     // limits; store embeddings in batches of 100 with heartbeats between.
-    if (embeddings.length > 0) {
+    let storedNow = 0
+    let storageFailure: string | null = null
+    if (run && run.succeeded > 0) {
       const BATCH = 100
-      let stored = 0
-      let notIndexed = 0
+      let visited = 0
       for (let start = 0; start < chunks.length; start += BATCH) {
         const slice = chunks.slice(start, start + BATCH)
-        const { indexed, skipped } = partitionEmbedded(slice, embeddings, start)
-        notIndexed += skipped
+        const { indexed } = partitionEmbedded(slice, run.embeddings, start)
         const embeddingRows = indexed.map(({ chunk, index, embedding }) => ({
           workspace_id: workspaceId,
           document_id: documentId,
@@ -646,18 +724,25 @@ serve(async (req) => {
 
           if (embeddingError) {
             // Same policy: storage of AI artifacts is not core. Degrade gracefully.
-            embeddingFailure = `Failed to store embeddings: ${embeddingError.message}`
-            console.warn(embeddingFailure)
+            storageFailure = `Failed to store embeddings: ${embeddingError.message}`
+            console.warn(storageFailure)
             break
           }
+          storedNow += embeddingRows.length
         }
-        stored += slice.length
-        await heartbeat('processing', Math.min(75 + Math.round(stored / chunks.length * 10), 85))
+        visited += slice.length
+        await heartbeat('processing', Math.min(75 + Math.round(visited / chunks.length * 10), 85))
       }
-      if (notIndexed > 0 && !embeddingFailure) {
-        embeddingFailure = `Partially indexed: ${notIndexed} of ${chunks.length} chunks have no AI embedding (provider quota); they stay searchable by text.`
-        console.warn(embeddingFailure)
-      }
+    }
+
+    // What the document carries: null when everything is indexed, otherwise why not and what still works.
+    if (geminiApiKey) {
+      embeddingFailure = storageFailure ?? describeEmbeddingOutcome({
+        total: chunks.length,
+        indexed: alreadyIndexed + storedNow,
+        failure: run?.failure ?? null,
+      })
+      if (embeddingFailure) console.warn(embeddingFailure)
     }
 
     await heartbeat('processing', 90)

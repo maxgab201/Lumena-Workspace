@@ -8,7 +8,7 @@ import {
   isDocumentActive,
   type WorkspaceDocument,
 } from '../types/documents';
-import { registerSessionReset } from './sessionReset';
+import { getSessionEpoch, registerSessionReset } from './sessionReset';
 
 interface Workspace {
   id: string;
@@ -107,9 +107,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   _pollTimer: null,
 
   fetchWorkspaces: async () => {
+    const epoch = getSessionEpoch();
     set({ loading: true, error: null });
     try {
       const data = await WorkspaceRepository.listWorkspaces();
+      // Signed out (or another account) while this was in flight: those workspaces are not for this session.
+      if (epoch !== getSessionEpoch()) return;
       const workspaces: Workspace[] = data.map((item: any) => ({
         id: item.id,
         name: item.name,
@@ -122,6 +125,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         get().setActiveWorkspace(workspaces[0]);
       }
     } catch (err: any) {
+      if (epoch !== getSessionEpoch()) return;
       set({ error: err.message, loading: false });
     }
   },
@@ -190,18 +194,21 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   fetchDocuments: async (workspaceId) => {
+    const epoch = getSessionEpoch();
     set({ loading: true, error: null });
     try {
       const [documents, jobs] = await Promise.all([
         DocumentRepository.listDocuments(workspaceId),
         DocumentRepository.listProcessingJobs(workspaceId),
       ]);
+      if (epoch !== getSessionEpoch()) return;
       if (get().activeWorkspace?.id !== workspaceId) return;
 
       const merged = mergeDocumentsWithJobs(documents as WorkspaceDocument[], jobs);
       set({ documents: merged, loading: false });
       if (merged.some(isDocumentActive)) get().startStatusPolling(workspaceId);
     } catch (err: unknown) {
+      if (epoch !== getSessionEpoch()) return;
       set({
         error: err instanceof Error ? err.message : 'Failed to load documents',
         loading: false,
@@ -212,11 +219,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   reconcileDocumentStatuses: async (workspaceId) => {
     // Skip the two round-trips entirely for a workspace that is no longer on screen.
     if (get().activeWorkspace?.id !== workspaceId) return;
+    const epoch = getSessionEpoch();
     try {
       const [documents, jobs] = await Promise.all([
         DocumentRepository.listDocuments(workspaceId),
         DocumentRepository.listProcessingJobs(workspaceId),
       ]);
+      if (epoch !== getSessionEpoch()) return;
       if (get().activeWorkspace?.id !== workspaceId) return;
 
       const merged = mergeDocumentsWithJobs(documents as WorkspaceDocument[], jobs);

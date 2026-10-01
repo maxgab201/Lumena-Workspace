@@ -25,6 +25,26 @@ function encodeStoragePath(filePath: string): string {
   return filePath.split('/').map(encodeURIComponent).join('/');
 }
 
+/**
+ * The message for a refused upload. Storage answers an object that already exists with a body
+ * ({"statusCode":"409","error":"Duplicate","message":"The resource already exists"}) that reads like an
+ * internal error; that happens when the same file is uploaded from two tabs at once (both pass the duplicate
+ * check, only one wins the path), so it gets the same wording as the check that normally catches it.
+ */
+export function describeUploadFailure(status: number, responseText: string, fileName?: string): string {
+  let message = `Upload failed (${status})`;
+  try {
+    const response = JSON.parse(responseText) as { message?: string; error?: string; statusCode?: string | number };
+    if (String(response.statusCode) === '409' || response.error === 'Duplicate') {
+      return `“${fileName ?? 'This file'}” is already in this workspace.`;
+    }
+    message = response.message || response.error || message;
+  } catch {
+    // Keep the HTTP status fallback when Storage does not return JSON.
+  }
+  return message;
+}
+
 function uploadWithProgress(
   filePath: string,
   file: File | Blob,
@@ -67,14 +87,7 @@ function uploadWithProgress(
         return;
       }
 
-      let message = `Upload failed (${xhr.status})`;
-      try {
-        const response = JSON.parse(xhr.responseText) as { message?: string; error?: string };
-        message = response.message || response.error || message;
-      } catch {
-        // Keep the HTTP status fallback when Storage does not return JSON.
-      }
-      reject(new Error(message));
+      reject(new Error(describeUploadFailure(xhr.status, xhr.responseText, 'name' in file ? String(file.name) : undefined)));
     };
 
     xhr.onerror = () => {

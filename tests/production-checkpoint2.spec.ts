@@ -4,7 +4,8 @@ const BASE = 'https://lumena-workspace.vercel.app';
 const EMAIL = process.env.LUMENA_QA_EMAIL;
 const PASSWORD = process.env.LUMENA_QA_PASSWORD;
 const DOC_URL = `${BASE}/viewer/9c95cbe6-9e4b-45e8-a9ca-e6b1508d1a6a`;
-const KNOWN_SECONDARY_ERRORS = ['PGRST205', 'public.presentations', '404'];
+// Presentations is behind a feature flag and makes no request while off, so no error is tolerated.
+const KNOWN_SECONDARY_ERRORS: string[] = [];
 
 test('checkpoint2 production reading flow', async ({ page, browserName }) => {
   test.skip(!EMAIL || !PASSWORD, 'Production QA credentials are required.');

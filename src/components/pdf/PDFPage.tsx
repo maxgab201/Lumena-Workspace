@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Page } from 'react-pdf';
 import { useViewerStore } from '../../stores/viewerStore';
 import { usePageRegistryStore } from '../../stores/pageRegistryStore';
 import { effectiveRotation, normalizeRotation } from '../../lib/pageRotation';
+import { maxCanvasPixelsFor, pagePixelRatio } from '../../lib/canvasBudget';
 import { useShallow } from 'zustand/react/shallow';
 import { LayoutOverlay } from './overlays/LayoutOverlay';
 import { OCROverlay } from './overlays/OCROverlay';
@@ -33,6 +34,21 @@ export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) =>
   const targetWidth = Math.max(100, Math.floor(width * scale));
   const pageLabel = pageLabels[pageIndex] ?? String(pageNumber);
 
+  // The page's own (unrotated) size, known once it has loaded. Until then the canvas budget assumes A4.
+  const [pageSize, setPageSize] = useState<{ width: number; height: number } | null>(null);
+  const displayRotation = intrinsicRotation === undefined ? 0 : effectiveRotation(intrinsicRotation, rotation);
+  const aspect = pageSize
+    ? (displayRotation % 180 === 0 ? pageSize.height / pageSize.width : pageSize.width / pageSize.height)
+    : 1.414;
+  // At high zoom a page is tens of millions of pixels: draw it at a lower resolution rather than exhaust memory
+  // (or, on iOS, get a blank canvas). Normal zoom is untouched: the ratio only drops when the cap is reached.
+  const devicePixelRatio = pagePixelRatio(
+    targetWidth,
+    targetWidth * aspect,
+    typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1,
+    typeof navigator === 'undefined' ? undefined : maxCanvasPixelsFor(navigator.userAgent, navigator.maxTouchPoints ?? 0),
+  );
+
   return (
     <div
       className="relative flex justify-center py-2"
@@ -51,9 +67,11 @@ export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) =>
         <Page
           pageNumber={pageNumber}
           width={targetWidth}
+          devicePixelRatio={devicePixelRatio}
           // Until the page reports its own /Rotate, let react-pdf use it (the same value for an unrotated view).
           rotate={intrinsicRotation === undefined ? undefined : effectiveRotation(intrinsicRotation, rotation)}
           onLoadSuccess={(page) => {
+            setPageSize((current) => (current && current.width === page.originalWidth && current.height === page.originalHeight ? current : { width: page.originalWidth, height: page.originalHeight }));
             const own = normalizeRotation(page.rotate);
             if (own !== intrinsicRotation) usePageRegistryStore.getState().updatePage(pageIndex, { intrinsicRotation: own });
           }}

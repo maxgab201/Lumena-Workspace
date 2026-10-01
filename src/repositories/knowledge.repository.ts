@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { isFeatureEnabled } from '../config/features';
 import type {
   Flashcard,
   GlossaryTerm,
@@ -7,6 +8,14 @@ import type {
   Presentation,
   PresentationSlide,
 } from '../types/knowledge';
+
+/**
+ * Presentations is behind a feature flag and its table does not exist in production. Anything that
+ * would reach it fails here, before a request is made, instead of as a 404 from the database.
+ */
+function assertPresentationsEnabled(): void {
+  if (!isFeatureEnabled('presentations')) throw new Error('Presentations are not enabled.');
+}
 
 // ------------------------------------------------------------------
 // Flashcards
@@ -191,6 +200,7 @@ export const KnowledgeRepository = {
   // --- Presentations ---
 
   async listPresentations(documentId: string): Promise<Presentation[]> {
+    assertPresentationsEnabled();
     const { data, error } = await supabase
       .from('presentations')
       .select('*')
@@ -203,6 +213,7 @@ export const KnowledgeRepository = {
   async addPresentation(
     presentation: Omit<Presentation, 'id' | 'created_at' | 'updated_at'>,
   ): Promise<Presentation> {
+    assertPresentationsEnabled();
     const { data, error } = await supabase
       .from('presentations')
       .insert({
@@ -221,6 +232,7 @@ export const KnowledgeRepository = {
     id: string,
     updates: Partial<Pick<Presentation, 'title' | 'slides'>>,
   ): Promise<Presentation> {
+    assertPresentationsEnabled();
     const { data, error } = await supabase
       .from('presentations')
       .update({
@@ -235,6 +247,7 @@ export const KnowledgeRepository = {
   },
 
   async deletePresentation(id: string): Promise<void> {
+    assertPresentationsEnabled();
     const { error } = await supabase
       .from('presentations')
       .delete()
@@ -251,19 +264,21 @@ export const KnowledgeRepository = {
     timelineEvents: TimelineEvent[];
     presentations: Presentation[];
   }> {
-    const sections = await Promise.allSettled([
+    // Presentations is off until its feature flag says otherwise (its table does not exist in
+    // production): while it is off nothing is requested for it, so opening a document does not
+    // produce a 404 on every load.
+    const presentationsEnabled = isFeatureEnabled('presentations');
+    const requests: Array<Promise<unknown[]>> = [
       KnowledgeRepository.listFlashcards(documentId),
       KnowledgeRepository.listGlossaryTerms(documentId),
       KnowledgeRepository.listMindMapNodes(documentId),
       KnowledgeRepository.listTimelineEvents(documentId),
-      KnowledgeRepository.listPresentations(documentId),
-    ]);
+    ];
+    if (presentationsEnabled) requests.push(KnowledgeRepository.listPresentations(documentId));
+    const sections = await Promise.allSettled(requests) as Array<PromiseSettledResult<any[]>>;
 
-    // One unavailable section must not hide the others. Production evidence: the
-    // `presentations` table does not exist there (PostgREST 404 / PGRST205), and with a plain
-    // Promise.all that single failure left flashcards, glossary, mind map and timeline empty
-    // for every document. When EVERY section fails (offline, expired session) it is still an
-    // error the caller has to see.
+    // The sections are independent: one that is unavailable must not hide the others. When EVERY
+    // requested section fails (offline, expired session) it is still an error the caller has to see.
     if (sections.every((section) => section.status === 'rejected')) {
       throw (sections[0] as PromiseRejectedResult).reason;
     }
@@ -278,7 +293,7 @@ export const KnowledgeRepository = {
       glossaryTerms: sectionOrEmpty(sections[1], 'glossary'),
       mindMapNodes: sectionOrEmpty(sections[2], 'mind map'),
       timelineEvents: sectionOrEmpty(sections[3], 'timeline'),
-      presentations: sectionOrEmpty(sections[4], 'presentations'),
+      presentations: presentationsEnabled ? sectionOrEmpty(sections[4], 'presentations') : [],
     };
   },
 };

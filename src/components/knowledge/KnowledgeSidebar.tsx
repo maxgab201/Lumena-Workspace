@@ -7,6 +7,7 @@ import { PresentationView } from './PresentationView';
 import { Brain, BookOpen, Network, Clock, FileText, X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/utils';
+import { isFeatureEnabled } from '../../config/features';
 
 interface KnowledgeSidebarProps {
   documentId: string;
@@ -19,13 +20,14 @@ type TabId = 'flashcards' | 'glossary' | 'mindmap' | 'timeline' | 'presentation'
 export const KnowledgeSidebar = ({ documentId, workspaceId, onClose }: KnowledgeSidebarProps) => {
   const [activeTab, setActiveTab] = useState<TabId>('flashcards');
 
-  const tabs = [
+  const presentationsEnabled = isFeatureEnabled('presentations');
+  const tabs: ReadonlyArray<{ id: TabId; label: string; icon: typeof Brain }> = [
     { id: 'flashcards', label: 'Flashcards', icon: Brain },
     { id: 'glossary', label: 'Glossary', icon: BookOpen },
     { id: 'mindmap', label: 'Mind Map', icon: Network },
     { id: 'timeline', label: 'Timeline', icon: Clock },
-    { id: 'presentation', label: 'Presentation', icon: FileText },
-  ] as const;
+    ...(presentationsEnabled ? [{ id: 'presentation' as const, label: 'Presentation', icon: FileText }] : []),
+  ];
 
   return (
     <div className="flex flex-col h-full bg-background/60 backdrop-blur-3xl border-l border-white/10 w-80 shadow-2xl">
@@ -64,7 +66,7 @@ export const KnowledgeSidebar = ({ documentId, workspaceId, onClose }: Knowledge
         {activeTab === 'glossary' && <GlossaryView documentId={documentId} workspaceId={workspaceId} />}
         {activeTab === 'mindmap' && <MindMapView documentId={documentId} workspaceId={workspaceId} />}
         {activeTab === 'timeline' && <TimelineView documentId={documentId} workspaceId={workspaceId} />}
-        {activeTab === 'presentation' && <PresentationView documentId={documentId} workspaceId={workspaceId} />}
+        {presentationsEnabled && activeTab === 'presentation' && <PresentationView documentId={documentId} workspaceId={workspaceId} />}
       </div>
     </div>
   );

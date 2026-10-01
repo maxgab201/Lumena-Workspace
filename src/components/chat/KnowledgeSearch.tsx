@@ -1,18 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Search, X, Loader2, FileText, ChevronRight } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { cn } from '../../lib/utils';
-
-interface SearchResult {
-  document_id: string;
-  document_name: string;
-  page_number: number;
-  chunk_index: number;
-  chunk_text: string;
-  similarity: number;
-  match_type: string;
-}
+import { formatSimilarity, parseKnowledgeSearchResponse, type KnowledgeSearchResult as SearchResult } from '../../lib/knowledgeSearch';
 
 interface KnowledgeSearchProps {
   onSelectResult?: (result: SearchResult) => void;
@@ -23,15 +14,33 @@ export const KnowledgeSearch = ({
   onSelectResult,
   className
 }: KnowledgeSearchProps) => {
-  const workspaceId = useWorkspaceStore.getState().activeWorkspace?.id;
+  // Subscribed, not read once per render: a search must never run against a workspace the user left.
+  const workspaceId = useWorkspaceStore((state) => state.activeWorkspace?.id);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [textOnly, setTextOnly] = useState(false);
+  // The query a finished search was run for: "no results" is only true for that exact text, not
+  // for whatever is being typed (it used to show up after the first keystroke, before any search).
+  const [searchedQuery, setSearchedQuery] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Only the latest search may write its answer: a slow earlier one (or one that was started in
+  // another workspace) would otherwise overwrite what the user is looking at.
+  const searchSeq = useRef(0);
+
+  useEffect(() => {
+    searchSeq.current += 1;
+    setResults([]);
+    setTextOnly(false);
+    setSearchedQuery(null);
+    setError(null);
+    setIsLoading(false);
+  }, [workspaceId]);
 
   const handleSearch = useCallback(async () => {
     if (!query.trim() || !workspaceId) return;
 
+    const seq = ++searchSeq.current;
     setIsLoading(true);
     setError(null);
 
@@ -65,14 +74,19 @@ export const KnowledgeSearch = ({
         throw new Error(errData.error || `Search failed: ${response.status}`);
       }
 
-      const data = await response.json();
-      setResults(data.results || []);
+      const parsed = parseKnowledgeSearchResponse(await response.json());
+      if (seq !== searchSeq.current) return;
+      setResults(parsed.results);
+      setTextOnly(parsed.degraded);
+      setSearchedQuery(query);
     } catch (err) {
+      if (seq !== searchSeq.current) return;
       console.error('Knowledge search error:', err);
       setError(err instanceof Error ? err.message : 'Search failed');
       setResults([]);
+      setTextOnly(false);
     } finally {
-      setIsLoading(false);
+      if (seq === searchSeq.current) setIsLoading(false);
     }
   }, [query, workspaceId]);
 
@@ -83,9 +97,13 @@ export const KnowledgeSearch = ({
   };
 
   const clearSearch = () => {
+    searchSeq.current += 1;
     setQuery('');
     setResults([]);
+    setTextOnly(false);
+    setSearchedQuery(null);
     setError(null);
+    setIsLoading(false);
   };
 
   return (
@@ -124,6 +142,12 @@ export const KnowledgeSearch = ({
         <p className="text-xs text-destructive/80">{error}</p>
       )}
 
+      {textOnly && !error && (
+        <p className="text-[11px] text-muted-foreground/70" data-testid="knowledge-search-text-only">
+          Showing text matches: AI semantic search is unavailable right now.
+        </p>
+      )}
+
       {/* Results */}
       {results.length > 0 && (
         <div className="space-y-2 max-h-96 overflow-y-auto">
@@ -154,7 +178,7 @@ export const KnowledgeSearch = ({
                 <span className="px-1.5 py-0.5 rounded bg-muted border border-white/5 text-[9px]">
                   {result.match_type}
                 </span>
-                <span className="text-[10px]">{(result.similarity * 100).toFixed(0)}%</span>
+                {formatSimilarity(result) && <span className="text-[10px]">{formatSimilarity(result)}</span>}
               </div>
 
               <p className="text-[12px] text-muted-foreground/70 line-clamp-2 pl-6">
@@ -166,7 +190,7 @@ export const KnowledgeSearch = ({
         </div>
       )}
 
-      {query && !isLoading && results.length === 0 && !error && (
+      {searchedQuery !== null && searchedQuery === query && !isLoading && results.length === 0 && !error && (
         <p className="text-sm text-muted-foreground/60 text-center py-4">
           No results found for "{query}"
         </p>

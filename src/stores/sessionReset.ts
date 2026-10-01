@@ -11,12 +11,22 @@ type SessionReset = () => void;
 
 const resets = new Set<SessionReset>();
 
+/**
+ * Changes every time the session ends or the account changes. A loader captures it before it awaits
+ * the network and drops its answer when it no longer matches: resetting the stores is not enough on
+ * its own, because a request that was already in flight would write the previous account's data
+ * back into them a moment later.
+ */
+let sessionEpoch = 0;
+export const getSessionEpoch = (): number => sessionEpoch;
+
 export function registerSessionReset(reset: SessionReset): void {
   resets.add(reset);
 }
 
 /** Drop every per-user cache. Called when the session ends or the account changes. */
 export function resetUserScopedState(): void {
+  sessionEpoch += 1;
   for (const reset of resets) {
     try {
       reset();
