@@ -85,8 +85,12 @@ export function classifyEmbeddingFailure(status: number, body: string): Embeddin
 
 export interface RetryOptions {
   maxAttempts?: number;
-  /** A provider delay longer than this is not waited out inside one Edge Function invocation. */
-  maxInlineWaitMs?: number;
+  /**
+   * A provider delay longer than this is not waited out inside one Edge Function invocation. Pass a function
+   * when the allowance shrinks with time (a stage budget): it is read before every wait, because a chunk that
+   * has been retrying for a while must not keep believing in the allowance it had when it started.
+   */
+  maxInlineWaitMs?: number | (() => number);
   baseDelayMs?: number;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
@@ -100,7 +104,8 @@ export interface RetryOptions {
 
 /** What to wait before the next attempt, or null when waiting is pointless or too long. */
 export function nextRetryDelayMs(failure: EmbeddingFailure, attempt: number, options: RetryOptions = {}): number | null {
-  const { maxInlineWaitMs = 10_000, random = Math.random } = options;
+  const { random = Math.random } = options;
+  const maxInlineWaitMs = typeof options.maxInlineWaitMs === 'function' ? options.maxInlineWaitMs() : (options.maxInlineWaitMs ?? 10_000);
   if (failure.kind !== 'rate_limit' && failure.kind !== 'transient') return null;
   if (failure.retryAfterMs !== null) {
     return failure.retryAfterMs <= maxInlineWaitMs ? failure.retryAfterMs + Math.round(random() * 250) : null;

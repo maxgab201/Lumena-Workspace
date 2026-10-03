@@ -150,6 +150,34 @@ describe('embedWithRetry', () => {
     expect(wait).not.toHaveBeenCalled();
   });
 
+  /**
+   * Production (smoke test after the merge): a 120-chunk document's embedding stage took 87 s against a 60 s budget.
+   * The wait allowed was worked out once, when a chunk started; a chunk that had been retrying since second 1 still
+   * believed it had 59 s left at second 58, waited the 26 s the provider asked for and paused every worker with it.
+   */
+  it('re-reads the time it can afford before every wait, not once when it starts', async () => {
+    const wait = sleep();
+    let affordable = 59_000;
+    const maxInlineWaitMs = vi.fn(() => affordable);
+    const call = vi.fn().mockImplementation(async () => {
+      affordable = 2_000; // the stage's budget is almost used up by the time the first attempt fails
+      throw httpError('rate_limit', 26_000);
+    });
+
+    await expect(embedWithRetry(call, { sleep: wait, random: () => 0, maxInlineWaitMs })).rejects.toBeInstanceOf(EmbeddingHttpError);
+
+    expect(maxInlineWaitMs).toHaveBeenCalled();
+    expect(wait).not.toHaveBeenCalled(); // 26 s no longer fits
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('still waits when the budget left does cover the provider\'s delay', async () => {
+    const wait = sleep();
+    const call = vi.fn().mockRejectedValueOnce(httpError('rate_limit', 26_000)).mockResolvedValue('vector');
+    await expect(embedWithRetry(call, { sleep: wait, random: () => 0, maxInlineWaitMs: () => 40_000 })).resolves.toBe('vector');
+    expect(wait).toHaveBeenCalledWith(26_000);
+  });
+
   it('treats a network error as transient and retries it', async () => {
     const call = vi.fn().mockRejectedValueOnce(new TypeError('fetch failed')).mockResolvedValue('vector');
     await expect(embedWithRetry(call, { sleep: sleep(), random: () => 0 })).resolves.toBe('vector');
@@ -447,6 +475,13 @@ describe('the Edge Functions use them', () => {
     expect(source).toContain('chunksToEmbed(chunkTexts, await loadStoredChunkTexts(');
     expect(source).toContain('describeEmbeddingOutcome({');
     expect(source).toContain('classifyEmbeddingFailure(res.status, body)');
+  });
+
+  it('process-document keeps the embedding stage inside its budget: remaining time per attempt, no new chunk after the deadline, a timeout per request', () => {
+    const source = read('process-document');
+    expect(source).toContain('maxInlineWaitMs: () => Math.min(60_000, Math.max(0, deadline - Date.now()))');
+    expect(source).toContain('if (Date.now() >= deadline) return');
+    expect(source).toContain('signal: AbortSignal.timeout(EMBED_REQUEST_TIMEOUT_MS)');
   });
 
   it('process-document no longer throws away what it embedded when the run was cut short', () => {
