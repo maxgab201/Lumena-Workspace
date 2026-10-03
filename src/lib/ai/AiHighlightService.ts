@@ -132,8 +132,15 @@ export class AiHighlightService {
     }
 
     // ─── 3. Analyze page by page (bounded requests) ───
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Tu sesión expiró. Iniciá sesión de nuevo.');
+    // A whole-document run (OCR plus one request per page) can outlive the access token. supabase-js refreshes
+    // the token when the session is read, so it is read again for every request instead of once for the run:
+    // with a token captured here, every page after its expiry failed with 401.
+    const SESSION_EXPIRED = 'Tu sesión expiró. Iniciá sesión de nuevo.';
+    const currentAccessToken = async (): Promise<string | null> => {
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.access_token ?? null;
+    };
+    if (!(await currentAccessToken())) throw new Error(SESSION_EXPIRED);
 
     const createdHighlights: Highlight[] = [];
     const pageBlocks = scope === 'page' && params.pageNumber
@@ -176,11 +183,19 @@ export class AiHighlightService {
       const inventory = pageSentences.map((s) => ({ sentence_key: s.sentence_key, text: s.text }));
 
       try {
+        const accessToken = await currentAccessToken();
+        if (!accessToken) {
+          // The session ended mid-run: every remaining page would be refused the same way.
+          for (const remaining of pageBlocks.slice(pageBlocks.indexOf(pageNumber))) {
+            if ((sentencesByPage.get(remaining)?.length ?? 0) > 0) failedPages.push({ page: remaining, error: SESSION_EXPIRED });
+          }
+          break;
+        }
         const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-highlight`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({
             document_id: documentId,

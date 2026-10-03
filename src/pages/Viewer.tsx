@@ -17,6 +17,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { useRefreshOnReturn } from '../lib/useRefreshOnReturn';
 
 interface DocumentMeta {
   id: string;
@@ -43,7 +44,11 @@ export const Viewer = () => {
   const [isLoadingMeta, setIsLoadingMeta] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadDocument = useCallback(async () => {
+  // `isCurrent` turns false when the user leaves this document (or the page unmounts). Every step
+  // below awaits the network, so without it a slow document keeps going after the user opened another
+  // one: it asked for the file and wrote its chat session, highlights and knowledge into the shared
+  // stores, so the document on screen showed the other one's conversation.
+  const loadDocument = useCallback(async (isCurrent: () => boolean) => {
     if (!documentId) return;
 
     try {
@@ -52,15 +57,18 @@ export const Viewer = () => {
 
       // 1. Fetch document metadata from DB
       const doc = await DocumentRepository.getDocument(documentId) as DocumentMeta;
+      if (!isCurrent()) return;
       setDocument(doc);
 
       // Reconcile status with processing jobs if not yet marked ready
       if (doc.status !== 'ready') {
         const jobs = await DocumentRepository.listProcessingJobs(doc.workspace_id).catch(() => []);
+        if (!isCurrent()) return;
         const activeJob = jobs.find(j => j.document_id === documentId);
         if (activeJob && activeJob.status === 'completed') {
           doc.status = 'ready';
           await DocumentRepository.updateDocumentStatus(documentId, 'ready').catch(() => undefined);
+          if (!isCurrent()) return;
           setDocument({ ...doc, status: 'ready' });
         } else if (doc.status === 'error' || activeJob?.status === 'failed') {
           throw new Error(
@@ -75,6 +83,7 @@ export const Viewer = () => {
 
       // 2. Get a signed URL for the PDF file (valid for 1 hour)
       const signedUrl = await DocumentRepository.getSignedUrl(doc.file_path, 3600);
+      if (!isCurrent()) return;
       if (!signedUrl) {
         throw new Error('Unable to generate secure access URL for this file.');
       }
@@ -91,22 +100,33 @@ export const Viewer = () => {
         console.warn('[Viewer] Failed to load secondary document data:', err);
       });
     } catch (err: any) {
+      // The user already left: an error about a document that is no longer on screen is only noise.
+      if (!isCurrent()) return;
       console.error('[Viewer] Failed to load document:', err);
       setError(err?.message || 'Failed to load document');
       toast.error('Failed to load document', {
         description: err?.message || 'The document could not be loaded.',
       });
     } finally {
-      setIsLoadingMeta(false);
+      if (isCurrent()) setIsLoadingMeta(false);
     }
   }, [documentId, loadSession, loadHighlights, loadCategories, loadKnowledge]);
 
   useEffect(() => {
+    let cancelled = false;
     reset();
     setDocumentId(documentId ?? null);
-    loadDocument();
-    return () => reset();
+    void loadDocument(() => !cancelled);
+    return () => {
+      cancelled = true;
+      reset();
+    };
   }, [documentId, reset, setDocumentId, loadDocument]);
+
+  // Highlights made in another tab or on another device while this one was in the background.
+  useRefreshOnReturn(() => {
+    if (documentId) void loadHighlights(documentId);
+  });
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '—';

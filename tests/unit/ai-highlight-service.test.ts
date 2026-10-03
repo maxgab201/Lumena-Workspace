@@ -202,3 +202,53 @@ describe('AI Highlight: geometry always comes from real words', () => {
     expect(created.rects.every((rect) => rect.x < 1 && rect.y < 1)).toBe(true);
   });
 });
+
+describe('AI Highlight: a long run does not outlive the access token it started with', () => {
+  /**
+   * A whole-document run is OCR plus one request per page, which can take longer than the access token lives
+   * (one hour). The token used to be read once before the loop and sent with every page, so past its expiry every
+   * remaining page failed with 401. supabase-js refreshes a token on getSession(): it has to be asked per request.
+   */
+  const authorizationOf = (callIndex: number) => (fetchMock.mock.calls[callIndex][1] as { headers: Record<string, string> }).headers.Authorization;
+
+  it('asks for the session again before every page request', async () => {
+    let issued = 0;
+    (supabase.auth.getSession as Mock).mockReset().mockImplementation(async () => ({
+      data: { session: { access_token: `token-${++issued}` } },
+      error: null,
+    }));
+    fetchMock.mockResolvedValueOnce(okResponse(TEXT_1, 'p1-S1')).mockResolvedValueOnce(okResponse(TEXT_2, 'p2-S1'));
+
+    await run();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(authorizationOf(0)).not.toBe(authorizationOf(1));
+  });
+
+  it('uses the refreshed token when it changes mid-run', async () => {
+    (supabase.auth.getSession as Mock).mockReset()
+      .mockResolvedValueOnce({ data: { session: { access_token: 'expiring' } }, error: null })
+      .mockResolvedValueOnce({ data: { session: { access_token: 'expiring' } }, error: null })
+      .mockResolvedValue({ data: { session: { access_token: 'refreshed' } }, error: null });
+    fetchMock.mockResolvedValueOnce(okResponse(TEXT_1, 'p1-S1')).mockResolvedValueOnce(okResponse(TEXT_2, 'p2-S1'));
+
+    await run();
+
+    expect(authorizationOf(1)).toBe('Bearer refreshed');
+  });
+
+  it('stops and says so when the session is gone mid-run, instead of sending requests that cannot succeed', async () => {
+    (supabase.auth.getSession as Mock).mockReset()
+      .mockResolvedValueOnce({ data: { session: { access_token: 'token' } }, error: null })
+      .mockResolvedValueOnce({ data: { session: { access_token: 'token' } }, error: null })
+      .mockResolvedValue({ data: { session: null }, error: null });
+    fetchMock.mockResolvedValueOnce(okResponse(TEXT_1, 'p1-S1'));
+
+    const summary = await run();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(summary.created).toBe(1);
+    expect(summary.failedPages.map((entry) => entry.page)).toEqual([2]);
+    expect(summary.failedPages[0].error).toMatch(/sesión expiró/i);
+  });
+});

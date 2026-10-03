@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { BillingRepository } from '../repositories/billing.repository';
 import { useWorkspaceStore } from './workspaceStore';
-import { registerSessionReset } from './sessionReset';
+import { getSessionEpoch, registerSessionReset } from './sessionReset';
 
 interface Subscription {
   id: string;
@@ -50,6 +50,9 @@ interface BillingStore {
   checkoutPackage: (packageId: string) => Promise<void>;
 }
 
+/** Counts fetchBillingData calls so only the newest one controls the loading flag. */
+let latestBillingFetch = 0;
+
 export const useBillingStore = create<BillingStore>((set) => ({
   subscription: null,
   account: null,
@@ -70,6 +73,16 @@ export const useBillingStore = create<BillingStore>((set) => ({
       return;
     }
 
+    const call = ++latestBillingFetch;
+    const epoch = getSessionEpoch();
+    const workspaceId = workspace.id;
+    // The credits belong to the workspace asked for: if the user left it (or the session ended) while
+    // this was in flight, showing them for whatever workspace is active now would be wrong.
+    const isCurrent = () => epoch === getSessionEpoch() && useWorkspaceStore.getState().activeWorkspace?.id === workspaceId;
+    // A dropped answer writes no data; the newest call still has to switch the spinner off.
+    const settleStale = () => {
+      if (call === latestBillingFetch && epoch === getSessionEpoch()) set({ loading: false });
+    };
     set({ loading: true, error: null });
     try {
       const [sub, account, txs, pkgs] = await Promise.all([
@@ -78,6 +91,7 @@ export const useBillingStore = create<BillingStore>((set) => ({
         BillingRepository.getLedgerEntries(workspace.id),
         BillingRepository.getCreditPackages(),
       ]);
+      if (!isCurrent()) return settleStale();
 
       set({
         subscription: sub,
@@ -87,6 +101,7 @@ export const useBillingStore = create<BillingStore>((set) => ({
         loading: false,
       });
     } catch (err: any) {
+      if (!isCurrent()) return settleStale();
       set({ error: err.message, loading: false });
     }
   },

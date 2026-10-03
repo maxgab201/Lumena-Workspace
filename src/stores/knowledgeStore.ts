@@ -10,7 +10,8 @@ import type {
   Concept,
   Event,
 } from '../types/knowledge';
-import { registerSessionReset } from './sessionReset';
+import { getSessionEpoch, registerSessionReset } from './sessionReset';
+import { isFeatureEnabled } from '../config/features';
 
 interface KnowledgeStoreState {
   // All keyed by document_id
@@ -158,10 +159,12 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
   generationError: null,
 
   loadKnowledge: async (documentId) => {
+    const epoch = getSessionEpoch();
     set({ isLoading: true });
     try {
       const { flashcards, glossaryTerms, mindMapNodes, timelineEvents, presentations } =
         await KnowledgeRepository.loadAllForDocument(documentId);
+      if (epoch !== getSessionEpoch()) return;
 
       set((state) => ({
         flashcards: { ...state.flashcards, [documentId]: flashcards },
@@ -172,6 +175,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
         isLoading: false,
       }));
     } catch (err) {
+      if (epoch !== getSessionEpoch()) return;
       console.error('[KnowledgeStore] Failed to load knowledge:', err);
       set({ isLoading: false });
     }
@@ -523,6 +527,9 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
   },
 
   generatePresentation: async (documentId, workspaceId) => {
+    // The UI does not offer this while the feature is off; this keeps any other caller from
+    // reaching the function (and the missing table behind it).
+    if (!isFeatureEnabled('presentations')) throw new Error('Presentations are not enabled.');
     set({ isGenerating: true, generationError: null });
     try {
       const { supabase } = await import('../lib/supabase');
