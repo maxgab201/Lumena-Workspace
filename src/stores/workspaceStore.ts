@@ -131,15 +131,20 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   createWorkspace: async (name) => {
+    const epoch = getSessionEpoch();
     set({ loading: true, error: null });
     try {
       const newWorkspace = await WorkspaceRepository.createWorkspace(name);
+      // The insert may have completed for the old account after sign-out. Keep its response from
+      // selecting that workspace (or listing its documents) in the next account's store.
+      if (epoch !== getSessionEpoch()) return;
       set((state) => ({
         workspaces: [...state.workspaces, newWorkspace],
         loading: false,
       }));
       get().setActiveWorkspace(newWorkspace);
     } catch (err: any) {
+      if (epoch !== getSessionEpoch()) return;
       set({ error: err.message, loading: false });
       throw err;
     }

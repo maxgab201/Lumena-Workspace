@@ -187,6 +187,18 @@ Last Updated: 2026-09-02
 - A `/Rotate 90` page is displayed landscape (`data-main-rotation` 90), a highlight lands on its text (IoU 1.00), stays after rotating 90° more and after reload; OCR of a sideways `/Rotate 90` scan reads the same six lines as the upright one (6 of 6 known words).
 - One selection + double-click saves one highlight; a failed save keeps the toolbar and a retry after the network returns saves it; Ctrl+F `Mach*ne` no longer matches "Machine"; a long OCR search lists 60 pages (about 15 before); labels "mid" and "iiii" are stored as typed while "iv" still continues the sequence.
 
+## [Unreleased] - 2026-10-03 — Post-merge concurrency audit
+
+### Fixed
+
+- A workspace creation response that arrived after sign-out could append the previous account's workspace and activate it in the next session. `createWorkspace` now checks the session epoch before applying either a success or failure response.
+- While switching documents, a slow category load for the previous workspace could replace the categories loaded for the current workspace. Only the newest category request for the current session now updates the store.
+
+### Verification
+
+- Both races have deferred-response regression tests. Each new test failed against the old implementation and passed after the fix; temporarily removing either concurrency guard makes its test fail. The full test suite and deployment checks are tracked with the follow-up PR.
+- Production auth, Reader and QA flows were not repeated in this audit because no disposable authenticated QA browser state was available.
+
 ## [Unreleased] - 2026-09-30 — Audit round 2 (production smoke)
 
 ### Fixed

@@ -45,6 +45,8 @@ interface HighlightStoreState {
 
 type HighlightMap = Record<string, Highlight[]>;
 
+let latestCategoriesLoad = 0;
+
 function findHighlight(map: HighlightMap, id: string): Highlight | null {
   for (const list of Object.values(map)) {
     const found = list.find((h) => h.id === id);
@@ -116,11 +118,13 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
 
   loadCategories: async (workspaceId) => {
     const epoch = getSessionEpoch();
+    const request = ++latestCategoriesLoad;
     try {
       const categories = await HighlightRepository.listCategories(workspaceId);
-      if (epoch !== getSessionEpoch()) return;
+      if (epoch !== getSessionEpoch() || request !== latestCategoriesLoad) return;
       set({ categories });
     } catch (err) {
+      if (epoch !== getSessionEpoch() || request !== latestCategoriesLoad) return;
       console.error('[HighlightStore] Failed to load categories:', err);
     }
   },
