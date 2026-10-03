@@ -84,11 +84,15 @@ function chunkText(
 // ==========================================
 // GENERATE EMBEDDINGS USING GEMINI
 // ==========================================
+// A request that never answers must not hold the whole stage past its budget.
+const EMBED_REQUEST_TIMEOUT_MS = 20_000
+
 async function embedOne(text: string, apiKey: string): Promise<number[]> {
   const res = await fetch(
     `${GEMINI_API_BASE}/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`,
     {
       method: "POST",
+      signal: AbortSignal.timeout(EMBED_REQUEST_TIMEOUT_MS),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: `models/${EMBEDDING_MODEL}`,
@@ -147,6 +151,8 @@ async function generateEmbeddings(texts: string[], apiKey: string, todo: number[
 
   async function worker() {
     while (!breaker.isOpen()) {
+      // Out of budget: leave the rest for a retry instead of starting chunks that can only fail or overrun.
+      if (Date.now() >= deadline) return;
       const position = cursor++;
       if (position >= todo.length) return;
       const index = todo[position];
@@ -155,7 +161,7 @@ async function generateEmbeddings(texts: string[], apiKey: string, todo: number[
         // Truncate (gemini-embedding-001 has a 2048-token input limit)
         const values = await embedWithRetry(() => embedOne(texts[index].slice(0, 8000), apiKey), {
           maxAttempts: 4,
-          maxInlineWaitMs: Math.min(60_000, Math.max(0, deadline - Date.now())),
+          maxInlineWaitMs: () => Math.min(60_000, Math.max(0, deadline - Date.now())),
           beforeAttempt: gate.wait,
           onWait: gate.trip,
           onFailure: (failure) => {
