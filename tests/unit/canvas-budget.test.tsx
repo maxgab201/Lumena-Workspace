@@ -9,6 +9,19 @@ import {
   pagePixelRatio,
 } from '../../src/lib/canvasBudget';
 
+// vi.mock is hoisted above everything else whatever the nesting, so it is written where it takes effect: the top.
+const harness = vi.hoisted(() => ({ pageProps: [] as Array<{ devicePixelRatio?: number; width?: number; onLoadSuccess?: (page: unknown) => void }> }));
+vi.mock('react-pdf', () => ({
+  Page: (props: { devicePixelRatio?: number; width?: number; onLoadSuccess?: (page: unknown) => void }) => {
+    harness.pageProps.push(props);
+    return <div data-testid="react-pdf-page" />;
+  },
+}));
+vi.mock('../../src/components/pdf/overlays/LayoutOverlay', () => ({ LayoutOverlay: () => null }));
+vi.mock('../../src/components/pdf/overlays/OCROverlay', () => ({ OCROverlay: () => null }));
+vi.mock('../../src/components/pdf/overlays/VisionOverlay', () => ({ VisionOverlay: () => null }));
+vi.mock('../../src/components/pdf/overlays/HighlightOverlay', () => ({ HighlightOverlay: () => null }));
+
 /**
  * Measured in a real browser on a 900-page document: at the maximum zoom (500%) twelve canvases held 409 million
  * pixels and the browser used 3.1 GB (0.9 GB again after zooming out). react-pdf draws at width × devicePixelRatio
@@ -93,18 +106,6 @@ describe('overscanForScale', () => {
 });
 
 describe('the reader applies the budget', () => {
-  const harness = vi.hoisted(() => ({ pageProps: [] as Array<{ devicePixelRatio?: number; width?: number; onLoadSuccess?: (page: unknown) => void }> }));
-  vi.mock('react-pdf', () => ({
-    Page: (props: { devicePixelRatio?: number; width?: number; onLoadSuccess?: (page: unknown) => void }) => {
-      harness.pageProps.push(props);
-      return <div data-testid="react-pdf-page" />;
-    },
-  }));
-  vi.mock('../../src/components/pdf/overlays/LayoutOverlay', () => ({ LayoutOverlay: () => null }));
-  vi.mock('../../src/components/pdf/overlays/OCROverlay', () => ({ OCROverlay: () => null }));
-  vi.mock('../../src/components/pdf/overlays/VisionOverlay', () => ({ VisionOverlay: () => null }));
-  vi.mock('../../src/components/pdf/overlays/HighlightOverlay', () => ({ HighlightOverlay: () => null }));
-
   const lastRatio = () => harness.pageProps[harness.pageProps.length - 1]?.devicePixelRatio;
 
   beforeEach(async () => {
