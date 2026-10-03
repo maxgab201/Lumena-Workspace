@@ -32,7 +32,7 @@ vi.mock('../../src/repositories/highlight.repository', () => ({
   },
 }));
 vi.mock('../../src/repositories/knowledge.repository', () => ({ KnowledgeRepository: { loadAllForDocument: vi.fn() } }));
-vi.mock('../../src/repositories/workspace.repository', () => ({ WorkspaceRepository: { listWorkspaces: vi.fn() } }));
+vi.mock('../../src/repositories/workspace.repository', () => ({ WorkspaceRepository: { listWorkspaces: vi.fn(), createWorkspace: vi.fn() } }));
 vi.mock('../../src/repositories/billing.repository', () => ({
   BillingRepository: { getSubscription: vi.fn(), getCreditAccount: vi.fn(), getLedgerEntries: vi.fn(), getCreditPackages: vi.fn() },
 }));
@@ -114,6 +114,24 @@ describe('answers that arrive after the session ended or the account changed are
     expect(DocumentRepository.listDocuments).not.toHaveBeenCalled();
   });
 
+  it('workspace creation: a response after sign-out does not activate the previous account workspace', async () => {
+    const late = deferred<ReturnType<typeof ws>>();
+    vi.mocked(WorkspaceRepository.createWorkspace).mockReturnValue(late.promise as never);
+    vi.mocked(DocumentRepository.listDocuments).mockResolvedValue([] as never);
+    vi.mocked(DocumentRepository.listProcessingJobs).mockResolvedValue([] as never);
+    const creating = useWorkspaceStore.getState().createWorkspace('previous account');
+
+    resetUserScopedState(); // the request is still in flight when the session ends
+    const currentAccountWorkspace = ws('current-account-ws');
+    useWorkspaceStore.setState({ workspaces: [currentAccountWorkspace], activeWorkspace: currentAccountWorkspace });
+    late.resolve(ws('previous-account-ws'));
+    await creating;
+
+    expect(useWorkspaceStore.getState().workspaces).toEqual([currentAccountWorkspace]);
+    expect(useWorkspaceStore.getState().activeWorkspace).toEqual(currentAccountWorkspace);
+    expect(DocumentRepository.listDocuments).not.toHaveBeenCalled();
+  });
+
   it('documents: a late document list is not written into the store', async () => {
     const late = deferred<unknown[]>();
     useWorkspaceStore.setState({ activeWorkspace: ws('w1') });
@@ -140,6 +158,20 @@ describe('answers that arrive after the session ended or the account changed are
     await loading;
 
     expect(useHighlightStore.getState().highlights).toEqual({});
+  });
+
+  it('categories: a late workspace load does not replace the categories for the workspace now on screen', async () => {
+    const lateA = deferred<Array<{ id: string; name: string }>>();
+    const currentB = [{ id: 'category-B', name: 'B category' }];
+    vi.mocked(HighlightRepository.listCategories).mockImplementation((workspaceId: string) =>
+      (workspaceId === 'workspace-A' ? lateA.promise : Promise.resolve(currentB)) as never);
+
+    const loadingA = useHighlightStore.getState().loadCategories('workspace-A');
+    await useHighlightStore.getState().loadCategories('workspace-B');
+    lateA.resolve([{ id: 'category-A', name: 'A category' }]);
+    await loadingA;
+
+    expect(useHighlightStore.getState().categories).toEqual(currentB);
   });
 
   it('knowledge: late flashcards do not come back after the reset', async () => {
