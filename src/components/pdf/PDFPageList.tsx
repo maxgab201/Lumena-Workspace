@@ -69,7 +69,7 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
     getScrollElement: () => parentRef.current,
     estimateSize: getRowHeight,
     // Large pages (high zoom) are millions of pixels each: keep fewer of them mounted around the visible ones.
-    overscan: overscanForScale(scale),
+    overscan: overscanForScale(scale, typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1),
     // When scale/rotation/fitMode changes, we force a re-measurement
     onChange: (instance: any) => {
       // Find the most visible page and update the store

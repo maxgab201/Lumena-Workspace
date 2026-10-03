@@ -15,6 +15,8 @@
 export const MAX_CANVAS_PIXELS = 33_554_432;
 /** What iOS Safari can draw on one canvas (2^24); above it the canvas stays blank. */
 export const MAX_CANVAS_PIXELS_IOS = 16_777_216;
+/** Keep a single high-DPR page small enough to leave room for transient PDF.js render buffers. */
+export const MAX_CANVAS_PIXELS_HIGH_DPR = 16_777_216;
 
 const MIN_PIXEL_RATIO = 0.25;
 
@@ -23,8 +25,10 @@ export function isIosLike(userAgent: string, maxTouchPoints: number): boolean {
   return /iP(hone|ad|od)/.test(userAgent) || (/Macintosh/.test(userAgent) && maxTouchPoints > 1);
 }
 
-export function maxCanvasPixelsFor(userAgent: string, maxTouchPoints: number): number {
-  return isIosLike(userAgent, maxTouchPoints) ? MAX_CANVAS_PIXELS_IOS : MAX_CANVAS_PIXELS;
+export function maxCanvasPixelsFor(userAgent: string, maxTouchPoints: number, devicePixelRatio: number = 1): number {
+  if (isIosLike(userAgent, maxTouchPoints)) return MAX_CANVAS_PIXELS_IOS;
+  if (devicePixelRatio >= 2.5) return MAX_CANVAS_PIXELS_HIGH_DPR;
+  return MAX_CANVAS_PIXELS;
 }
 
 /**
@@ -40,8 +44,16 @@ export function pagePixelRatio(cssWidth: number, cssHeight: number, deviceRatio:
 }
 
 /** Pages kept mounted above and below the visible ones: generous when pages are small, minimal when they are huge. */
-export function overscanForScale(scale: number): number {
-  if (scale <= 1.5) return 5;
-  if (scale <= 2.5) return 2;
-  return 1;
+export function overscanForScale(scale: number, devicePixelRatio: number = 1): number {
+  let overscan: number;
+  if (scale <= 1.5) overscan = 5;
+  else if (scale <= 2.5) overscan = 2;
+  else overscan = 1;
+
+  // On dense screens, each mounted page can allocate several times as many pixels. Cap off-screen prefetch at two
+  // pages per side on 2x screens, and disable it at 2.5x+, where a 900-page PDF otherwise exhausted the browser
+  // while zooming. Pages inside the viewport still render normally.
+  if (devicePixelRatio >= 2.5) return 0;
+  if (devicePixelRatio >= 2) return Math.min(overscan, 2);
+  return overscan;
 }

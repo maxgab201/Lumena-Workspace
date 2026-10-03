@@ -124,6 +124,17 @@ Last Updated: 2026-09-02
 
 # 5. Release History
 
+## [Unreleased] - 2026-10-03 — High-DPR Reader Memory
+
+### Fixed
+
+- A 900-page PDF could crash Chromium while zooming at 3x device-pixel ratio. The per-canvas limit did not bound the total allocation across mounted pages. Screens at 2x now cap prefetch at two pages per side; screens at 2.5x and above disable off-screen prefetch and use a 16.8M-pixel canvas cap.
+
+### Verification
+
+- Reproduced before the fix with the 900-page fixture: Chromium crashed at 250% zoom after canvas allocations reached 100.6M pixels. With the fix, the same mocked browser flow reached 500%, survived fast scroll and four rotations, and reported 16.8M pixels at rest (about 64 MiB of canvas backing stores) and 33.5M pixels during scroll/rotation (about 128 MiB), with no page or console errors. The 120- and 400-page fixtures survived fast scroll; the 400-page fixture also survived zoom, rotation, resize, two Reader tabs, and Reader unmount with zero canvases left in the departed tab.
+- An iPhone user-agent/touch emulation reached 500% on the 900-page fixture with each canvas under 16.8M pixels and no page errors. This uses Chromium emulation, not physical iOS Safari.
+
 ## [Unreleased] - 2026-09-30 — Audit round 1
 
 ### Security
