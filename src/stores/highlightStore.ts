@@ -130,12 +130,14 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
   },
 
   addHighlight: async (highlightData) => {
+    const epoch = getSessionEpoch();
     try {
       // Default provenance to 'manual' — AI highlights pass source='ai'.
       const created = await HighlightRepository.createHighlight({
         ...highlightData,
         source: highlightData.source ?? 'manual',
       });
+      if (epoch !== getSessionEpoch()) return null;
       set((state) => {
         const existing = state.highlights[highlightData.document_id] ?? [];
         // A refresh made while this save was in flight may already have brought the new highlight in.
@@ -151,6 +153,7 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
       });
       return created;
     } catch (err) {
+      if (epoch !== getSessionEpoch()) return null;
       console.error('[HighlightStore] Failed to add highlight:', err);
       toast.error('Failed to save highlight', {
         description: err instanceof Error ? err.message : 'Please check your connection and try again.',
@@ -160,6 +163,7 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
   },
 
   updateHighlight: async (id, updates) => {
+    const epoch = getSessionEpoch();
     // What this edit overwrites, so a failure can put back exactly that and nothing else. Restoring a
     // snapshot of the whole store would also undo every other change made while this one was in flight.
     const before = findHighlight(get().highlights, id);
@@ -173,8 +177,10 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
 
     try {
       const updated = await HighlightRepository.updateHighlight(id, updates);
+      if (epoch !== getSessionEpoch()) return;
       set((state) => ({ highlights: replaceHighlight(state.highlights, updated) }));
     } catch (err) {
+      if (epoch !== getSessionEpoch()) return;
       console.error('[HighlightStore] Failed to update highlight:', err);
       // Rollback on failure: only this edit's fields
       if (overwritten) {
@@ -187,6 +193,7 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
   },
 
   removeHighlight: async (id) => {
+    const epoch = getSessionEpoch();
     // The highlight itself, so a failed delete puts back this one highlight and nothing else.
     let removed: { documentId: string; highlight: Highlight } | null = null;
     for (const [documentId, list] of Object.entries(get().highlights)) {
@@ -213,6 +220,7 @@ export const useHighlightStore = create<HighlightStoreState>((set, get) => ({
     try {
       await HighlightRepository.deleteHighlight(id);
     } catch (err) {
+      if (epoch !== getSessionEpoch()) return;
       console.error('[HighlightStore] Failed to remove highlight:', err);
       // Rollback on failure
       if (removed) {

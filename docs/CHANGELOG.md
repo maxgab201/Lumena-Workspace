@@ -196,8 +196,19 @@ Last Updated: 2026-09-02
 
 ### Verification
 
-- Both races have deferred-response regression tests. Each new test failed against the old implementation and passed after the fix; temporarily removing either concurrency guard makes its test fail. The full test suite and deployment checks are tracked with the follow-up PR.
-- Production auth, Reader and QA flows were not repeated in this audit because no disposable authenticated QA browser state was available.
+- Both races have deferred-response regression tests. Each new test failed against the old implementation and passed after the fix; temporarily removing either concurrency guard makes its test fail. All 465 unit tests, lint, typecheck, build and E2E CI jobs passed; preview and production deployments reached READY.
+- Authenticated production flows were not repeated in this audit because no disposable QA browser state was available.
+
+## [Unreleased] - 2026-10-03 — Pending mutations after logout
+
+### Fixed
+
+- A highlight save that completed after sign-out, or a failed delete that rolled back after sign-out, could repopulate the previous account's highlight store. Highlight mutations now drop success and failure responses from an earlier session.
+- Chat's fallback session lookup could finish after sign-out, activate the old session, and continue sending a message. An in-flight message could also continue to create its assistant placeholder after logout. Chat now checks the session epoch at each awaited boundary and drops stale cleanup/errors.
+
+### Verification
+
+- Deferred-response tests reproduce highlight save, highlight rollback, and both chat paths after `resetUserScopedState()`. Removing each guard makes its regression test fail; restored fixes pass. Authenticated production reproduction remains unrun because no QA browser state was available.
 
 ## [Unreleased] - 2026-09-30 — Audit round 2 (production smoke)
 
