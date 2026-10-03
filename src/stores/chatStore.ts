@@ -89,6 +89,9 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   },
 
   sendMessage: async (text, runtime) => {
+    const epoch = getSessionEpoch();
+    const isCurrentSession = () => epoch === getSessionEpoch();
+    if (!isCurrentSession()) return;
     let { activeSessionId, selectedModel } = get();
 
     // Fallback: If no active session, attempt to initialize from current document
@@ -98,17 +101,20 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       if (docId && wsId) {
         try {
           const session = await ChatRepository.getOrCreateSession(docId, wsId);
+          if (!isCurrentSession()) return;
           activeSessionId = session.id;
           set((state) => ({
             sessions: { ...state.sessions, [docId]: session },
             activeSessionId: session.id,
           }));
         } catch {
+          if (!isCurrentSession()) return;
           // Fall through
         }
       }
     }
 
+    if (!isCurrentSession()) return;
     if (!activeSessionId) {
       console.warn('[ChatStore] No active session available for message');
       return;
@@ -120,13 +126,16 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
     try {
       // 1. Persist user message
       const userMsg = await ChatRepository.addMessage(activeSessionId, 'user' as Role, text);
+      if (!isCurrentSession()) return;
 
       // 2. Persist empty assistant message placeholder
       const assistantMsg = await ChatRepository.addMessage(activeSessionId, 'assistant' as Role, '');
+      if (!isCurrentSession()) return;
       assistantMsgId = assistantMsg.id;
 
       // 3. Build context for the AI (including RAG retrieval)
       const context = await buildChatContext(text);
+      if (!isCurrentSession()) return;
 
       // 4. Update local state immediately with citations
       set((state) => ({
@@ -159,10 +168,13 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
           workspaceId,
           preferredHighlightModel,
         );
+        if (!isCurrentSession()) return;
 
         const pdfResponse = await fetch(fileUrl);
+        if (!isCurrentSession()) return;
         if (!pdfResponse.ok) throw new Error('Could not load the PDF for highlighting.');
         const blob = await pdfResponse.blob();
+        if (!isCurrentSession()) return;
 
         const summary = await AiHighlightService.highlightDocument({
           file: blob,
@@ -182,6 +194,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
           instruction: authorized.instruction,
           replaceExisting: false,
         });
+        if (!isCurrentSession()) return;
 
         const resultText = highlightActionResultText(
           (context.language ?? 'en') as ChatLanguage,
@@ -207,6 +220,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
       let accumulated = '';
       try {
         await AIGateway.generateStream(text, context, selectedModel, (chunk) => {
+          if (!isCurrentSession()) return;
           accumulated += chunk;
           get().appendStreamChunk(assistantMsg.id, chunk);
         }, abortController.signal);
@@ -221,9 +235,11 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         }
       }
 
+      if (!isCurrentSession()) return;
       // 6. Persist final assistant content to DB
       await ChatRepository.updateMessage(assistantMsg.id, accumulated);
     } catch (err: any) {
+      if (!isCurrentSession()) return;
       console.error('[ChatStore] Error sending message:', err);
 
       let userFacingError = 'The AI service is temporarily unavailable. Please try again in a moment.';
@@ -248,7 +264,7 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
         await ChatRepository.updateMessage(assistantMsgId, `⚠️ ${userFacingError}`).catch(() => undefined);
       }
     } finally {
-      set({ isGenerating: false, abortController: null });
+      if (isCurrentSession()) set({ isGenerating: false, abortController: null });
     }
   },
 
@@ -275,15 +291,18 @@ export const useChatStore = create<ChatStoreState>((set, get) => ({
   },
 
   clearSession: async () => {
+    const epoch = getSessionEpoch();
     const { activeSessionId } = get();
     if (!activeSessionId) return;
 
     try {
       await ChatRepository.clearSession(activeSessionId);
+      if (epoch !== getSessionEpoch()) return;
       set((state) => ({
         messages: { ...state.messages, [activeSessionId]: [] },
       }));
     } catch (err) {
+      if (epoch !== getSessionEpoch()) return;
       console.error('[ChatStore] Failed to clear session:', err);
     }
   },

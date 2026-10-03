@@ -5,6 +5,7 @@ import { useHighlightStore } from '../../src/stores/highlightStore';
 import { useKnowledgeStore } from '../../src/stores/knowledgeStore';
 import { useWorkspaceStore } from '../../src/stores/workspaceStore';
 import { useBillingStore } from '../../src/stores/billingStore';
+import { useViewerStore } from '../../src/stores/viewerStore';
 import { resetUserScopedState } from '../../src/stores/sessionReset';
 import { ChatRepository } from '../../src/repositories/chat.repository';
 import { HighlightRepository } from '../../src/repositories/highlight.repository';
@@ -172,6 +173,68 @@ describe('answers that arrive after the session ended or the account changed are
     await loadingA;
 
     expect(useHighlightStore.getState().categories).toEqual(currentB);
+  });
+
+  it('highlight creation: a response after sign-out does not repopulate the previous account highlight', async () => {
+    const late = deferred<Highlight>();
+    vi.mocked(HighlightRepository.createHighlight).mockReturnValue(late.promise as never);
+    const adding = useHighlightStore.getState().addHighlight({
+      document_id: 'previous-doc', workspace_id: 'previous-ws', page_index: 0, rects: [], text: 'private note', color: '#fff',
+    });
+
+    resetUserScopedState();
+    late.resolve({ id: 'previous-highlight', document_id: 'previous-doc', text: 'private note' } as Highlight);
+    await adding;
+
+    expect(useHighlightStore.getState().highlights).toEqual({});
+  });
+
+  it('highlight rollback: a delete failure after sign-out does not restore the previous account highlight', async () => {
+    const late = deferred<void>();
+    const previous = { id: 'previous-highlight', document_id: 'previous-doc', text: 'private note' } as Highlight;
+    useHighlightStore.setState({ highlights: { 'previous-doc': [previous] }, activeHighlightId: 'previous-highlight' });
+    vi.mocked(HighlightRepository.deleteHighlight).mockReturnValue(late.promise as never);
+    const removing = useHighlightStore.getState().removeHighlight('previous-highlight');
+
+    resetUserScopedState();
+    late.reject(new Error('offline'));
+    await removing;
+
+    expect(useHighlightStore.getState().highlights).toEqual({});
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('chat fallback: a session lookup that resolves after sign-out cannot become active', async () => {
+    const late = deferred<ReturnType<typeof session>>();
+    vi.mocked(ChatRepository.getOrCreateSession).mockReturnValue(late.promise as never);
+    vi.mocked(ChatRepository.addMessage).mockRejectedValue(new Error('should not send after sign-out'));
+    useViewerStore.setState({ documentId: 'previous-doc' } as never);
+    useWorkspaceStore.setState({ activeWorkspace: ws('previous-ws') });
+    const sending = useChatStore.getState().sendMessage('hello');
+
+    resetUserScopedState();
+    late.resolve(session('previous-doc'));
+    await sending;
+
+    expect(useChatStore.getState().activeSessionId).toBeNull();
+    expect(ChatRepository.addMessage).not.toHaveBeenCalled();
+  });
+
+  it('chat send: a message request that resolves after sign-out cannot start the next request', async () => {
+    const lateUserMessage = deferred<unknown>();
+    vi.mocked(ChatRepository.addMessage).mockImplementation((( _sessionId: string, role: string) =>
+      role === 'user' ? lateUserMessage.promise : Promise.reject(new Error('should not create an assistant message after sign-out'))) as never);
+    useChatStore.setState({ activeSessionId: 'session-previous-doc' });
+    const sending = useChatStore.getState().sendMessage('private message');
+
+    resetUserScopedState();
+    lateUserMessage.resolve({ id: 'previous-user-message', session_id: 'session-previous-doc', role: 'user', content: 'private message' });
+    await sending;
+
+    expect(ChatRepository.addMessage).toHaveBeenCalledTimes(1);
+    expect(useChatStore.getState().activeSessionId).toBeNull();
+    expect(useChatStore.getState().messages).toEqual({});
+    expect(useChatStore.getState().isGenerating).toBe(false);
   });
 
   it('knowledge: late flashcards do not come back after the reset', async () => {
