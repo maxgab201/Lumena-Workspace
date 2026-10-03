@@ -2,6 +2,7 @@ import { act, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAX_CANVAS_PIXELS,
+  MAX_CANVAS_PIXELS_HIGH_DPR,
   MAX_CANVAS_PIXELS_IOS,
   isIosLike,
   maxCanvasPixelsFor,
@@ -78,6 +79,7 @@ describe('platform detection', () => {
   it('picks the cap for the platform', () => {
     expect(maxCanvasPixelsFor(iphone, 5)).toBe(MAX_CANVAS_PIXELS_IOS);
     expect(maxCanvasPixelsFor(windows, 0)).toBe(MAX_CANVAS_PIXELS);
+    expect(maxCanvasPixelsFor(windows, 0, 3)).toBe(MAX_CANVAS_PIXELS_HIGH_DPR);
   });
 });
 
@@ -89,6 +91,13 @@ describe('overscanForScale', () => {
     expect(overscanForScale(2.5)).toBe(2);
     expect(overscanForScale(3)).toBe(1);
     expect(overscanForScale(5)).toBe(1);
+  });
+
+  it('caps prefetch on dense screens before mounted page canvases exhaust browser memory', () => {
+    expect(overscanForScale(1, 2)).toBe(2);
+    expect(overscanForScale(1.5, 3)).toBe(0);
+    expect(overscanForScale(2, 3)).toBe(0);
+    expect(overscanForScale(5, 3)).toBe(0);
   });
 });
 
@@ -138,6 +147,18 @@ describe('the reader applies the budget', () => {
     expect(lastRatio()!).toBeLessThan(assumingA4);
     const targetWidth = Math.floor(1072 * 5);
     expect(targetWidth * lastRatio()! * (targetWidth * 3.5 * lastRatio()!)).toBeLessThanOrEqual(MAX_CANVAS_PIXELS * 1.001);
+  });
+
+  it('applies the smaller canvas limit to a high-DPR screen', async () => {
+    const { PDFPage } = await import('../../src/components/pdf/PDFPage');
+    const { useViewerStore } = await import('../../src/stores/viewerStore');
+    Object.defineProperty(window, 'devicePixelRatio', { value: 3, configurable: true });
+    useViewerStore.setState({ scale: 5 } as never);
+    render(<PDFPage pageIndex={0} width={1072} />);
+
+    const targetWidth = Math.floor(1072 * 5);
+    const ratio = lastRatio()!;
+    expect(targetWidth * ratio * (targetWidth * 1.414 * ratio)).toBeLessThanOrEqual(MAX_CANVAS_PIXELS_HIGH_DPR * 1.001);
   });
 
   it('turns the shape when the page is shown rotated a quarter turn', async () => {

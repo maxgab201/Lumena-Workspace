@@ -46,7 +46,9 @@ export const PDFPage = React.memo(({ pageIndex, width, style }: PDFPageProps) =>
     targetWidth,
     targetWidth * aspect,
     typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1,
-    typeof navigator === 'undefined' ? undefined : maxCanvasPixelsFor(navigator.userAgent, navigator.maxTouchPoints ?? 0),
+    typeof navigator === 'undefined'
+      ? undefined
+      : maxCanvasPixelsFor(navigator.userAgent, navigator.maxTouchPoints ?? 0, window.devicePixelRatio || 1),
   );
 
   return (
