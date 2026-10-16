@@ -12,8 +12,10 @@ const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY!;
 const authFile = 'playwright/.auth/user.json';
 
 setup('authenticate', async ({ page, request }) => {
-  const email = 'test@lumena.app';
-  const password = 'password123';
+  // Credentials come from the environment and are never committed: this repository is public.
+  const email = process.env.LUMENA_TEST_EMAIL;
+  const password = process.env.LUMENA_TEST_PASSWORD;
+  if (!email || !password) throw new Error('Set LUMENA_TEST_EMAIL and LUMENA_TEST_PASSWORD');
   
   console.log(`Setting up test user: ${email}`);
 

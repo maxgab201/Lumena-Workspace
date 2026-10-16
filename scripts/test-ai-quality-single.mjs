@@ -1,6 +1,11 @@
 // One-call quality check to avoid burning the per-minute quota
 const SUPABASE_URL = 'https://nsjetmjtwbhellqasggw.supabase.co';
 const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5zamV0bWp0d2JoZWxscWFzZ2d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3ODA5NDYsImV4cCI6MjA5OTM1Njk0Nn0.ueBlzTVAaNMezBqsVIczcO6-ogiJyML340pGwwpPN1s';
+// Credentials come from the environment and are never committed: this repository is public.
+const TEST_EMAIL = process.env.LUMENA_TEST_EMAIL;
+const TEST_PASSWORD = process.env.LUMENA_TEST_PASSWORD;
+if (!TEST_EMAIL || !TEST_PASSWORD) throw new Error('Set LUMENA_TEST_EMAIL and LUMENA_TEST_PASSWORD');
+
 
 const spanishSentences = [
   { sentence_key: 'p1-S0', text: 'La Celula y la Mitosis' },
@@ -20,7 +25,7 @@ const spanishSentences = [
 const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
   method: 'POST',
   headers: { apikey: ANON, 'Content-Type': 'application/json' },
-  body: JSON.stringify({ email: 'lumena-staging-e2e-test@example.com', password: 'test123456' }),
+  body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD }),
 });
 const { access_token } = await res.json();
 
