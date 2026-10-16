@@ -222,6 +222,18 @@ Last Updated: 2026-09-02
 
 - Deferred-response tests reproduce highlight save, highlight rollback, and both chat paths after `resetUserScopedState()`. Removing each guard makes its regression test fail; restored fixes pass. Authenticated production reproduction remains unrun because no QA browser state was available.
 
+## [Unreleased] - 2026-10-16 — Full repository review: cross-workspace read in `generate-knowledge`
+
+### Security
+
+- **`generate-knowledge` read documents of workspaces the caller does not belong to.** The Edge Function proved membership of the `workspace_id` the client sent, then fetched the document by `document_id` alone, as `service_role` (RLS never sees that query). Any signed-in user could address someone else's document with their own workspace id: the function took up to 8000 characters of that document's extracted text, had Gemini derive flashcards, glossary terms, mind map nodes or timeline events from it, stored them in the caller's workspace and returned them. It was reachable from the Knowledge sidebar (`PDFViewer` → `KnowledgeSidebar` → `knowledgeStore`) with no feature flag. `ai-highlight` and `create-highlights` already compared `doc.workspace_id` with the requested workspace; this function predates them and was missed. It now answers 404 unless the document belongs to the workspace the caller is a member of, for every `action_type`.
+- Why the existing guardrail missed it: `tests/unit/edge-functions-authz.test.ts` already required a `workspace_members` lookup in every user-facing function, but only asserted that the document belongs to the workspace for `ai-gateway`. It now asserts it for the four functions that read `documents` as `service_role` (`ai-gateway`, `ai-highlight`, `create-highlights`, `generate-knowledge`), matching the query chain or the row comparison as a unit instead of a character window (a window would have let the later credit-account query satisfy it by accident), and a coverage case fails when a new user-facing function reads `documents` without being listed.
+
+### Verification
+
+- Guardrail mutation-checked: with the old lookup, and with the comparison pointed at the wrong field, the `generate-knowledge` case fails with the expected message; with the fix all 12 cases pass. `pnpm lint`, `pnpm typecheck` and `pnpm test` (478 tests) pass; `deno check` reports the same single error as before the change.
+- The static test cannot prove runtime behavior. The cross-workspace negative path was not exercised against production.
+
 ## [Unreleased] - 2026-09-30 — Audit round 2 (production smoke)
 
 ### Fixed

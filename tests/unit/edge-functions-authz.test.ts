@@ -63,11 +63,45 @@ describe('Edge Functions verify workspace membership before using workspace data
     }
   });
 
-  it('checks that the document belongs to the workspace it is addressed with (ai-gateway)', () => {
-    const code = source('ai-gateway');
-    const documentCheckAt = code.indexOf("from('documents')");
+  /**
+   * Membership in the workspace the client NAMED proves nothing about the document_id it also
+   * sent. These functions read `documents` as service_role (RLS never sees the query), so a
+   * member of any workspace could address another workspace's document and get its text back.
+   * `generate-knowledge` shipped without this and was reachable from the Knowledge sidebar.
+   */
+  const READS_DOCUMENTS_AS_SERVICE_ROLE = [
+    'ai-gateway',
+    'ai-highlight',
+    'create-highlights',
+    'generate-knowledge',
+  ] as const;
 
-    expect(documentCheckAt).toBeGreaterThan(-1);
-    expect(code.slice(documentCheckAt, documentCheckAt + 200)).toContain(".eq('workspace_id', workspace_id)");
+  it.each(READS_DOCUMENTS_AS_SERVICE_ROLE)('%s checks that the document belongs to the workspace it is addressed with', (fn) => {
+    const code = source(fn);
+    const documentLookupAt = code.indexOf("from('documents')");
+
+    expect(documentLookupAt, `${fn} must look the document up`).toBeGreaterThan(-1);
+
+    // Either the query chain itself filters by workspace, or the returned row is compared to it.
+    // The chain is matched as a unit (not a character window) so that a later query, such as the
+    // credit account lookup, cannot satisfy the check by accident.
+    const fromLookup = code.slice(documentLookupAt);
+    const queryChain = fromLookup.match(/^from\('documents'\)(?:\s*\.\w+\([^)]*\))*/)?.[0] ?? '';
+    const filteredInQuery = /\.eq\('workspace_id',\s*\w+\)/.test(queryChain);
+    const rowCompared = /\bdoc\??\.workspace_id\s*!==\s*\w+/.test(fromLookup);
+
+    expect(
+      filteredInQuery || rowCompared,
+      `${fn}: the document lookup is not scoped to the workspace the caller proved membership of`,
+    ).toBe(true);
+  });
+
+  it('every Edge Function that reads documents by a client-supplied id is covered above', () => {
+    // A new user-facing function that reads `documents` must be added to the list, not skipped.
+    const covered = new Set<string>([...READS_DOCUMENTS_AS_SERVICE_ROLE, 'process-document', 'rag-retrieve']);
+    const reading = USER_FACING.filter((fn) => source(fn).includes("from('documents')"));
+    for (const fn of reading) {
+      expect(covered.has(fn), `${fn} reads documents but is not in the document-scope guardrail`).toBe(true);
+    }
   });
 });

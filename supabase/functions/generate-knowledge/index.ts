@@ -110,11 +110,17 @@ serve(async (req) => {
 
     const { data: doc } = await supabaseClient
       .from('documents')
-      .select('name, extracted_text')
+      .select('id, workspace_id, name, extracted_text')
       .eq('id', document_id)
       .single()
 
-    if (!doc) {
+    // The membership check above only proves the caller belongs to the workspace they
+    // supplied — it says nothing about document_id. Without this, any member of any
+    // workspace could pass someone else's document_id and this function (running as
+    // service_role, so RLS never sees it) would read that document's extracted_text and
+    // hand derived content back to the caller. ai-highlight and create-highlights already
+    // enforce this; this function predates them and had been missed.
+    if (!doc || doc.workspace_id !== workspace_id) {
       return new Response(JSON.stringify({ error: 'Document not found' }), { status: 404, headers: corsHeaders })
     }
 

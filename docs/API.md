@@ -402,7 +402,7 @@ These are the repository methods used by the frontend. All are workspace-scoped 
 }
 ```
 
-**Errors**: 401, 402, 403, 404, 422 (insufficient text), 500
+**Errors**: 401, 402, 403 (caller is not a member of `workspace_id`), 404 (no such document, or it belongs to another workspace than `workspace_id`), 422 (insufficient text), 500
 
 ---
 
