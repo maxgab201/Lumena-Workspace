@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { BillingRepository } from '../repositories/billing.repository';
 import { useWorkspaceStore } from './workspaceStore';
 import { getSessionEpoch, registerSessionReset } from './sessionReset';
+import { readFunctionError } from '../lib/functionError';
 
 interface Subscription {
   id: string;
@@ -124,9 +125,8 @@ export const useBillingStore = create<BillingStore>((set) => ({
       }
       set({ loading: false });
     } catch (err: any) {
-      // FunctionsHttpError carries the Edge Function response body in `context`
-      const body = err?.context;
-      const code = body?.code ?? (typeof body?.json === 'object' ? body.json?.code : undefined);
+      // A FunctionsHttpError carries the function's answer in `context`, an unread Response
+      const { code, message } = await readFunctionError(err);
       if (code === 'stripe_not_configured') {
         set({ paymentsConfigured: 'no', loading: false });
         return;
@@ -135,8 +135,8 @@ export const useBillingStore = create<BillingStore>((set) => ({
         set({ loading: false });
         throw new Error('PRICE_NOT_PROVISIONED');
       }
-      set({ error: err.message, loading: false });
-      throw err;
+      set({ error: message, loading: false });
+      throw new Error(message);
     }
   },
 }));

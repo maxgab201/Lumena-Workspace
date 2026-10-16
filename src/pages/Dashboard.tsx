@@ -39,6 +39,13 @@ interface UploadQueueItem {
 const queueKey = (workspaceId: string, file: File) =>
   `${workspaceId}:${file.name}:${file.size}:${file.lastModified}`;
 
+/**
+ * Only this account sees the QA fixtures shortcut. It is a cosmetic gate, not a security boundary: the
+ * shortcut only queues the public PDFs under /qa through the normal upload flow, with the same
+ * validation and workspace rules as any other upload.
+ */
+const QA_TOOLS_EMAIL = 'soporte@mggx-games.xyz';
+
 const QA_READER_FIXTURES = [
   { url: '/qa/reader-native.pdf', name: 'Lumena QA - Native Multi Page.pdf' },
   { url: '/qa/reader-scanned.pdf', name: 'Lumena QA - Scanned OCR.pdf' },
@@ -514,7 +521,7 @@ export const Dashboard = () => {
                disabled={!activeWorkspace}
                multiple
              />
-             {user?.email?.toLowerCase() === 'test@gmail.com' && (
+             {user?.email?.toLowerCase() === QA_TOOLS_EMAIL && (
                <Button
                  type="button"
                  variant="ghost"
@@ -745,6 +752,7 @@ export const Dashboard = () => {
                           >
                             <input
                               type="checkbox"
+                              aria-label={t('dashboard.selectDocument', { name: doc.name })}
                               className="h-4 w-4 rounded border-white/20 bg-background/80 accent-[var(--accent)]"
                               checked={selectedIds.has(doc.id)}
                               onChange={() => toggleSelected(doc.id)}

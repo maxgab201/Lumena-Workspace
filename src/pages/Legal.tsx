@@ -95,7 +95,7 @@ export const Legal = () => {
           <h2 className="text-xl font-heading font-semibold">Contact</h2>
           <p className="text-muted-foreground">
             Questions about these terms or privacy notice can be sent to{' '}
-            <a className="text-[var(--accent)] hover:underline" href={`mailto:${APP_CONFIG.supportEmail}`}>
+            <a className="text-[var(--accent)] underline underline-offset-2" href={`mailto:${APP_CONFIG.supportEmail}`}>
               {APP_CONFIG.supportEmail}
             </a>.
           </p>

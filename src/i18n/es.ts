@@ -16,6 +16,8 @@ const es: Record<TranslationKey, string> = {
   'dashboard.noResults': 'No se encontraron documentos que coincidan con "{query}"',
   'dashboard.sortBy': 'Ordenar por',
   'dashboard.rename': 'Renombrar',
+  'dashboard.selectDocument': 'Seleccionar {name}',
+  'viewer.documentPages': 'Páginas del documento',
   'dashboard.delete': 'Eliminar',
   'dashboard.globalSearch': 'Búsqueda Global con IA',
   'dashboard.globalSearchDesc': 'Selecciona múltiples documentos o presiona',

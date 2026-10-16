@@ -12,6 +12,7 @@ import type {
 } from '../types/knowledge';
 import { getSessionEpoch, registerSessionReset } from './sessionReset';
 import { isFeatureEnabled } from '../config/features';
+import { readFunctionError } from '../lib/functionError';
 
 interface KnowledgeStoreState {
   // All keyed by document_id
@@ -457,7 +458,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
       const { data, error } = await supabase.functions.invoke('generate-knowledge', {
         body: { document_id: documentId, workspace_id: workspaceId, action_type: 'flashcards' }
       });
-      if (error) throw error;
+      if (error) throw new Error((await readFunctionError(error)).message);
       if (data?.error) throw new Error(data.error);
       set((state) => ({
         flashcards: { ...state.flashcards, [documentId]: [...(state.flashcards[documentId] ?? []), ...(data?.items ?? [])] },
@@ -476,7 +477,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
       const { data, error } = await supabase.functions.invoke('generate-knowledge', {
         body: { document_id: documentId, workspace_id: workspaceId, action_type: 'glossary' }
       });
-      if (error) throw error;
+      if (error) throw new Error((await readFunctionError(error)).message);
       if (data?.error) throw new Error(data.error);
       set((state) => ({
         glossary: { ...state.glossary, [documentId]: [...(state.glossary[documentId] ?? []), ...(data?.items ?? [])] },
@@ -495,7 +496,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
       const { data, error } = await supabase.functions.invoke('generate-knowledge', {
         body: { document_id: documentId, workspace_id: workspaceId, action_type: 'mindmap' }
       });
-      if (error) throw error;
+      if (error) throw new Error((await readFunctionError(error)).message);
       if (data?.error) throw new Error(data.error);
       set((state) => ({
         mindMapNodes: { ...state.mindMapNodes, [documentId]: [...(state.mindMapNodes[documentId] ?? []), ...(data?.items ?? [])] },
@@ -514,7 +515,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
       const { data, error } = await supabase.functions.invoke('generate-knowledge', {
         body: { document_id: documentId, workspace_id: workspaceId, action_type: 'timeline' }
       });
-      if (error) throw error;
+      if (error) throw new Error((await readFunctionError(error)).message);
       if (data?.error) throw new Error(data.error);
       set((state) => ({
         timelineEvents: { ...state.timelineEvents, [documentId]: [...(state.timelineEvents[documentId] ?? []), ...(data?.items ?? [])] },
@@ -536,7 +537,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
       const { data, error } = await supabase.functions.invoke('generate-knowledge', {
         body: { document_id: documentId, workspace_id: workspaceId, action_type: 'presentation' }
       });
-      if (error) throw error;
+      if (error) throw new Error((await readFunctionError(error)).message);
       if (data?.error) throw new Error(data.error);
       set((state) => ({
         presentations: { ...state.presentations, [documentId]: [...(state.presentations[documentId] ?? []), ...(data?.items ?? [])] },

@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Sparkles, Loader2, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../../lib/utils';
+import { readFunctionError } from '../../lib/functionError';
 
 interface TimelineViewProps {
   documentId: string;
@@ -32,7 +33,7 @@ export const TimelineView = ({ documentId, workspaceId }: TimelineViewProps) => 
       const { data, error } = await supabase.functions.invoke('generate-knowledge', {
         body: { document_id: documentId, workspace_id: workspaceId, action_type: 'timeline' }
       });
-      if (error) throw error;
+      if (error) throw new Error((await readFunctionError(error)).message);
       if (data?.error) throw new Error(data.error);
 
       await fetchBillingData();

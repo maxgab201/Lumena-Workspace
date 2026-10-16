@@ -1,6 +1,7 @@
 import { useBillingStore } from '../../stores/billingStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { supabase } from '../supabase';
+import { readFunctionError } from '../functionError';
 
 export class AIGateway {
   /**
@@ -33,7 +34,7 @@ export class AIGateway {
       });
 
       if (error) {
-        throw new Error(error.message || 'Error generating AI response');
+        throw new Error((await readFunctionError(error)).message || 'Error generating AI response');
       }
 
       if (data.error) {
