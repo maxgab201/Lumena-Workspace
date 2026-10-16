@@ -29,6 +29,10 @@ export const ChatMessage = ({ message, onNavigateToPage, onOpenDocument, getPage
             components={{
               // Links open safely in new tabs
               a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+              // The model chooses what it writes, and a PDF can tell it what to write: an image would be fetched
+              // by the browser on its own, so its URL (and anything encoded in it) would leave the app. Chat
+              // answers have no use for remote images; the alt text keeps what the model meant to say.
+              img: ({ alt }) => (alt ? <span className="italic text-muted-foreground">{alt}</span> : null),
             }}
           >
             {message.content || (message.role === 'assistant' ? '…' : '')}

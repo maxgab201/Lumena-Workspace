@@ -32,3 +32,25 @@ export function removeStorage(key: string): void {
     // nothing to clean up if storage is unavailable
   }
 }
+
+/**
+ * The same guarantees for sessionStorage: a per-tab convenience that is gone when the tab closes (used for
+ * "I already did this once in this tab" markers). Returns whether the value was stored.
+ */
+export function readSession(key: string): string | null {
+  try {
+    return typeof window === 'undefined' ? null : window.sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+export function writeSession(key: string, value: string): boolean {
+  try {
+    if (typeof window === 'undefined') return false;
+    window.sessionStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}

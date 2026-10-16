@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { t } from '../../i18n';
 import type { Language } from '../../i18n';
 import { BrandLogo } from '../brand/BrandLogo';
+import { defaultAvatarUrl } from '../../lib/avatar';
 
 const LANGUAGES: { code: Language; label: string; flag: string }[] = [
   { code: 'en', label: 'English', flag: '🇺🇸' },
@@ -174,7 +175,7 @@ export const Topbar = () => {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="rounded-full w-9 h-9" aria-label="User menu" data-testid="user-menu-btn">
               <Avatar className="h-8 w-8 cursor-pointer ring-1 ring-border/50 transition-all hover:ring-accent shadow-sm">
-                <AvatarImage src={profile?.avatar_url || `https://api.dicebear.com/7.x/notionists/svg?seed=${user?.email}`} />
+                <AvatarImage alt="" src={profile?.avatar_url || defaultAvatarUrl(user?.id)} />
                 <AvatarFallback className="bg-gradient-to-b from-secondary to-background text-foreground text-xs font-medium">{initial}</AvatarFallback>
               </Avatar>
             </Button>
@@ -182,7 +183,7 @@ export const Topbar = () => {
           <DropdownMenuContent align="end" className="w-56 mt-1 border-white/10 shadow-2xl">
             <div className="flex items-center justify-start gap-3 p-3">
                <Avatar className="h-9 w-9">
-                <AvatarImage src={profile?.avatar_url || `https://api.dicebear.com/7.x/notionists/svg?seed=${user?.email}`} />
+                <AvatarImage alt="" src={profile?.avatar_url || defaultAvatarUrl(user?.id)} />
                 <AvatarFallback className="bg-accent/20 text-accent text-xs font-bold">{initial}</AvatarFallback>
               </Avatar>
               <div className="flex flex-col space-y-0.5 leading-none">
