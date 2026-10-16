@@ -55,7 +55,7 @@ export const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col justify-center items-center px-6 relative selection:bg-accent/30 selection:text-accent-foreground overflow-hidden">
+    <main className="min-h-screen bg-background flex flex-col justify-center items-center px-6 relative selection:bg-accent/30 selection:text-accent-foreground overflow-hidden">
       {/* Background Decorative Blur */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
         <div className="absolute -top-1/2 -left-1/2 w-[150%] h-[150%] bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-accent/10 via-background to-background opacity-60" />
@@ -72,13 +72,13 @@ export const Auth = () => {
           <Link to="/" className="inline-flex items-center mx-auto" aria-label="Lumena Workspace home">
             <BrandLogo variant="vertical" className="h-24 w-auto max-w-[150px]" />
           </Link>
-          <h2 className="text-3xl font-heading font-bold tracking-tight text-foreground pt-4">
+          <h1 className="text-3xl font-heading font-bold tracking-tight text-foreground pt-4">
             {isForgotPassword
               ? 'Reset your password'
               : isSignUp
               ? 'Create your account'
               : 'Sign in to Lumena'}
-          </h2>
+          </h1>
           <p className="text-sm text-muted-foreground">
             {isForgotPassword
               ? 'Enter your email to receive a password reset link'
@@ -132,7 +132,7 @@ export const Auth = () => {
                     <button
                       type="button"
                       onClick={() => setIsForgotPassword(true)}
-                      className="text-xs text-accent hover:underline focus:outline-none"
+                      className="py-1 text-xs text-accent hover:underline focus:outline-none"
                     >
                       Forgot password?
                     </button>
@@ -207,7 +207,7 @@ export const Auth = () => {
                 setInfoMessage(null);
               }
             }}
-            className="text-sm text-muted-foreground hover:text-foreground font-medium transition-colors"
+            className="py-1 text-sm text-muted-foreground hover:text-foreground font-medium transition-colors"
           >
             {isForgotPassword
               ? 'Back to sign in'
@@ -217,6 +217,6 @@ export const Auth = () => {
           </button>
         </div>
       </motion.div>
-    </div>
+    </main>
   );
 };

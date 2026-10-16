@@ -752,6 +752,7 @@ export const Dashboard = () => {
                           >
                             <input
                               type="checkbox"
+                              aria-label={t('dashboard.selectDocument', { name: doc.name })}
                               className="h-4 w-4 rounded border-white/20 bg-background/80 accent-[var(--accent)]"
                               checked={selectedIds.has(doc.id)}
                               onChange={() => toggleSelected(doc.id)}

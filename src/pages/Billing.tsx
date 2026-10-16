@@ -186,7 +186,7 @@ export const Billing = () => {
         <div className="grid md:grid-cols-2 gap-6">
           <div className="p-6 rounded-2xl border border-white/5 bg-background/40">
             {PLANS.free && <>
-            <h4 className="font-semibold text-lg mb-4">{PLANS.free.name}</h4>
+            <h3 className="font-semibold text-lg mb-4">{PLANS.free.name}</h3>
             <div className="text-3xl font-bold font-heading mb-6">$0<span className="text-sm font-normal text-muted-foreground">/mo</span></div>
             <ul className="space-y-3">
               {PLANS.free.features.map((feature, i) => (
@@ -203,10 +203,10 @@ export const Billing = () => {
             <div className="absolute top-0 right-0 w-32 h-32 bg-accent/20 rounded-full blur-3xl pointer-events-none" />
             <div className="relative z-10" data-plan="pro">
               {PLANS.pro && <>
-              <h4 className="font-semibold text-lg mb-4 text-foreground flex items-center justify-between">
+              <h3 className="font-semibold text-lg mb-4 text-foreground flex items-center justify-between">
                 {PLANS.pro.name}
                 <span className="text-[10px] bg-accent text-white uppercase font-bold tracking-widest px-2 py-0.5 rounded-full">Pro</span>
-              </h4>
+              </h3>
               <div className="text-3xl font-bold font-heading mb-6">
                 ${PLANS.pro.price}<span className="text-sm font-normal text-muted-foreground">/mo</span>
               </div>

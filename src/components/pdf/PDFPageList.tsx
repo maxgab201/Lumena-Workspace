@@ -5,6 +5,7 @@ import { useViewerStore } from '../../stores/viewerStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SCROLL_KEYS, anchorAt, createPageScrollSync, holdNavigation, offsetForAnchor, type ReadingAnchor } from '../../lib/pageScrollSync';
 import { overscanForScale } from '../../lib/canvasBudget';
+import { t } from '../../i18n';
 
 interface PDFPageListProps {
   containerWidth: number;
@@ -171,7 +172,12 @@ export const PDFPageList = ({ containerWidth, containerHeight }: PDFPageListProp
   return (
     <div
       ref={parentRef}
-      className="scrollbar-thin relative w-full h-full overflow-auto"
+      // A scrollable region with nothing focusable inside it cannot be scrolled from the keyboard in
+      // every browser; naming it and making it focusable fixes that (and gives it a landmark name).
+      role="region"
+      aria-label={t('viewer.documentPages')}
+      tabIndex={0}
+      className="scrollbar-thin relative w-full h-full overflow-auto focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)]"
       style={{
         width: containerWidth,
         height: containerHeight,

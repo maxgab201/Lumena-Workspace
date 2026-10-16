@@ -314,3 +314,15 @@ describe('<PDFPageList /> page and scroll position', () => {
     });
   });
 });
+
+describe('<PDFPageList /> keyboard access', () => {
+  it('is a named, focusable region, so the pages can be scrolled from the keyboard in every browser', () => {
+    // axe `scrollable-region-focusable`: a scrollable area with nothing focusable inside it is out of reach of
+    // the keyboard in browsers that do not make scrollers focusable on their own.
+    const { container } = mount();
+
+    expect(container.getAttribute('role')).toBe('region');
+    expect(container.getAttribute('aria-label')).toBeTruthy();
+    expect(container.tabIndex).toBe(0);
+  });
+});

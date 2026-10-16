@@ -14,6 +14,8 @@ const en = {
   'dashboard.noResults': 'No documents found matching "{query}"',
   'dashboard.sortBy': 'Sort by',
   'dashboard.rename': 'Rename',
+  'dashboard.selectDocument': 'Select {name}',
+  'viewer.documentPages': 'Document pages',
   'dashboard.delete': 'Delete',
   'dashboard.globalSearch': 'Global AI Search',
   'dashboard.globalSearchDesc': 'Select multiple documents or press',
