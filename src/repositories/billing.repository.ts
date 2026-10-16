@@ -58,7 +58,8 @@ export const BillingRepository = {
     const { data, error } = await supabase.functions.invoke('create-checkout-session', {
       body: {
         workspace_id: workspaceId,
-        package_id: packageId,
+        // create-checkout-session takes { kind, id } (or { kind: 'plan', code }), not a bare package id
+        product: { kind: 'package', id: packageId },
         success_url: window.location.origin + '/billing',
         cancel_url: window.location.origin + '/billing'
       }
